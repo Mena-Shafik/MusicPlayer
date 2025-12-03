@@ -1,5 +1,6 @@
 package com.example.musicplayer.songlist
 
+import android.app.Activity
 import android.os.Build //keep
 import android.util.Log
 import androidx.annotation.RequiresApi  //keep
@@ -71,8 +72,10 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,10 +86,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.core.view.WindowCompat
 import com.example.musicplayer.service.PlayerRepository
 import com.example.musicplayer.service.PlayerIntentBuilder
 import kotlin.collections.getOrNull
 import kotlin.text.isNotEmpty
+import androidx.compose.runtime.SideEffect
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -112,6 +117,19 @@ fun ListSongsScreen(
 
     // load and filter songs
     val context = LocalContext.current
+    val view = LocalView.current
+    val activity = LocalContext.current as? Activity
+    val isPreviewMode = LocalInspectionMode.current
+
+    SideEffect {
+        if (!isPreviewMode && activity != null) {
+            // Set a dark background so white status text is visible; use Transparent if you prefer
+            activity.window.statusBarColor = Color.Black.toArgb()
+            // Ensure status bar icons/text are *not* the "light" variant (i.e. force white icons/text)
+            WindowCompat.getInsetsController(activity.window, view)?.isAppearanceLightStatusBars = false
+        }
+    }
+
     LaunchedEffect(context) {
         val all = withContext(Dispatchers.IO) { Util.getAllAudioFromDevice(context) }
         viewModel.load(all)
