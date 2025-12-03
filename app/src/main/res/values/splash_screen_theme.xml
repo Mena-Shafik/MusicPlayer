@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.App.Test" parent="Theme.SplashScreen">
+        <!-- Set the background color -->
+        <item name="windowSplashScreenBackground">@color/black</item>
+        <!-- Set the splash screen animated icon -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_vinyl_record_animated</item>
+        <!-- Set the duration of the splash screen animation -->
+        <item name="windowSplashScreenAnimationDuration">200</item>
+        <!-- Set the theme of the Activity that follows the splash screen -->
+        <item name="postSplashScreenTheme">@style/Theme.MusicPlayer</item>
+    </style>
+</resources>
