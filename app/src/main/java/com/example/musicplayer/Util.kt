@@ -12,9 +12,12 @@ import android.widget.Toast
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.net.toUri
 import com.example.musicplayer.model.Song
 import java.io.File
 import java.util.ArrayList
+import java.util.Locale
+import kotlin.toString
 
 class Util {
 
@@ -39,21 +42,53 @@ class Util {
             var count = 0
             if (c != null) {
                 while (c.moveToNext()) {
-                    val path = c.getString(0)
+                    val tempPath = c.getString(0)
+                    val path = tempPath.toUri()
                     // Skip entries without a valid path to avoid passing empty strings to MediaMetadataRetriever
-                    if (path.isNullOrBlank()) continue
+                    if (path.toString().isBlank()) continue
                     val title = c.getString(1) ?: "Unknown"
                     val artist = c.getString(2) ?: "Unknown"
                     val duration = c.getDouble(3)
                     //val song = Song(count, title, artist, path, duration, getAlbumArt(c.getString(0)))
-                    val song = Song(count, title, artist, duration, path )
+                    val song = Song(count, title, artist, duration, path.toString() )
                     tempAudioList.add(song)
                     count++
-                    Log.i("data: ", "Album id: " + song.id + " Title: " + song.title + " Artist: " + song.artist + " Path: " + song.path + " Duration: " + song.duration)
+                    val msg = "Album id: ${song.id} | Title: ${song.title} | Artist: ${song.artist} | Path: ${song.path} | Duration: ${Util.converter(song.duration)}"
+                    Log.i("data", formatSongRow(song))
                 }
                 c.close()
             }
             return tempAudioList
+        }
+
+        private fun padOrTruncate(s: String?, width: Int): String {
+            val str = s ?: "Unknown"
+            return if (str.length <= width) str.padEnd(width) else str.take(width - 3) + "..."
+        }
+
+        fun formatSongTableHeader(): String {
+            // %-4s = left-aligned width 4, %-30s = left-aligned width 30, etc.
+            return String.format(Locale.US, "%-4s %-30s %-20s %-40s %8s",
+                "ID", "Title", "Artist", "Path", "Duration")
+        }
+
+        fun formatSongRow(song: Song): String {
+            val id = song.id.toString()
+            val title = padOrTruncate(song.title, 40)
+            val artist = padOrTruncate(song.artist, 40)
+            val duration = padOrTruncate(song.duration.toString(), 10)
+            val path = padOrTruncate(song.path, 70)
+            return String.format(Locale.US, "%-4s %-30s %-20s %8s %-40s",id, title, artist, duration, path)
+        }
+
+        fun converter(time: Double): String {
+            var elapsedTime: String?
+            val minutes = (time / 1000 / 60).toInt()
+            val seconds = (time / 1000 % 60).toInt()
+            elapsedTime = "$minutes:"
+            if (seconds < 10) elapsedTime += "0"
+            elapsedTime += seconds
+            return elapsedTime
         }
 
         fun getAlbumArt(context: Context, uri: String?): ImageBitmap? {
@@ -153,15 +188,7 @@ class Util {
             }
         }
 
-        fun converter(time: Double): String {
-            var elapsedTime: String?
-            val minutes = (time / 1000 / 60).toInt()
-            val seconds = (time / 1000 % 60).toInt()
-            elapsedTime = "$minutes:"
-            if (seconds < 10) elapsedTime += "0"
-            elapsedTime += seconds
-            return elapsedTime
-        }
+
 
         /*fun converter(time: Float): Float {
             var elapsedTime: String

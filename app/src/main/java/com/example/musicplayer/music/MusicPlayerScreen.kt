@@ -195,25 +195,30 @@ fun MusicScreen(
                     AlbumImage(
                         path = song.path,
                         onDominantColor = { extracted -> backgroundColor = extracted })
+                    Column(modifier = Modifier
+                        .size(340.dp, 130.dp)
+                        .padding(10.dp).align(Alignment.CenterHorizontally),)
+                    {
+                        Text(
+                            text = song.title,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .width(340.dp)
+                                .padding(10.dp)
+                        )
+                        Text(
+                            text = song.artist,
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                             modifier = Modifier
+                                 .padding(10.dp)
+                                 .width(340.dp)
+                        )
+                    }
 
-                    Text(
-                        text = song.title,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(10.dp)
-                    )
-
-                    Text(
-                        text = song.artist,
-                        color = Color.White,
-                        modifier = Modifier
-                            .padding(10.dp)
-                            .align(Alignment.CenterHorizontally)
-                    )
 
                     val effectiveDuration =
                         if (durationMs > 0L) durationMs.toFloat() else song.duration.toFloat()
