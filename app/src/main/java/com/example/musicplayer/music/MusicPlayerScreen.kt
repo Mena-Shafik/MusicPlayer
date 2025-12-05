@@ -776,9 +776,9 @@ fun SongsPeekBarPreview_Dark() {
 @Composable
 fun SongsModalBottomSheetPreview_Expanded() {
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3"),
-        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3"),
-        Song(2, "Third Song", "Artist C", 240.0, "/storage/emulated/0/Music/third.mp3")
+        Song(0, "Album A","First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3"),
+        Song(1, "Album A","Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3"),
+        Song(2, "Album A","Third Song", "Artist C", 240.0, "/storage/emulated/0/Music/third.mp3")
     )
 
     MaterialTheme {
@@ -797,8 +797,8 @@ fun SongsModalBottomSheetPreview_Expanded() {
 @Composable
 fun SongsModalBottomSheetPreview_Collapsed() {
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3"),
-        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3"),
+        Song(0, "Album A","First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3"),
+        Song(1, "Album A","Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3"),
     )
 
     MaterialTheme {

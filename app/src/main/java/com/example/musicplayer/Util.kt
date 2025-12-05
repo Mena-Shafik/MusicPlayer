@@ -34,6 +34,7 @@ class Util {
                 MediaStore.Audio.AudioColumns.DATA,
                 MediaStore.Audio.AudioColumns.TITLE,
                 MediaStore.Audio.ArtistColumns.ARTIST,
+                MediaStore.Audio.AlbumColumns.ALBUM,
                 MediaStore.Audio.AudioColumns.DURATION
             )
             // check if it is a song
@@ -48,9 +49,10 @@ class Util {
                     if (path.toString().isBlank()) continue
                     val title = c.getString(1) ?: "Unknown"
                     val artist = c.getString(2) ?: "Unknown"
-                    val duration = c.getDouble(3)
+                    val album = c.getString(3)?: "Other"
+                    val duration = c.getDouble(4)
                     //val song = Song(count, title, artist, path, duration, getAlbumArt(c.getString(0)))
-                    val song = Song(count, title, artist, duration, path.toString() )
+                    val song = Song(count, album, title, artist, duration, path.toString() )
                     tempAudioList.add(song)
                     count++
                     val msg = "Album id: ${song.id} | Title: ${song.title} | Artist: ${song.artist} | Path: ${song.path} | Duration: ${Util.converter(song.duration)}"
@@ -69,16 +71,17 @@ class Util {
         fun formatSongTableHeader(): String {
             // %-4s = left-aligned width 4, %-30s = left-aligned width 30, etc.
             return String.format(Locale.US, "%-4s %-30s %-20s %-40s %8s",
-                "ID", "Title", "Artist", "Path", "Duration")
+                "ID", "Album","Title", "Artist", "Path", "Duration")
         }
 
         fun formatSongRow(song: Song): String {
             val id = song.id.toString()
+            val album = padOrTruncate(song.album, 40)
             val title = padOrTruncate(song.title, 40)
             val artist = padOrTruncate(song.artist, 40)
             val duration = padOrTruncate(song.duration.toString(), 10)
             val path = padOrTruncate(song.path, 70)
-            return String.format(Locale.US, "%-4s %-30s %-20s %8s %-40s",id, title, artist, duration, path)
+            return String.format(Locale.US, "%-4s %-30s %-30s %-20s %8s %-40s",id, album, title, artist, duration, path)
         }
 
         fun converter(time: Double): String {

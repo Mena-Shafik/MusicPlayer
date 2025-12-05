@@ -1,5 +1,7 @@
 package com.example.musicplayer.songlist
 
+
+import MainAppBar
 import android.app.Activity
 import android.os.Build //keep
 import android.util.Log
@@ -92,6 +94,9 @@ import com.example.musicplayer.service.PlayerIntentBuilder
 import kotlin.collections.getOrNull
 import kotlin.text.isNotEmpty
 import androidx.compose.runtime.SideEffect
+import com.example.musicplayer.composable.MainBackground
+import com.example.musicplayer.composable.Tabs
+import com.example.musicplayer.navigation.Destination
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -117,7 +122,7 @@ fun ListSongsScreen(
 
     // load and filter songs
     val context = LocalContext.current
-    val view = LocalView.current
+    /*val view = LocalView.current
     val activity = LocalContext.current as? Activity
     val isPreviewMode = LocalInspectionMode.current
 
@@ -128,7 +133,7 @@ fun ListSongsScreen(
             // Ensure status bar icons/text are *not* the "light" variant (i.e. force white icons/text)
             WindowCompat.getInsetsController(activity.window, view)?.isAppearanceLightStatusBars = false
         }
-    }
+    }*/
 
     LaunchedEffect(context) {
         val all = withContext(Dispatchers.IO) { Util.getAllAudioFromDevice(context) }
@@ -173,7 +178,15 @@ fun ListSongsScreen(
         }
     })
 
-    Scaffold(
+    // determine destinations and the index that corresponds to the SONGS tab
+    val destinations = com.example.musicplayer.navigation.Destination.entries.take(3).toList()
+    val songsIndex = destinations.indexOfFirst { it == Destination.SONGS }.takeIf { it >= 0 } ?: 0
+    val albumIndex = destinations.indexOfFirst { it == Destination.ALBUMS }.takeIf { it >= 0 } ?: -1
+
+    // hoisted selected tab state
+    var selectedTab by remember { mutableStateOf(songsIndex) }
+
+    Scaffold( containerColor = Color.Transparent,
         topBar = {
             if (showTopBar) {
                 MainAppBar(
@@ -186,37 +199,67 @@ fun ListSongsScreen(
             }
         }
     ) { innerPadding ->
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .pullRefresh(pullRefreshState)
-                .background(Color.Black)
+                .background(Color.Transparent)
         ) {
             MainBackground()
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     // leave space at the bottom so the mini player doesn't cover list items
                     .padding(innerPadding)
             ) {
-                DisplayListSongs(
-                    songs = songs,
-                    onSongClicked = { index ->
-                        val selected = songs.getOrNull(index)
-                        if (selected != null) {
-                            // Update repository and start the playback service directly to avoid VM scoping issues
-                            PlayerRepository.setPlaylist(songs, index)
-                            val appCtx = context.applicationContext
-                            PlayerIntentBuilder.startPlay(appCtx)
-                            // navigate to music screen UI
-                            val songId = selected.id.toString()
-                            navController.navigate("musicScreen/$songId")
-                        }
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                Tabs(
+                    navController = navController,
+                    destinations = destinations,
+                    selectedIndex = selectedTab,
+                    onSelectedIndexChange = { selectedTab = it }
                 )
+                // show content depending on the selected tab
+                when (selectedTab) {
+                    songsIndex -> {
+                        DisplayListSongs(
+                            songs = songs,
+                            onSongClicked = { index ->
+                                val selected = songs.getOrNull(index)
+                                if (selected != null) {
+                                    PlayerRepository.setPlaylist(songs, index)
+                                    val appCtx = context.applicationContext
+                                    PlayerIntentBuilder.startPlay(appCtx)
+                                    navController.navigate("musicScreen/${selected.id}")
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        )
+                    }
+                    albumIndex -> {
+                        DisplayAlbumList(
+                            songs = songs,
+                            onAlbumClicked = { albumName ->
+                                // navigate to an album screen if you have one, or filter songs by album
+                                // here we navigate to a placeholder route; adjust as needed
+                                navController.navigate("albumScreen/${albumName.encodeURIPathComponent()}")
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        )
+                    }
+                    else -> {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        )
+                    }
+                }
                 // show the mini player only when playback is active so it doesn't take layout space while idle
                 if (showMini) {
                     MiniPlayer(
@@ -251,56 +294,36 @@ fun SAP() {
 
 }*/
 
-@OptIn(ExperimentalMaterial3Api::class)
+// Helper extension for safe navigation encoding (very small helper)
+private fun String.encodeURIPathComponent(): String =
+    java.net.URLEncoder.encode(this, "utf-8")
 @Composable
-fun MainAppBar(
-    showSearch: Boolean,
-    onToggleSearch: () -> Unit,
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onSearchedClicked: (String) -> Unit
+fun DisplayAlbumList(
+    songs: List<Song>,
+    onAlbumClicked: (String) -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
-    if (showSearch) {
-        CenterAlignedTopAppBar(
-            title = {
-                SearchBar(
-                    text = query,
-                    onTextChange = onQueryChange,
-                    onCloseClicked = {
-                        onQueryChange("")
-                        onToggleSearch()
-                    },
-                    onSearchedClicked = {
-                        onSearchedClicked(it)
-                    }
-                )
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-        )
-    } else {
-        CenterAlignedTopAppBar(
-            title = {
-                Text(
-                    text = "Songs",
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-            },
-            actions = {
-                IconButton(onClick = onToggleSearch) {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = "Search Icon",
-                        tint = Color.White
-                    )
+    val albums = remember(songs) { songs.map { it.artist }.distinct() }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            itemsIndexed(albums) { _, album ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onAlbumClicked(album) }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = album, color = Color.White, fontWeight = FontWeight.Bold)
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-            modifier = Modifier.statusBarsPadding()
-        )
+            }
+        }
     }
 }
-
 @Composable
 fun DisplayListSongs(
     songs: List<Song>,
@@ -393,80 +416,7 @@ fun SongCardRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-//@RequiresApi(Build.VERSION_CODES.M) //keep
-@Composable
-fun SearchBar(
-    text: String,
-    onTextChange: (String) -> Unit,
-    onCloseClicked: () -> Unit,
-    onSearchedClicked: (String) -> Unit
-) {
 
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .statusBarsPadding(), // ensure SearchBar sits below the status bar
-        //elevation = AppBarDefaults.TopAppBarElevation,
-        //elevation= AppBarDefaults.
-        color = Color.Transparent
-    ) {
-        TextField(
-            modifier = Modifier.fillMaxWidth(),
-            value = text,
-            onValueChange = { onTextChange(it) },
-            placeholder = {
-                Text(
-                    modifier = Modifier.alpha(0.6f),
-                    text = "Search",
-                    color = Color.White
-                )
-            },
-            textStyle = TextStyle(
-                fontSize = MaterialTheme.typography.bodySmall.fontSize,
-                color = Color.White
-            ),
-            singleLine = true,
-            leadingIcon = {
-                IconButton(
-                    modifier = Modifier.alpha(0.6f),
-                    onClick = { onSearchedClicked(text) } // perform search when user taps the icon
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = Color.White
-                    )
-                }
-            },
-            trailingIcon = {
-                IconButton(
-                    onClick = {
-                        if (text.isNotEmpty()) {
-                            onTextChange("")
-                        } else {
-                            onCloseClicked()
-                        }
-                    }) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Search",
-                        tint = Color.White
-                    )
-                }
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearchedClicked(text) }),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                disabledContainerColor = Color.Transparent,
-                cursorColor = Color.White.copy(alpha = 0.6f)
-            )
-        )
-    }
-}
 
 @Composable
 fun MiniPlayer(
@@ -584,99 +534,9 @@ fun MiniPlayer(
     }
 }
 
-data class RadialSpec(
-    val fx: Float, // fractional x center (0-1)
-    val fy: Float, // fractional y center (0-1)
-    val radius: Dp,
-    val colors: List<Color>,
-    val alpha: Float = 1.0f
-)
 
-//@Preview()
-@Composable
-fun MainBackground(){
-    MultiRadialBackground(
-        specs = listOf(
-            RadialSpec(fx = 0.6f, fy = -0.1f, radius = 320.dp, colors = listOf(Color(0xFFB53419), Color(0xFF5A1E10), Color.Transparent), alpha = 0.20f),
-            RadialSpec(fx = 1.0f, fy = 0.0f, radius = 220.dp,colors = listOf(Color(0xFFFFC107), Color(0xFF856832), Color.Transparent), alpha = 0.2f),
-            RadialSpec(fx = 0.2f, fy = 0.5f, radius = 120.dp, colors = listOf(Color(0xFF7B1FA2), Color(0xFF4A148C), Color.Transparent), alpha = 0.2f),
-            RadialSpec(fx = 0.8f, fy = 0.2f, radius = 180.dp, colors = listOf(Color(0xFF4CAF50), Color(0xFF009688), Color.Transparent), alpha = 0.2f),
-            RadialSpec(fx = 0.3f, fy = 0.2f, radius = 180.dp, colors = listOf(Color(0xFFE53935), Color(0xFFF4511E), Color.Transparent), alpha = 0.2f),
-            RadialSpec(fx = 0.0f, fy = -0.1f, radius = 220.dp, colors = listOf(Color(0xFF1F53A2), Color(0xFF142E8C), Color.Transparent), alpha = 0.3f),
-        ),
-        blurRadius = 90.dp // slightly less blur so smaller spots stay focused
-    )
-    // Black vertical gradient overlay (top -> bottom)
-    Box(modifier = Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    // make fully black by 50% of the screen then remain black
-                    0.0f to Color.Black.copy(alpha = 0.0f),
-                    0.3f to Color.Black.copy(alpha = 1.0f),
-                    1.0f to Color.Black.copy(alpha = 1.0f)
-                )
-        )
-    )
-}
 
-@Composable
-fun MultiRadialBackground(specs: List<RadialSpec> = emptyList(), blurRadius: Dp = 0.dp) {
-    // Provide a reasonable default when called as a preview without params
-    val defaultSpecs = listOf(
-        RadialSpec(0.5f, 0.22f, 450.dp, listOf(Color(0xFFB53419), Color(0xFF5A1E10), Color.Black), alpha = 0.95f),
-        RadialSpec(0.82f, 0.18f, 320.dp, listOf(Color(0xFFFFC107), Color(0xFF856832), Color.Black), alpha = 0.7f)
-    )
-    val drawSpecs = if (specs.isEmpty()) defaultSpecs else specs
 
-    val density = LocalDensity.current
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .drawBehind {
-                // Draw each radial gradient on the full canvas, using fractional centers
-                drawSpecs.forEach { spec ->
-                    val center = Offset(size.width * spec.fx, size.height * spec.fy)
-                    val radiusPx = with(density) { spec.radius.toPx() }
-                    val brush = Brush.radialGradient(
-                        colors = spec.colors,
-                        center = center,
-                        radius = radiusPx
-                    )
-                    drawRect(brush, alpha = spec.alpha)
-                }
-            }
-            .blur(blurRadius)
-    )
-}
-
-@Preview( name = "MainAppBar - Normal", backgroundColor = 0xFF000000)
-@Composable
-fun MainAppBarPreview() {
-    MaterialTheme {
-        MainAppBar(
-            showSearch = false,
-            onToggleSearch = {},
-            query = "",
-            onQueryChange = {},
-            onSearchedClicked = {}
-        )
-    }
-}
-
-//@RequiresApi(Build.VERSION_CODES.M) //keep
-@Preview( name = "MainAppBar - Search", backgroundColor = 0xFF000000)
-@Composable
-fun MainAppBarSearchPreview() {
-    MaterialTheme {
-        MainAppBar(
-            showSearch = true,
-            onToggleSearch = {},
-            query = "Search text",
-            onQueryChange = {},
-            onSearchedClicked = {}
-        )
-    }
-}
 
 @Preview( name = "SongCardRow Preview", backgroundColor = 0xFF000000)
 @Composable
@@ -702,8 +562,8 @@ fun CardPreview() {
 private fun MiniPlayerPreview() {
     // Prepare a small sample playlist with empty paths so placeholder art is used in preview
     val sampleSongs = listOf(
-        Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = ""),
-        Song(id = 2, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "")
+        Song(id = 1, "Album A",title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = ""),
+        Song(id = 2, "Album A",title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "")
     )
 
     // populate PlayerRepository with sample data for preview
@@ -726,6 +586,7 @@ fun DisplayListPreview() {
         val sampleSongs = listOf(
             Song(
                 id = 1,
+                "Album A",
                 title = "Preview Song",
                 artist = "Preview Artist",
                 duration = 180000.0,
@@ -733,6 +594,7 @@ fun DisplayListPreview() {
             ),
             Song(
                 id = 2,
+                "Album A",
                 title = "Another Track",
                 artist = "Artist Two",
                 duration = 200000.0,
@@ -740,6 +602,7 @@ fun DisplayListPreview() {
             ),
             Song(
                 id = 3,
+                "Album A",
                 title = "Another Track",
                 artist = "Artist Three",
                 duration = 200000.0,
@@ -747,6 +610,7 @@ fun DisplayListPreview() {
             ),
             Song(
                 id = 4,
+                "Album A",
                 title = "Another Track",
                 artist = "Artist Four",
                 duration = 200000.0,
@@ -773,6 +637,7 @@ fun DisplayListPreview() {
                 MainBackground()
 
                 Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                    Tabs()
                     DisplayListSongs(
                         songs = sampleSongs,
                         onSongClicked = {},

@@ -26,10 +26,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.unit.sp
 import com.example.musicplayer.songlist.RadioListViewModel
+import com.example.musicplayer.composable.MainBackground
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,6 +41,7 @@ fun RadioListScreen(viewModel: RadioListViewModel) {
     val images by viewModel.images.collectAsState(initial = emptyList<ImageBitmap?>())
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Radio Stations") }
@@ -48,6 +53,8 @@ fun RadioListScreen(viewModel: RadioListViewModel) {
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
+            MainBackground()
+
             ImageGrid2x2(
                 images = images,
                 modifier = Modifier
@@ -102,11 +109,11 @@ fun ImageGrid2x2(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = 0.25f))
+                            .background(Color.Black.copy(alpha = 0.12f))
                             .padding(vertical = 6.dp)
                     ) {
                         Text(
-                            text = "Empty",
+                            text = "Z 103.5",
                             fontSize = 12.sp,
                             color = Color.White,
                             textAlign = TextAlign.Center,
@@ -141,20 +148,22 @@ fun GridImageButton(
             ),
         contentAlignment = Alignment.Center
     ) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale
-            )
-        } else {
-            Image(
-                painter = painterResource(id = placeholderRes),
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale
-            )
+        Column(modifier.fillMaxWidth()) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = contentScale
+                )
+            } else {
+                Image(
+                    imageVector = Icons.Default.Radio,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = contentScale
+                )
+            }
         }
     }
 }
@@ -169,23 +178,4 @@ private fun ImageGrid2x2Preview_Placeholders() {
 @Composable
 private fun ImageGrid2x2Preview_Mixed() {
     ImageGrid2x2(images = listOf(null, null, null, null), modifier = Modifier.padding(12.dp))
-}
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 480, backgroundColor = 0xFF000000)
-@Composable
-private fun ImageGrid2x2InteractivePreview() {
-    var selected by remember { mutableStateOf(-1) }
-    Column(modifier = Modifier.padding(12.dp)) {
-        ImageGrid2x2(images = listOf(null, null, null, null), modifier = Modifier.fillMaxWidth(), onImageClick = { idx -> selected = idx })
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(text = if (selected >= 0) "Clicked: $selected" else "Click a cell", color = Color.White)
-    }
-}
-
-@Preview(showBackground = true, widthDp = 360, heightDp = 640)
-@Composable
-private fun RadioListScreenPreview() {
-    val vm = remember { RadioListViewModel() }
-    // keep preview simple: ViewModel starts with placeholder (null) slots and ImageGrid2x2 will show drawable placeholders
-    RadioListScreen(viewModel = vm)
 }
