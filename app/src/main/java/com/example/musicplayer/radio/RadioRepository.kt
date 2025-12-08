@@ -1,5 +1,7 @@
 package com.example.musicplayer.radio
 
+import com.example.musicplayer.model.RadioStation
+
 interface RadioRepository {
     suspend fun searchStations(query: String, limit: Int = 50): List<RadioStation>
     suspend fun topVoted(limit: Int = 50): List<RadioStation>

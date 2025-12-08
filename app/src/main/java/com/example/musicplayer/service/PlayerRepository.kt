@@ -1,11 +1,13 @@
 package com.example.musicplayer.service
 
+import android.util.Log
 import com.example.musicplayer.model.Song
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.random.Random
 
 object PlayerRepository {
+    private const val TAG = "PlayerRepository"
     private val _playlist = MutableStateFlow<List<Song>>(emptyList())
     val playlist: StateFlow<List<Song>> = _playlist
 
@@ -21,6 +23,63 @@ object PlayerRepository {
     private val _durationMs = MutableStateFlow(0L)
     val durationMs: StateFlow<Long> = _durationMs
 
+    // --- prepared state helpers ---
+    // Tracks whether the underlying MediaPlayer is prepared. Callers (the Service) should
+    // mark the player prepared from onPrepared and clear when releasing/resetting the player.
+    private val _isPrepared = MutableStateFlow(false)
+    val isPrepared: StateFlow<Boolean> = _isPrepared
+
+    /**
+     * Mark player as prepared and set a safe duration value.
+     * Call this from MediaPlayer.OnPreparedListener with the known duration (mp.duration).
+     */
+    fun markPrepared(durationMillis: Long) {
+        _isPrepared.value = true
+        _durationMs.value = durationMillis
+        safeLog("markPrepared duration=$durationMillis")
+    }
+
+    /**
+     * Clear prepared state (call when player is released/reset).
+     */
+    fun clearPrepared() {
+        _isPrepared.value = false
+        _durationMs.value = 0L
+        safeLog("clearPrepared")
+    }
+
+    /**
+     * A safe getter for duration. Returns last-known duration (0 if unknown).
+     * Avoid calling MediaPlayer.getDuration() directly; instead rely on this value or
+     * call markPrepared(...) from your Service's OnPreparedListener.
+     */
+    fun getSafeDuration(): Long = _durationMs.value
+
+    /**
+     * Safely update position using a MediaPlayer instance. This wraps currentPosition
+     * in a try/catch to avoid IllegalStateException when the player isn't in a proper
+     * state (this is the error you saw: "Attempt to call getDuration in wrong state").
+     *
+     * Usage: call PlayerRepository.updatePositionFromPlayerSafe(mediaPlayer)
+     * on your poll/update loop instead of calling mediaPlayer.currentPosition directly.
+     */
+    fun updatePositionFromPlayerSafe(mediaPlayer: android.media.MediaPlayer?) {
+        if (mediaPlayer == null) {
+            _positionMs.value = 0L
+            return
+        }
+        try {
+            // currentPosition can throw IllegalStateException if the player isn't prepared/started
+            val pos = mediaPlayer.currentPosition.toLong()
+            _positionMs.value = pos
+        } catch (_: IllegalStateException) {
+            safeLog("updatePositionFromPlayerSafe: IllegalStateException - player not prepared")
+            // keep previous position value rather than resetting
+        } catch (t: Throwable) {
+            safeLog("updatePositionFromPlayerSafe: unexpected throwable=${t.message}")
+        }
+    }
+
     // shuffle / replay
     private val _shuffleEnabled = MutableStateFlow(false)
     val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled
@@ -32,7 +91,29 @@ object PlayerRepository {
     private var shuffleQueue: MutableList<Int> = mutableListOf()
     private val playedHistory: MutableList<Int> = mutableListOf()
 
-    fun setPlaylist(songs: List<Song>, startIndex: Int) {
+    // Use a local safe logging helper so JVM unit tests won't fail when android.util.Log is not available.
+    private fun safeLog(message: String) {
+        try {
+            Log.d(TAG, message)
+        } catch (_: Throwable) {
+            // ignore logging errors during unit tests on the JVM
+        }
+    }
+
+    fun setPlaylist(songs: List<Song>, startIndex: Int): Boolean {
+        // Avoid redundant resets which can restart/prepare the service and cause unexpected switches.
+        val current = _playlist.value
+        // Consider playlists identical if they have same length and matching song IDs in order
+        val same = if (current.size == songs.size) {
+            current.indices.all { i -> current.getOrNull(i)?.id == songs.getOrNull(i)?.id }
+        } else false
+
+        if (same && _currentIndex.value == startIndex) {
+            safeLog("setPlaylist called with identical playlist and index=$startIndex -> ignoring")
+            return false
+        }
+
+        safeLog("setPlaylist startIndex=$startIndex size=${songs.size}")
         _playlist.value = songs
         _currentIndex.value = startIndex
         // reset shuffle/replay state
@@ -44,11 +125,22 @@ object PlayerRepository {
         _positionMs.value = 0L
         _durationMs.value = 0L
         _isPlaying.value = false
+        // also clear prepared flag because playlist changed
+        _isPrepared.value = false
+        return true
     }
 
-    fun setCurrentIndex(idx: Int) { _currentIndex.value = idx }
-    fun setIsPlaying(v: Boolean) { _isPlaying.value = v }
-    fun setPositionMs(p: Long) { _positionMs.value = p }
+    fun setCurrentIndex(idx: Int) {
+        safeLog("setCurrentIndex -> $idx")
+        _currentIndex.value = idx
+    }
+    fun setIsPlaying(v: Boolean) {
+        safeLog("setIsPlaying -> $v")
+        _isPlaying.value = v
+    }
+    fun setPositionMs(p: Long) {
+        _positionMs.value = p
+    }
     fun setDurationMs(d: Long) { _durationMs.value = d }
 
     fun toggleReplay() {

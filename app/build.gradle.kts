@@ -94,4 +94,7 @@ dependencies {
 
     // For Slider
     implementation(libs.androidx.compose.material)
+
+    // Image loading (Coil Compose) for remote favicons
+    implementation("io.coil-kt:coil-compose:2.4.0")
 }

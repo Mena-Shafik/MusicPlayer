@@ -1,6 +1,5 @@
 package com.example.musicplayer.songlist
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -10,7 +9,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -29,12 +27,18 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.unit.sp
-import com.example.musicplayer.songlist.RadioListViewModel
+import com.example.musicplayer.model.RadioStation
+import com.example.musicplayer.radio.RadioPlayerViewModel
+import coil.compose.AsyncImage
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Arrangement
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RadioListScreen(viewModel: RadioListViewModel) {
-    val images by viewModel.images.collectAsState(initial = emptyList<ImageBitmap?>())
+fun DisplayRadioList(radioViewModel: RadioPlayerViewModel) {
+    // observe stations from the RadioPlayerViewModel (comes from repository / API)
+    val stations by radioViewModel.stations.collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {
@@ -49,13 +53,13 @@ fun RadioListScreen(viewModel: RadioListViewModel) {
                 .fillMaxSize()
         ) {
             ImageGrid2x2(
-                images = images,
+                stations = stations,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(12.dp),
-                onImageClick = { idx ->
-                    // use idx to avoid unused-parameter warning; update ViewModel slot (no-op)
-                    viewModel.updateAt(idx, images.getOrNull(idx))
+                onStationClick = { idx ->
+                    // placeholder: handle station click (play/select) here
+                    // currently a no-op to keep behavior safe
                 }
             )
         }
@@ -64,14 +68,14 @@ fun RadioListScreen(viewModel: RadioListViewModel) {
 
 @Composable
 fun ImageGrid2x2(
-    images: List<ImageBitmap?>,
+    stations: List<RadioStation>,
     modifier: Modifier = Modifier,
     spacing: Dp = 4.dp,
     cellCorner: Dp = 8.dp,
-    onImageClick: (index: Int) -> Unit = {}
+    onStationClick: (index: Int) -> Unit = {}
 ) {
-    val normalized: List<ImageBitmap?> =
-        (images.take(4) + List(maxOf(0, 4 - images.size)) { null }).take(4)
+    // normalize to 4 slots
+    val normalized: List<RadioStation?> = (stations.take(4) + List(maxOf(0, 4 - stations.size)) { null }).take(4)
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
@@ -80,7 +84,7 @@ fun ImageGrid2x2(
         horizontalArrangement = Arrangement.spacedBy(spacing),
         verticalArrangement = Arrangement.spacedBy(spacing)
     ) {
-        itemsIndexed(normalized) { idx: Int, bitmap: ImageBitmap? ->
+        itemsIndexed(normalized) { idx: Int, station: RadioStation? ->
             Box(
                 modifier = Modifier
                     .aspectRatio(1f)
@@ -88,16 +92,16 @@ fun ImageGrid2x2(
                     .background(Color.LightGray.copy(alpha = 0.08f)),
                 contentAlignment = Alignment.Center
             ) {
-                GridImageButton(
-                    bitmap = bitmap,
+                StationImageButton(
+                    station = station,
                     placeholderRes = R.drawable.radio_z103_5,
-                    contentDescription = "grid image $idx",
+                    contentDescription = station?.name ?: "grid image $idx",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    onClick = { onImageClick(idx) }
+                    onClick = { onStationClick(idx) }
                 )
 
-                if (bitmap == null) {
+                if (station == null) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -120,8 +124,8 @@ fun ImageGrid2x2(
 }
 
 @Composable
-fun GridImageButton(
-    bitmap: ImageBitmap?,
+fun StationImageButton(
+    station: RadioStation?,
     @androidx.annotation.DrawableRes placeholderRes: Int,
     contentDescription: String?,
     modifier: Modifier = Modifier,
@@ -141,12 +145,15 @@ fun GridImageButton(
             ),
         contentAlignment = Alignment.Center
     ) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
+        if (station?.favicon != null && station.favicon.isNotBlank()) {
+            // load remote favicon with Coil; fall back to placeholder if load fails
+            AsyncImage(
+                model = station.favicon,
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale
+                contentScale = contentScale,
+                placeholder = painterResource(id = placeholderRes),
+                error = painterResource(id = placeholderRes)
             )
         } else {
             Image(
@@ -162,13 +169,13 @@ fun GridImageButton(
 @Preview(showBackground = true, widthDp = 320, heightDp = 320, backgroundColor = 0xFF000000 )
 @Composable
 private fun ImageGrid2x2Preview_Placeholders() {
-    ImageGrid2x2(images = emptyList(), modifier = Modifier.padding(12.dp))
+    ImageGrid2x2(stations = emptyList(), modifier = Modifier.padding(12.dp))
 }
 
 @Preview(showBackground = true, widthDp = 320, heightDp = 320, backgroundColor = 0xFF000000)
 @Composable
 private fun ImageGrid2x2Preview_Mixed() {
-    ImageGrid2x2(images = listOf(null, null, null, null), modifier = Modifier.padding(12.dp))
+    ImageGrid2x2(stations = listOf(null, null, null, null).mapNotNull { it }, modifier = Modifier.padding(12.dp))
 }
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 480, backgroundColor = 0xFF000000)
@@ -176,7 +183,14 @@ private fun ImageGrid2x2Preview_Mixed() {
 private fun ImageGrid2x2InteractivePreview() {
     var selected by remember { mutableStateOf(-1) }
     Column(modifier = Modifier.padding(12.dp)) {
-        ImageGrid2x2(images = listOf(null, null, null, null), modifier = Modifier.fillMaxWidth(), onImageClick = { idx -> selected = idx })
+        // sample fake stations for preview
+        val sample = listOf(
+            RadioStation("1", "One", "", favicon = ""),
+            RadioStation("2", "Two", "", favicon = ""),
+            RadioStation("3", "Three", "", favicon = ""),
+            RadioStation("4", "Four", "", favicon = "")
+        )
+        ImageGrid2x2(stations = sample, modifier = Modifier.fillMaxWidth(), onStationClick = { idx -> selected = idx })
         Spacer(modifier = Modifier.height(12.dp))
         Text(text = if (selected >= 0) "Clicked: $selected" else "Click a cell", color = Color.White)
     }
@@ -185,7 +199,6 @@ private fun ImageGrid2x2InteractivePreview() {
 @Preview(showBackground = true, widthDp = 360, heightDp = 640)
 @Composable
 private fun RadioListScreenPreview() {
-    val vm = remember { RadioListViewModel() }
-    // keep preview simple: ViewModel starts with placeholder (null) slots and ImageGrid2x2 will show drawable placeholders
-    RadioListScreen(viewModel = vm)
+    // keep preview simple: show a static grid rather than invoking network ViewModel
+    ImageGrid2x2InteractivePreview()
 }

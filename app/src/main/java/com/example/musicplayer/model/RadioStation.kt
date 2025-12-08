@@ -1,4 +1,6 @@
-package com.example.musicplayer.radio
+package com.example.musicplayer.model
+
+import com.google.gson.annotations.SerializedName
 
 data class RadioStation(
     val stationuuid: String?,
@@ -9,5 +11,7 @@ data class RadioStation(
     val tags: String? = null,
     val bitrate: Int? = null,
     val codec: String? = null,
-    val votes: Int? = null
+    val votes: Int? = null,
+    @SerializedName("geo_lat") val geo_lat: Double? = null,
+    @SerializedName("geo_long") val geo_long: Double? = null
 )

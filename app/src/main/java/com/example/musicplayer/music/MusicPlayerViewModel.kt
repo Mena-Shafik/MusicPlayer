@@ -21,11 +21,19 @@ class MusicPlayerViewModel : ViewModel() {
 
     fun setPlaylist(context: Context, songs: List<Song>, startIndex: Int = 0) {
         Log.d(TAG, "setPlaylist startIndex=$startIndex size=${songs.size}")
-        PlayerRepository.setPlaylist(songs, startIndex)
-        // ask service to prepare and start using applicationContext for safety
+        // Always update repository's current index immediately so UI reflects selection
+        try { PlayerRepository.setCurrentIndex(startIndex) } catch (_: Throwable) {}
+        val changed = PlayerRepository.setPlaylist(songs, startIndex)
+        // ask service to prepare and start — always request play so selection reliably starts playback.
         val appCtx = context.applicationContext
-        Log.d(TAG, "setPlaylist: using appCtx=$appCtx")
-        PlayerIntentBuilder.startPlay(appCtx)
+        Log.d(TAG, "setPlaylist: requesting startPlay using appCtx=$appCtx (changed=$changed)")
+        // Update the service metadata for the selected index (helps notifications/UI sync)
+        val title = songs.getOrNull(startIndex)?.title ?: ""
+        val artist = songs.getOrNull(startIndex)?.artist ?: ""
+        try { PlayerIntentBuilder.startUpdate(appCtx, false, startIndex, title, artist) } catch (_: Throwable) {}
+        // Explicitly ask the service to prepare (and start) the requested index. This is
+        // more reliable than relying on startPlay coalescing behavior.
+        PlayerIntentBuilder.startPrepare(appCtx, startIndex, true)
     }
 
     fun play(context: Context) {

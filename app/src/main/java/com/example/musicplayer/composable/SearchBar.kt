@@ -9,6 +9,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -19,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -38,12 +41,14 @@ import com.example.musicplayer.songlist.SongCardRow
 fun MainAppBar(
     showSearch: Boolean,
     onToggleSearch: () -> Unit,
+    isRadio: Boolean,
+    onToggleRadio: () -> Unit,
     query: String,
     onQueryChange: (String) -> Unit,
     onSearchedClicked: (String) -> Unit
 ) {
     if (showSearch) {
-        CenterAlignedTopAppBar(
+        TopAppBar(
             title = {
                 SearchBar(
                     text = query,
@@ -60,10 +65,10 @@ fun MainAppBar(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         )
     } else {
-        CenterAlignedTopAppBar(
+        TopAppBar(
             title = {
                 Text(
-                    text = "Songs",
+                    text = if (isRadio) "Radio" else "Songs",
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
@@ -73,6 +78,13 @@ fun MainAppBar(
                     Icon(
                         imageVector = Icons.Filled.Search,
                         contentDescription = "Search Icon",
+                        tint = Color.White
+                    )
+                }
+                IconButton(onClick = onToggleRadio) {
+                    Icon(
+                        imageVector = if(isRadio){Icons.Filled.LibraryMusic} else{Icons.Filled.Radio},
+                        contentDescription = "Toggle Song/Radio List",
                         tint = Color.White
                     )
                 }
@@ -160,13 +172,31 @@ fun SearchBar(
     }
 }
 
-@Preview( name = "MainAppBar - Normal", backgroundColor = 0xFF000000)
+@Preview( name = "MainAppBar - Songs On", backgroundColor = 0xFF000000)
 @Composable
-fun MainAppBarPreview() {
+fun MainAppBarSongPreview() {
     MaterialTheme {
         MainAppBar(
             showSearch = false,
             onToggleSearch = {},
+            isRadio = false,
+            onToggleRadio = {},
+            query = "",
+            onQueryChange = {},
+            onSearchedClicked = {}
+        )
+    }
+}
+
+@Preview( name = "MainAppBar - Radio On", backgroundColor = 0xFF000000)
+@Composable
+fun MainAppBarRadioPreview() {
+    MaterialTheme {
+        MainAppBar(
+            showSearch = false,
+            onToggleSearch = {},
+            isRadio = true,
+            onToggleRadio = {},
             query = "",
             onQueryChange = {},
             onSearchedClicked = {}
@@ -182,6 +212,8 @@ fun MainAppBarSearchPreview() {
         MainAppBar(
             showSearch = true,
             onToggleSearch = {},
+            isRadio = false,
+            onToggleRadio = {},
             query = "Search text",
             onQueryChange = {},
             onSearchedClicked = {}

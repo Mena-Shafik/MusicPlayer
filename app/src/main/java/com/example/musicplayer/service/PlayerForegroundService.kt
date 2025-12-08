@@ -37,6 +37,8 @@ class PlayerForegroundService : Service() {
     private var lastNotificationUpdateTime: Long = 0L
     // track which playlist index and path is currently loaded/prepared in the mediaPlayer
     private var currentPreparedPath: String? = null
+    // guard to indicate an asynchronous prepare is in-flight
+    private var isPreparing: Boolean = false
     // whether we've called startForeground already (to satisfy startForegroundService requirement)
     private var isForegroundStarted: Boolean = false
 
@@ -99,11 +101,37 @@ class PlayerForegroundService : Service() {
             setOnPreparedListener { mp ->
                 try {
                     val d = try { mp.duration.toLong() } catch (_: Throwable) { 0L }
-                    PlayerRepository.setDurationMs(d)
-                    mp.start()
-                    PlayerRepository.setIsPlaying(true)
-                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                    startForegroundNotification()
+                    Log.d(TAG, "onPrepared: mp duration=$d currentPreparedIndex=$currentPreparedIndex currentPreparedPath=$currentPreparedPath repositoryIndex=${PlayerRepository.currentIndex.value}")
+                    // Mark repository prepared with a safe duration so callers don't call
+                    // MediaPlayer.getDuration() directly (which can throw if player state is wrong).
+                    PlayerRepository.markPrepared(d)
+                    // Check that the prepared path is still the desired one in the repository.
+                    val desiredPath = PlayerRepository.playlist.value.getOrNull(PlayerRepository.currentIndex.value)?.path
+                    Log.d(TAG, "onPrepared: desiredPath=$desiredPath preparedPath=$currentPreparedPath")
+                    if (currentPreparedPath != null && currentPreparedPath == desiredPath) {
+                        // Still the desired item -> start playback
+                        isPreparing = false
+                        // Update repository current index now that the prepared item is actually starting
+                        try { PlayerRepository.setCurrentIndex(currentPreparedIndex) } catch (_: Throwable) {}
+                        mp.start()
+                        PlayerRepository.setIsPlaying(true)
+                        updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                        startForegroundNotification()
+                        Log.d(TAG, "onPrepared: started playback for idx=$currentPreparedIndex path=$currentPreparedPath")
+                    } else {
+                        // Prepared an outdated item; reset and prepare the currently desired item instead.
+                        Log.d(TAG, "onPrepared: prepared path=$currentPreparedPath does not match desired=$desiredPath -> switching to desired")
+                        try {
+                            mp.reset()
+                        } catch (_: Throwable) {}
+                        isPreparing = false
+                        // Attempt to prepare the desired item (if any)
+                        if (desiredPath != null) {
+                            // schedule prepare for desired path
+                            Log.d(TAG, "onPrepared: scheduling prepare for desiredPath=$desiredPath")
+                            prepareCurrent(startPlaying = true)
+                        }
+                    }
                 } catch (_: Throwable) { }
             }
         }
@@ -127,36 +155,13 @@ class PlayerForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // As an additional safeguard, if for any reason we didn't call startForeground in onCreate,
-        // ensure we promote to foreground immediately here (this must be fast).
+        // Ensure we call startForeground as early as possible when service is started via startForegroundService.
+        // If for any reason onCreate didn't start foreground, do it immediately here (fast and minimal).
         if (!isForegroundStarted) {
             try {
-                PlayerNotificationManager.ensureChannel(this)
-                val minimal = NotificationCompat.Builder(this, "music_player_channel")
-                    .setSmallIcon(com.example.musicplayer.R.drawable.ic_music_note)
-                    .setContentTitle("Music Player")
-                    .setContentText("")
-                    .setPriority(NotificationCompat.PRIORITY_LOW)
-                    .setOngoing(true)
-                    .build()
-                startForeground(PlayerNotificationManager.NOTIFICATION_ID, minimal)
-                isForegroundStarted = true
-                Log.d(TAG, "onStartCommand: started minimal foreground notification (safeguard)")
+                startMinimalForegroundNow()
             } catch (e: Exception) {
-                Log.w(TAG, "onStartCommand: failed to start minimal foreground notification: ${e.message}")
-                // Fallback: attempt a minimal notification using the channel-aware constructor (works on all API levels in this project)
-                try {
-                    val minimal = NotificationCompat.Builder(this, "music_player_channel")
-                        .setSmallIcon(com.example.musicplayer.R.drawable.ic_music_note)
-                        .setContentTitle("Music Player")
-                        .setContentText("")
-                        .setPriority(NotificationCompat.PRIORITY_LOW)
-                        .setOngoing(true)
-                        .build()
-                    startForeground(PlayerNotificationManager.NOTIFICATION_ID, minimal)
-                    isForegroundStarted = true
-                    Log.d(TAG, "onStartCommand: started minimal foreground notification via fallback (channel-aware)")
-                } catch (_: Throwable) { }
+                Log.w(TAG, "onStartCommand: startMinimalForegroundNow failed: ${e.message}")
             }
         }
         val i = intent ?: return START_STICKY
@@ -180,7 +185,19 @@ class PlayerForegroundService : Service() {
         }
 
         when (action) {
-            PlayerActions.ACTION_PLAY -> playInternal()
+            PlayerActions.ACTION_PLAY -> {
+                // If the Play intent included a requested index, update repository and ensure
+                // the requested item is prepared and started. This guarantees a selection
+                // from the UI will cause the requested index to play even if intents are coalesced.
+                val requestedIdx = try { i.getIntExtra(PlayerActions.EXTRA_CURRENT_INDEX, Int.MIN_VALUE) } catch (_: Throwable) { Int.MIN_VALUE }
+                if (requestedIdx != Int.MIN_VALUE) {
+                    try { PlayerRepository.setCurrentIndex(requestedIdx) } catch (_: Throwable) {}
+                    // Prepare and start the requested index
+                    prepareCurrent(startPlaying = true)
+                } else {
+                    playInternal()
+                }
+            }
             PlayerActions.ACTION_PAUSE -> {
                 val suppress = i.getBooleanExtra(PlayerActions.EXTRA_SUPPRESS_NOTIFICATION, false)
                 pauseInternal(suppress)
@@ -193,8 +210,16 @@ class PlayerForegroundService : Service() {
                 seekInternal(pos)
             }
             PlayerActions.ACTION_PREPARE -> {
-                // prepare current item without auto-starting
-                prepareCurrent(startPlaying = false)
+                // prepare current item; allow the intent to specify which index and whether to start
+                val requestedIdx = try { i.getIntExtra(PlayerActions.EXTRA_CURRENT_INDEX, Int.MIN_VALUE) } catch (_: Throwable) { Int.MIN_VALUE }
+                val shouldStart = try { i.getBooleanExtra(PlayerActions.EXTRA_IS_PLAYING, false) } catch (_: Throwable) { false }
+                if (requestedIdx != Int.MIN_VALUE) {
+                    try { PlayerRepository.setCurrentIndex(requestedIdx) } catch (_: Throwable) {}
+                    prepareCurrent(startPlaying = shouldStart)
+                } else {
+                    // default behavior: prepare current playlist index without auto-start
+                    prepareCurrent(startPlaying = false)
+                }
             }
             PlayerActions.ACTION_UPDATE -> {
                 val title = i.getStringExtra(PlayerActions.EXTRA_SONG_TITLE) ?: ""
@@ -226,15 +251,46 @@ class PlayerForegroundService : Service() {
 
     private fun prepareCurrent(startPlaying: Boolean = true) {
         val songs = PlayerRepository.playlist.value
-        if (songs.isEmpty()) return
+        if (songs.isEmpty()) {
+            Log.d(TAG, "prepareCurrent: no songs in repository playlist, aborting")
+            return
+        }
         val idx = PlayerRepository.currentIndex.value.coerceIn(0, songs.size - 1)
         val song = songs.getOrNull(idx) ?: return
+        Log.d(TAG, "prepareCurrent requested idx=$idx startPlaying=$startPlaying")
+        // If the requested index is already prepared (or currently preparing), avoid resetting the MediaPlayer
+        // which can cause unnecessary reloads / onPrepared races leading to cycling.
+        if (currentPreparedIndex == idx) {
+            // if we're already preparing, nothing to do (onPrepared will handle start)
+            if (isPreparing) {
+                Log.d(TAG, "prepareCurrent: idx=$idx already preparing -> ignore")
+                return
+            }
+            // if prepared path matches and duration is known, we are prepared. Start if requested.
+            val preparedPath = currentPreparedPath
+            if (preparedPath != null && preparedPath == song.path && PlayerRepository.durationMs.value > 0L) {
+                Log.d(TAG, "prepareCurrent: idx=$idx already prepared path=$preparedPath -> startPlaying=$startPlaying")
+                if (startPlaying) {
+                    try {
+                        if (mediaPlayer?.isPlaying != true) {
+                            mediaPlayer?.start()
+                            PlayerRepository.setIsPlaying(true)
+                            updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                            startForegroundNotification()
+                            Log.d(TAG, "prepareCurrent: resumed playback for idx=$idx")
+                        }
+                    } catch (_: Throwable) {}
+                }
+                return
+            }
+        }
         try {
             Log.d(TAG, "prepareCurrent requested idx=$idx path=${song.path}")
             mediaPlayer?.reset()
             // Use the correct setDataSource overload depending on path format.
             try {
                 val p = song.path
+                Log.d(TAG, "prepareCurrent: setting data source p=$p")
                 if (p.startsWith("content://") || p.startsWith("file://") || p.startsWith("http://") || p.startsWith("https://")) {
                     // content URIs and http(s) - use context/Uri overload
                     mediaPlayer?.setDataSource(this@PlayerForegroundService, p.toUri())
@@ -242,11 +298,13 @@ class PlayerForegroundService : Service() {
                     // plain file path
                     mediaPlayer?.setDataSource(p)
                 }
+                Log.d(TAG, "prepareCurrent: setDataSource succeeded for idx=$idx")
             } catch (e: Exception) {
                 Log.w(TAG, "setDataSource failed for path=${song.path}, error=${e.message}")
                 // fallback: try setDataSource with raw path
                 try {
                     mediaPlayer?.setDataSource(song.path)
+                    Log.d(TAG, "prepareCurrent: fallback setDataSource succeeded for idx=$idx")
                 } catch (ex: Exception) {
                     Log.w(TAG, "fallback setDataSource also failed: ${ex.message}")
                     throw e
@@ -275,8 +333,16 @@ class PlayerForegroundService : Service() {
             // mark prepared index/path so playInternal can decide whether reload is needed
             currentPreparedIndex = idx
             currentPreparedPath = song.path
-            // prepare async and start when prepared if requested
-            mediaPlayer?.prepareAsync()
+            Log.d(TAG, "prepareCurrent: marked currentPreparedIndex=$currentPreparedIndex currentPreparedPath=$currentPreparedPath isPreparing=$isPreparing")
+            // prepare async and start when prepared
+            // prevent overlapping prepares
+            if (!isPreparing) {
+                isPreparing = true
+                Log.d(TAG, "prepareCurrent: calling prepareAsync for idx=$idx")
+                mediaPlayer?.prepareAsync()
+            } else {
+                Log.d(TAG, "prepareCurrent: already preparing, ignoring duplicate request for idx=$idx")
+            }
             if (!startPlaying) {
                 // onPrepared will not auto-start in this branch; we can pause after prepared
                 // but simpler: we'll let onPrepared start, then pause if !startPlaying
@@ -293,10 +359,10 @@ class PlayerForegroundService : Service() {
                     }
                 }
             }
-            PlayerRepository.setCurrentIndex(idx)
             Log.d(TAG, "prepareCurrent scheduled prepareAsync for idx=$idx (startPlaying=$startPlaying)")
         } catch (_: Throwable) {
             Log.w(TAG, "prepareCurrent failed for idx=$idx")
+            isPreparing = false
         }
     }
 
@@ -401,10 +467,15 @@ class PlayerForegroundService : Service() {
         pollJob = scope.launch {
             while (isActive) {
                 try {
-                    val pos = mediaPlayer?.currentPosition?.toLong() ?: 0L
-                    val dur = mediaPlayer?.duration?.toLong() ?: PlayerRepository.durationMs.value
-                    PlayerRepository.setPositionMs(pos)
-                    if (dur > 0) PlayerRepository.setDurationMs(dur)
+                    // Use repository helpers that safely read MediaPlayer state to avoid
+                    // IllegalStateException when MediaPlayer isn't prepared. updatePositionFromPlayerSafe
+                    // wraps currentPosition access in try/catch. Duration is sourced from the repo's
+                    // last-known prepared duration (set in onPrepared via markPrepared).
+                    PlayerRepository.updatePositionFromPlayerSafe(mediaPlayer)
+                    val pos = PlayerRepository.positionMs.value
+                    val dur = PlayerRepository.getSafeDuration()
+                    // reflect into the repo flows (position already updated). Keep duration if known.
+                    if (dur > 0L) PlayerRepository.setDurationMs(dur)
                     // Throttle notification updates to ~500ms to keep progress timely without spamming
                     val now = System.currentTimeMillis()
                     if (now - lastNotificationUpdateTime >= 500L) {
@@ -465,6 +536,8 @@ class PlayerForegroundService : Service() {
         super.onDestroy()
         pollJob?.cancel()
         try { mediaPlayer?.release() } catch (_: Throwable) {}
+        // clear prepared-state in repo since the player is released
+        PlayerRepository.clearPrepared()
         try { currentArtwork?.recycle() } catch (_: Throwable) {}
         mediaSession?.release()
         PlayerNotificationManager.cancel(this)
@@ -480,10 +553,31 @@ class PlayerForegroundService : Service() {
             // ensure media resources are released and service stopped
             try { mediaPlayer?.stop() } catch (_: Throwable) {}
             try { mediaPlayer?.release() } catch (_: Throwable) {}
+            // clear prepared-state in repo since the player is released
+            PlayerRepository.clearPrepared()
             PlayerRepository.setIsPlaying(false)
             stopSelf()
         } catch (_: Throwable) {
             // best-effort cleanup
+        }
+    }
+
+    // Post a minimal foreground notification synchronously so the system watchdog won't kill the service
+    private fun startMinimalForegroundNow() {
+        try {
+            PlayerNotificationManager.ensureChannel(this)
+            val minimal = NotificationCompat.Builder(this, "music_player_channel")
+                .setSmallIcon(com.example.musicplayer.R.drawable.ic_music_note)
+                .setContentTitle("Music Player")
+                .setContentText("")
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setOngoing(true)
+                .build()
+            startForeground(PlayerNotificationManager.NOTIFICATION_ID, minimal)
+            isForegroundStarted = true
+            Log.d(TAG, "startMinimalForegroundNow: posted minimal foreground notification")
+        } catch (e: Exception) {
+            Log.w(TAG, "startMinimalForegroundNow failed: ${e.message}")
         }
     }
 }

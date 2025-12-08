@@ -1,5 +1,6 @@
 package com.example.musicplayer.songlist
 
+import MainAppBar
 import android.app.Activity
 import android.os.Build //keep
 import android.util.Log
@@ -25,7 +26,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material3.Icon
@@ -63,11 +66,14 @@ import com.example.musicplayer.R
 import com.example.musicplayer.Util
 import androidx.navigation.NavHostController
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.musicplayer.music.MusicPlayerViewModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TopAppBar
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -92,6 +98,10 @@ import com.example.musicplayer.service.PlayerIntentBuilder
 import kotlin.collections.getOrNull
 import kotlin.text.isNotEmpty
 import androidx.compose.runtime.SideEffect
+import com.example.musicplayer.composable.MainBackground
+import coil.compose.AsyncImage
+import android.widget.Toast
+import com.example.musicplayer.model.RadioStation
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -112,12 +122,17 @@ fun ListSongsScreen(
         try { onToggleSearch() } catch (_: Throwable) {}
         searchVisible = !searchVisible
     }
+    // local radio state and toggle (fix for "No value passed for parameter 'isRadio'")
+    var isRadioSelected by remember { mutableStateOf(false) }
+    val toggleRadio: () -> Unit = {
+        isRadioSelected = !isRadioSelected
+    }
 
     // removed local showSearch state; parent may control it via the new params
 
     // load and filter songs
     val context = LocalContext.current
-    val view = LocalView.current
+    /*val view = LocalView.current
     val activity = LocalContext.current as? Activity
     val isPreviewMode = LocalInspectionMode.current
 
@@ -128,7 +143,7 @@ fun ListSongsScreen(
             // Ensure status bar icons/text are *not* the "light" variant (i.e. force white icons/text)
             WindowCompat.getInsetsController(activity.window, view)?.isAppearanceLightStatusBars = false
         }
-    }
+    }*/
 
     LaunchedEffect(context) {
         val all = withContext(Dispatchers.IO) { Util.getAllAudioFromDevice(context) }
@@ -179,6 +194,8 @@ fun ListSongsScreen(
                 MainAppBar(
                     showSearch = searchVisible,
                     onToggleSearch = toggleSearch,
+                    isRadio = isRadioSelected,
+                    onToggleRadio = toggleRadio,
                     query = query,
                     onQueryChange = { onQueryChange(it) },
                     onSearchedClicked = { onSearchedClicked(it) }
@@ -199,24 +216,39 @@ fun ListSongsScreen(
                     // leave space at the bottom so the mini player doesn't cover list items
                     .padding(innerPadding)
             ) {
-                DisplayListSongs(
-                    songs = songs,
-                    onSongClicked = { index ->
-                        val selected = songs.getOrNull(index)
-                        if (selected != null) {
-                            // Update repository and start the playback service directly to avoid VM scoping issues
-                            PlayerRepository.setPlaylist(songs, index)
-                            val appCtx = context.applicationContext
-                            PlayerIntentBuilder.startPlay(appCtx)
-                            // navigate to music screen UI
-                            val songId = selected.id.toString()
-                            navController.navigate("musicScreen/$songId")
-                        }
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                )
+                // Use a dedicated MusicPlayerViewModel to start playback so setPlaylist + startPlay are atomic
+                val playerVm: MusicPlayerViewModel = viewModel()
+                if (isRadioSelected) {
+                    // When radio is selected, show the radio stations list UI
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        DisplayListRadioStations()
+                    }
+                } else {
+                    DisplayListSongs(
+                        songs = songs,
+                        onSongClicked = { index ->
+                            val selected = songs.getOrNull(index)
+                            if (selected != null) {
+                                // use the player VM which calls PlayerRepository.setPlaylist and starts the service
+                                playerVm.setPlaylist(context, songs, index)
+                                // Ensure repository current index is set immediately to the selected index
+                                // so the UI reflects the selection even if setPlaylist coalesced the update.
+                                PlayerRepository.setCurrentIndex(index)
+                                // Ensure playback is explicitly requested for the selected index.
+                                // This covers the case where setPlaylist returns `false` because the
+                                // repository considers the playlist identical; calling `startPlay`
+                                // forces the service to start the requested index.
+                                playerVm.play(context)
+                                // navigate to music screen UI
+                                val songId = selected.id.toString()
+                                navController.navigate("musicScreen/$songId")
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    )
+                }
                 // show the mini player only when playback is active so it doesn't take layout space while idle
                 if (showMini) {
                     MiniPlayer(
@@ -251,17 +283,20 @@ fun SAP() {
 
 }*/
 
+
+/*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppBar(
     showSearch: Boolean,
     onToggleSearch: () -> Unit,
+    onToggleRadio: () -> Unit,
     query: String,
     onQueryChange: (String) -> Unit,
     onSearchedClicked: (String) -> Unit
 ) {
     if (showSearch) {
-        CenterAlignedTopAppBar(
+        TopAppBar(
             title = {
                 SearchBar(
                     text = query,
@@ -278,7 +313,7 @@ fun MainAppBar(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         )
     } else {
-        CenterAlignedTopAppBar(
+        TopAppBar(
             title = {
                 Text(
                     text = "Songs",
@@ -294,12 +329,21 @@ fun MainAppBar(
                         tint = Color.White
                     )
                 }
+
+                IconButton(onClick = onToggleRadio) {
+                    Icon(
+                        imageVector = Icons.Filled.Radio,
+                        contentDescription = "Switch to Radio or Search",
+                        tint = Color.White
+                    )
+                }
             },
+
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             modifier = Modifier.statusBarsPadding()
         )
     }
-}
+}*/
 
 @Composable
 fun DisplayListSongs(
@@ -321,6 +365,84 @@ fun DisplayListSongs(
                     path = song.path,
                     onClick = { onSongClicked(index) }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun DisplayListRadioStations(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var stations by remember { mutableStateOf<List<RadioStation>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        loading = true
+        error = null
+        try {
+            // fetch stations near the Greater Toronto Area (GTA)
+            val list = Util.fetchStationsNearGTA(limit = 40)
+            stations = list
+            if (list.isEmpty()) error = "No stations found in the GTA"
+        } catch (e: Exception) {
+            error = e.message ?: "Failed to load GTA stations"
+        } finally {
+            loading = false
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        when {
+            loading -> {
+                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+
+            error != null -> {
+                Text(text = error ?: "Unknown error", color = Color.White, modifier = Modifier.padding(12.dp))
+            }
+
+            else -> {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    itemsIndexed(stations) { _, station ->
+                        // Prefer quoted name (e.g. "CIDC-FM") when present for UI display
+                        val displayName = Util.extractQuotedOrOriginal(station.name).ifBlank { station.name ?: "Unknown" }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val imageUrl = Util.getStationImageUrl(station).ifBlank { null }
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = displayName,
+                                modifier = Modifier
+                                    .width(56.dp)
+                                    .height(56.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color.White),
+                                contentScale = ContentScale.Crop,
+                                placeholder = painterResource(id = com.example.musicplayer.R.drawable.ic_radio),
+                                error = painterResource(id = com.example.musicplayer.R.drawable.ic_radio)
+                            )
+
+                            Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+                                Text(text = displayName, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(onClick = {
+                                // For now show a toast; later this can start playback via PlayerService
+                                Toast.makeText(context, "Play $displayName", Toast.LENGTH_SHORT).show()
+                            }) {
+                                Text("Play")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -584,99 +706,8 @@ fun MiniPlayer(
     }
 }
 
-data class RadialSpec(
-    val fx: Float, // fractional x center (0-1)
-    val fy: Float, // fractional y center (0-1)
-    val radius: Dp,
-    val colors: List<Color>,
-    val alpha: Float = 1.0f
-)
 
-//@Preview()
-@Composable
-fun MainBackground(){
-    MultiRadialBackground(
-        specs = listOf(
-            RadialSpec(fx = 0.6f, fy = -0.1f, radius = 320.dp, colors = listOf(Color(0xFFB53419), Color(0xFF5A1E10), Color.Transparent), alpha = 0.20f),
-            RadialSpec(fx = 1.0f, fy = 0.0f, radius = 220.dp,colors = listOf(Color(0xFFFFC107), Color(0xFF856832), Color.Transparent), alpha = 0.2f),
-            RadialSpec(fx = 0.2f, fy = 0.5f, radius = 120.dp, colors = listOf(Color(0xFF7B1FA2), Color(0xFF4A148C), Color.Transparent), alpha = 0.2f),
-            RadialSpec(fx = 0.8f, fy = 0.2f, radius = 180.dp, colors = listOf(Color(0xFF4CAF50), Color(0xFF009688), Color.Transparent), alpha = 0.2f),
-            RadialSpec(fx = 0.3f, fy = 0.2f, radius = 180.dp, colors = listOf(Color(0xFFE53935), Color(0xFFF4511E), Color.Transparent), alpha = 0.2f),
-            RadialSpec(fx = 0.0f, fy = -0.1f, radius = 220.dp, colors = listOf(Color(0xFF1F53A2), Color(0xFF142E8C), Color.Transparent), alpha = 0.3f),
-        ),
-        blurRadius = 90.dp // slightly less blur so smaller spots stay focused
-    )
-    // Black vertical gradient overlay (top -> bottom)
-    Box(modifier = Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    // make fully black by 50% of the screen then remain black
-                    0.0f to Color.Black.copy(alpha = 0.0f),
-                    0.3f to Color.Black.copy(alpha = 1.0f),
-                    1.0f to Color.Black.copy(alpha = 1.0f)
-                )
-        )
-    )
-}
 
-@Composable
-fun MultiRadialBackground(specs: List<RadialSpec> = emptyList(), blurRadius: Dp = 0.dp) {
-    // Provide a reasonable default when called as a preview without params
-    val defaultSpecs = listOf(
-        RadialSpec(0.5f, 0.22f, 450.dp, listOf(Color(0xFFB53419), Color(0xFF5A1E10), Color.Black), alpha = 0.95f),
-        RadialSpec(0.82f, 0.18f, 320.dp, listOf(Color(0xFFFFC107), Color(0xFF856832), Color.Black), alpha = 0.7f)
-    )
-    val drawSpecs = if (specs.isEmpty()) defaultSpecs else specs
-
-    val density = LocalDensity.current
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .drawBehind {
-                // Draw each radial gradient on the full canvas, using fractional centers
-                drawSpecs.forEach { spec ->
-                    val center = Offset(size.width * spec.fx, size.height * spec.fy)
-                    val radiusPx = with(density) { spec.radius.toPx() }
-                    val brush = Brush.radialGradient(
-                        colors = spec.colors,
-                        center = center,
-                        radius = radiusPx
-                    )
-                    drawRect(brush, alpha = spec.alpha)
-                }
-            }
-            .blur(blurRadius)
-    )
-}
-
-@Preview( name = "MainAppBar - Normal", backgroundColor = 0xFF000000)
-@Composable
-fun MainAppBarPreview() {
-    MaterialTheme {
-        MainAppBar(
-            showSearch = false,
-            onToggleSearch = {},
-            query = "",
-            onQueryChange = {},
-            onSearchedClicked = {}
-        )
-    }
-}
-
-//@RequiresApi(Build.VERSION_CODES.M) //keep
-@Preview( name = "MainAppBar - Search", backgroundColor = 0xFF000000)
-@Composable
-fun MainAppBarSearchPreview() {
-    MaterialTheme {
-        MainAppBar(
-            showSearch = true,
-            onToggleSearch = {},
-            query = "Search text",
-            onQueryChange = {},
-            onSearchedClicked = {}
-        )
-    }
-}
 
 @Preview( name = "SongCardRow Preview", backgroundColor = 0xFF000000)
 @Composable
@@ -694,8 +725,6 @@ fun CardPreview() {
         }
     }
 }
-
-
 
 @Preview(showBackground = true, name = "MiniPlayer Preview", backgroundColor = 0xFF000000)
 @Composable
@@ -758,6 +787,8 @@ fun DisplayListPreview() {
                 MainAppBar(
                     showSearch = false,
                     onToggleSearch = {},
+                    isRadio = false,
+                    onToggleRadio = {},
                     query = "",
                     onQueryChange = {},
                     onSearchedClicked = {}

@@ -19,7 +19,7 @@ import android.app.Service
 import androidx.media3.common.util.UnstableApi
 
 @UnstableApi
-class PlayerService : Service() {
+class RadioPlayerService : Service() {
 
     private lateinit var player: ExoPlayer
     private var currentTitle: String? = null
@@ -88,13 +88,13 @@ class PlayerService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val playIntent = Intent(this, PlayerService::class.java).apply { action = ACTION_PLAY }
+        val playIntent = Intent(this, RadioPlayerService::class.java).apply { action = ACTION_PLAY }
         val playPi = PendingIntent.getService(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-        val pauseIntent = Intent(this, PlayerService::class.java).apply { action = ACTION_PAUSE }
+        val pauseIntent = Intent(this, RadioPlayerService::class.java).apply { action = ACTION_PAUSE }
         val pausePi = PendingIntent.getService(this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-        val stopIntent = Intent(this, PlayerService::class.java).apply { action = ACTION_STOP }
+        val stopIntent = Intent(this, RadioPlayerService::class.java).apply { action = ACTION_STOP }
         val stopPi = PendingIntent.getService(this, 3, stopIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)

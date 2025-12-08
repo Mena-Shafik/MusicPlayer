@@ -34,11 +34,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.BottomSheetValue
+import androidx.compose.material.BottomSheetScaffold
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PauseCircleFilled
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.filled.Repeat
@@ -68,8 +69,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsControllerCompat
@@ -79,6 +80,8 @@ import androidx.palette.graphics.Palette
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.R
 import com.example.musicplayer.Util
+import com.example.musicplayer.service.PlayerRepository
+import com.example.musicplayer.composable.AudioVisualizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -104,16 +107,20 @@ fun MusicScreen(
     LaunchedEffect(songs, songId) {
         val current = viewModel.playlist.value
         val currentIdx = viewModel.currentIndex.value
-        val incomingSame = if (current.isNotEmpty() && songs.isNotEmpty()) {
-            // compare by path and size to detect same collection
-            current.size == songs.size && current.getOrNull(0)?.path == songs.getOrNull(0)?.path
-        } else {
-            false
-        }
-        // Only set the playlist if we don't already have the same songs or the requested index differs
-        if (!incomingSame || currentIdx != songId) {
-            viewModel.setPlaylist(ctx, songs, songId)
-        }
+        // Map incoming songId (an identifier) to an index inside the provided `songs` list.
+        val requestedIndex = songs.indexOfFirst { it.id == songId }.takeIf { it >= 0 } ?: 0
+
+        // Consider playlists identical when their lengths match and every song id matches in order.
+        val incomingSame = if (current.isNotEmpty() && songs.isNotEmpty() && current.size == songs.size) {
+            current.indices.all { i -> current.getOrNull(i)?.id == songs.getOrNull(i)?.id }
+        } else false
+
+        // Only set the playlist if the playlist differs or the requested start index differs from currentIndex
+        // Always set the playlist when opening the Music screen to ensure the repository
+        // and service are aligned with the UI's song list and requested index. This avoids
+        // cases where the UI shows a selected song but the service is still playing a
+        // previously-prepared item (play button appearing 'locked').
+        viewModel.setPlaylist(ctx, songs, requestedIndex)
     }
 
     //val playlist by viewModel.playlist.collectAsState()
@@ -156,7 +163,11 @@ fun MusicScreen(
             //}
         }
     }
-    val song = songs.getOrNull(currentIndex) ?: songs.firstOrNull()
+    // Prefer the repository playlist for the currently-playing song so the UI always
+    // reflects the actual playback state. Fall back to the provided `songs` parameter
+    // if the repository playlist is empty or doesn't contain the expected index.
+    val repoPlaylist by viewModel.playlist.collectAsState()
+    val song = repoPlaylist.getOrNull(currentIndex) ?: songs.getOrNull(currentIndex) ?: songs.firstOrNull()
 
     // slider local state for user seeking
     var sliderPosition by remember { mutableStateOf(positionMs.toFloat()) }
@@ -291,8 +302,13 @@ fun MusicScreen(
                     visible = showSheet,
                     onDismiss = { showSheet = false },
                     onSongSelected = { selectedIdx ->
+                        // Always set the playlist and explicitly request play. This ensures the
+                        // playback service receives a Play intent for the selected index and
+                        // prevents the UI from remaining stuck on the previous/first song.
                         viewModel.setPlaylist(ctx, songs, selectedIdx)
-                        if (!isPlaying) viewModel.togglePlayPause(ctx)
+                        // Request explicit play (startPlay). It's safe if playback is already
+                        // active; startPlay is coalesced in PlayerIntentBuilder to avoid races.
+                        viewModel.play(ctx)
                         showSheet = false
                     },
                     backgroundColor = backgroundColor
@@ -518,15 +534,17 @@ fun SongsModalBottomSheet(
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
 
     val scope = rememberCoroutineScope()
+    // guard to debounce selection taps from the bottom sheet to avoid duplicate prepares
+    val selectionInProgress = remember { mutableStateOf(false) }
 
     // keep host `visible` in sync when user dismisses/swipes the sheet
     LaunchedEffect(scaffoldState.bottomSheetState.currentValue) {
-        if (scaffoldState.bottomSheetState.currentValue == androidx.compose.material.BottomSheetValue.Collapsed && visible) {
+        if (scaffoldState.bottomSheetState.currentValue == BottomSheetValue.Collapsed && visible) {
             onDismiss()
         }
 
         // When sheet is expanded, scroll to the current song (clamp index)
-        if (scaffoldState.bottomSheetState.currentValue == androidx.compose.material.BottomSheetValue.Expanded && songs.isNotEmpty()) {
+        if (scaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded && songs.isNotEmpty()) {
             val target = currentIndex.coerceIn(0, songs.size - 1)
             // animate to item (safe to call even if already visible)
             listState.animateScrollToItem(target)
@@ -542,13 +560,15 @@ fun SongsModalBottomSheet(
     val sheetBg = backgroundColor
     val contentOnBg = if (sheetBg.luminance() > 0.5f) Color.Black else Color.White
 
-    val colors = MaterialTheme.colorScheme
-    val primary = colors.primary
     val subtle = contentOnBg.copy(alpha = 0.06f)
+    val colors = MaterialTheme.colorScheme
     val handleColor = contentOnBg.copy(alpha = 0.12f)
-    val currentBg = primary.copy(alpha = 0.12f)
+    val currentBg =Color(0xFFFFDAB9).copy(alpha = 0.12f)
 
-    androidx.compose.material.BottomSheetScaffold(
+    // playback state for visualizer (not used in this layout right now)
+    // playback state for visualizer
+    val isPlaying by PlayerRepository.isPlaying.collectAsState()
+    BottomSheetScaffold(
         scaffoldState = scaffoldState,
         sheetShape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
         sheetElevation = 8.dp,
@@ -596,9 +616,23 @@ fun SongsModalBottomSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    onSongSelected(idx)
-                                    // also collapse the sheet after selecting
-                                    scope.launch { scaffoldState.bottomSheetState.collapse() }
+                                    // debounce rapid taps
+                                    if (selectionInProgress.value) return@clickable
+                                    selectionInProgress.value = true
+
+                                    // Only call onSongSelected when the user picks a different index.
+                                    if (idx != currentIndex) {
+                                        onSongSelected(idx)
+                                    } else {
+                                        // collapse the sheet if the user taps the already-selected item
+                                        scope.launch { scaffoldState.bottomSheetState.collapse() }
+                                    }
+
+                                    // keep selections blocked briefly to avoid double-processing
+                                    scope.launch {
+                                        kotlinx.coroutines.delay(600)
+                                        selectionInProgress.value = false
+                                    }
                                 }
                                 .background(if (isCurrent) currentBg else Color.Transparent)
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -619,11 +653,27 @@ fun SongsModalBottomSheet(
                             }
 
                             if (isCurrent) {
+                                // small constrained visualizer that fits inside the row
+                                Box(Modifier.width(40.dp).height(40.dp).align(Alignment.CenterVertically)) {
+                                    AudioVisualizer(
+                                        audioSessionId = null,
+                                        isPlaying = isPlaying,
+                                        modifier = Modifier.fillMaxSize(),
+                                        barCount = 3,
+                                        barWidth = 6.dp,
+                                        heightDp = 24.dp,
+                                        barColor = Color(0xFFFFA500),
+                                        speed = 1.6f
+                                    )
+                                }
+
+                                // Show a pause icon when the current item is playing, otherwise show play
+                                val currentIcon = if (isPlaying) Icons.Filled.PauseCircleFilled else Icons.Filled.PlayCircleFilled
                                 Icon(
-                                    imageVector = Icons.Filled.PlayCircleFilled,
-                                    contentDescription = null,
-                                    tint = primary,
-                                    modifier = Modifier.size(28.dp)
+                                    imageVector = currentIcon,
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    tint = Color(0xFFFFA500),
+                                    modifier = Modifier.size(40.dp)
                                 )
                             }
                         }
@@ -646,6 +696,18 @@ fun SongsPeekBar(
 ) {
     val sheetBg = backgroundColor
     val contentOnBg = if (sheetBg.luminance() > 0.5f) Color.Black else Color.White
+
+    // Compute an accent color derived from the background. For dark backgrounds pick a
+    // white-ish accent to ensure readability; for light backgrounds use a darker tint of the bg.
+    val accentColor = remember(sheetBg) {
+        if (sheetBg.luminance() < 0.5f) {
+            // dark background -> use white for strong contrast
+            Color.White
+        } else {
+            // light background -> darken the background to produce an accent
+            Util.darkerColor(sheetBg, 0.45f)
+        }
+    }
 
     Box(
         modifier = modifier
@@ -675,14 +737,15 @@ fun SongsPeekBar(
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = "Up Next",
-                color = contentOnBg.copy(alpha = 0.75f),
+                color = accentColor.copy(alpha = 0.95f),
+                fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
-                fontWeight = FontWeight . Bold
             )
         }
     }
 }
 
+@Suppress("unused")
 @Composable
 fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -721,9 +784,9 @@ fun MusicScreenPreview() {
             navController = navController
         )
     }
-}*/
+}
 
-/*@Preview(showBackground = true, name = "MusicScreen Preview (middle song)", backgroundColor = 0xFF000000)
+@Preview(showBackground = true, name = "MusicScreen Preview (middle song)", backgroundColor = 0xFF000000)
 @Composable
 fun MusicScreenPreview_Middle() {
     MaterialTheme {
@@ -737,7 +800,7 @@ fun MusicScreenPreview_Middle() {
             navController = navController
         )
     }
-}*/
+}
 
 @Preview(
     showBackground = true,
@@ -769,6 +832,27 @@ fun SongsPeekBarPreview_Dark() {
             backgroundColor = Color.Black,
             onExpand = {}
         )
+    }
+}*/
+
+
+@Preview(showBackground = true, name = "MusicScreen (full) Preview", backgroundColor = 0xFF000000, showSystemUi = true)
+@Composable
+fun MusicScreenFullPreview() {
+    MaterialTheme {
+        val context = LocalContext.current
+        val navController = remember { androidx.navigation.NavController(context) }
+        // create a sample playlist
+        val sampleSongs = listOf(
+            Song(0, "First Song", "Artist A", 180000.0, ""),
+            Song(1, "Second Song", "Artist B", 210000.0, ""),
+            Song(2, "Third Song", "Artist C", 240000.0, "")
+        )
+        // create a plain VM instance for preview; methods may no-op but it's okay for preview
+        val vm = remember { MusicPlayerViewModel() }
+
+        // call the real MusicScreen with a sample start song id of 0
+        MusicScreen(songId = 0, songs = sampleSongs, navController = navController, viewModel = vm)
     }
 }
 
@@ -812,3 +896,5 @@ fun SongsModalBottomSheetPreview_Collapsed() {
         )
     }
 }
+
+
