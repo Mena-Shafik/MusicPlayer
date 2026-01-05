@@ -18,11 +18,17 @@ import com.example.musicplayer.model.RadioStation
 import java.io.File
 import java.util.ArrayList
 import java.util.Locale
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 class Util {
 
     companion object {
         private const val TAG = "Util"
+        // Preferences key and gson instance for user stations persistence
+        private const val PREFS_NAME = "user_radio_prefs"
+        private const val KEY_USER_STATIONS = "user_stations_json"
+        private val gson = Gson()
 
         fun getAllAudioFromDevice(context: Context): List<Song> {
             val tempAudioList: MutableList<Song> = ArrayList()
@@ -75,14 +81,25 @@ class Util {
         //  - "Z103.5 \"CIDC-FM\" Live" -> CIDC-FM
         //  - "Some Station 'Nickname' Extra" -> Nickname
         fun extractQuotedOrOriginal(s: String?): String {
-            if (s.isNullOrBlank()) return ""
-            val regex = Regex("\"([^\"]+)\"|'([^']+)'")
-            val match = regex.find(s)
-            return if (match != null) {
-                (match.groups[1]?.value ?: match.groups[2]?.value ?: "").trim()
-            } else {
-                s.trim()
-            }
+             if (s.isNullOrBlank()) return ""
+             val regex = Regex("\"([^\"]+)\"|'([^']+)'")
+             val match = regex.find(s)
+             return if (match != null) {
+                 (match.groups[1]?.value ?: match.groups[2]?.value ?: "").trim()
+             } else {
+                 s.trim()
+             }
+         }
+
+        /**
+         * Format a station name for storage/display.
+         * Rules: prefer quoted substring (via extractQuotedOrOriginal), fallback to the raw name trimmed.
+         */
+        fun formatStation(st: RadioStation?): String {
+            if (st == null) return ""
+            val raw = st.name ?: ""
+            val extracted = extractQuotedOrOriginal(raw).ifBlank { raw }
+            return extracted.trim()
         }
 
         fun formatSongTableHeader(): String {
@@ -283,7 +300,7 @@ class Util {
             return try {
                 // Log the exact query parameters used to call the Radio Browser API
                 try {
-                    Log.d(TAG, "fetchRadioStations: name='${query}' limit=${limit} country=${country ?: "<any>"} state=${state ?: "<any>"}")
+                    Log.i(TAG, "fetchRadioStations: name='${query}' limit=${limit} country=${country ?: "<any>"} state=${state ?: "<any>"}")
                 } catch (_: Throwable) {}
                 val api = com.example.musicplayer.radio.RadioApiService.create()
                 api.searchStations(query, limit, country, state)
@@ -312,10 +329,9 @@ class Util {
          */
         suspend fun fetchStationsNearGTA(limit: Int = 50): List<RadioStation> {
             // preferred search keywords (ordered by preference)
-            val preferredQueries = listOf(
-                "boom 97.3", "energy 95.3", "kiss 92.5", "z103.5", "105.3","CKFM 99.9"
-            )
-
+            val preferredQueries = listOf("boom 97.3", "energy 95.3", "kiss 92.5", "z103.5")
+            // Whitelist of known GTA station name tokens (lowercase substrings) to always include
+            val whitelist = listOf("z103.5", "chum 104.5", "chum fm", "kiss 92.5", "kiss fm", "virgin 99.9", "boom 97.3", "fresh radio 93.1", "energy 95.3")
 
             fun isMusicStation(st: RadioStation): Boolean {
                 val tags = st.tags?.lowercase() ?: ""
@@ -337,8 +353,10 @@ class Util {
             val results = mutableListOf<RadioStation>()
             val seen = mutableSetOf<String>()
 
-            // Helper to format station info for logging
-            fun formatStation(st: RadioStation?): String {
+            // Helper to format station info for logging (use shared formatter)
+            // note: formatStation(st) returns the preferred stored name
+            // Keep for local logging; no change to semantics
+            fun formatStationInfo(st: RadioStation?): String {
                 if (st == null) return "<null>"
                 val nameRaw = st.name ?: "<no-name>"
                 val displayName = extractQuotedOrOriginal(nameRaw).ifBlank { nameRaw }
@@ -365,53 +383,59 @@ class Util {
             val GTA_LON = -79.3832
             val RADIUS_KM = 200.0
 
-            // Whitelist of known GTA station name tokens (lowercase substrings) to always include
-            val whitelist = listOf("z103.5", "z1035", "z103", "chum 104.5", "chum fm", "kiss 92.5", "kiss fm", "virgin 99.9", "boom 97.3", "fresh radio 93.1", "105.3 virgin radio", "energy 95.3")
+
 
             fun tryAdd(st: RadioStation?) {
                 if (st == null) return
-                val nameLower = st.name?.lowercase() ?: ""
+                // Allow per-station overrides (e.g. known stations with better-hosted favicons).
+                // Create a local copy `s0` so we can tweak fields (RadioStation is an immutable data class).
+                val nameRaw = st.name ?: ""
+                val s0 = when {
+                    nameRaw.contains("Boom 97.3", ignoreCase = true) -> st.copy(favicon = "https://static.mytuner.mobi/media/tvos_radios/hJRnRqsLFv.png")
+                    nameRaw.contains("KISS 92.5", ignoreCase = true) -> st.copy(favicon = "https://static.mytuner.mobi/media/tvos_radios/x7349u4XVb.png")
+                    else -> st
+                }
+
+                // Always store the station with a formatted name (prefer quoted token)
+                val s = s0.copy(name = formatStation(s0))
+
+                val nameLower = s.name?.lowercase() ?: ""
                 // normalize name (remove non-alphanumeric) to match variants like "Z 103.5", "CIDC-FM", etc.
                 val nameNormalized = nameLower.replace(Regex("[^a-z0-9]"), "")
                 val whitelistNormalized = whitelist.map { it.replace(Regex("[^a-z0-9]"), "") }
-                val urlLower = st.url?.lowercase() ?: ""
-                val faviconLower = st.favicon?.lowercase() ?: ""
+                val urlLower = s.url?.lowercase() ?: ""
+                val faviconLower = s.favicon?.lowercase() ?: ""
                 val urlTokens = listOf("cidcfm", "evanov", "leanstream", "z103")
                 val isWhitelisted = whitelist.any { nameLower.contains(it) } || whitelistNormalized.any { nameNormalized.contains(it) } || urlTokens.any { urlLower.contains(it) || faviconLower.contains(it) }
 
-                 // Only add FM stations: require evidence the station is an FM broadcaster
-                 // (name/tags contains 'fm' or the name contains a numeric frequency like "104.5").
-                 fun isFMStation(s: RadioStation): Boolean {
-                     val n = s.name?.lowercase() ?: ""
-                     val t = s.tags?.lowercase() ?: ""
-                     val u = s.url?.lowercase() ?: ""
-                     // common heuristics for FM stations
-                     if (t.contains(" fm") || t.contains("fm ") || t.split(Regex("[,; ]")).any { it == "fm" }) return true
-                     if (n.contains(" fm") || n.startsWith("fm ") || n.endsWith(" fm") || n.contains("fm ") || n.contains("fm.") ) return true
-                     // url that includes .fm domains often indicates FM broadcaster branding
-                     if (u.contains(".fm")) return true
-                     // numeric frequency in the name (e.g. 104.5, 92.5), treat as FM
-                     if (Regex("\\b\\d{2,3}(\\.\\d)?\\b").containsMatchIn(n)) return true
-                     return false
-                 }
-
-                // Duplicate detection: normalize multiple identity keys and skip if any already seen
+                val keys = mutableListOf<String>()
+                // Helper: normalize urls (remove query and trailing slash) to use as dedupe keys
                 fun normalizedUrl(u: String?): String? {
-                    if (u == null) return null
+                    if (u.isNullOrBlank()) return null
                     val noQuery = u.split('?')[0]
                     return noQuery.trim().lowercase().trimEnd('/')
                 }
 
-                val keys = mutableListOf<String>()
-                st.stationuuid?.let { if (it.isNotBlank()) keys.add(it.trim().lowercase()) }
-                normalizedUrl(st.url)?.let { if (it.isNotBlank()) keys.add(it) }
-                // also consider favicon host as a weak key
-                normalizedUrl(st.favicon)?.let { if (it.isNotBlank()) keys.add(it) }
+                // Heuristic to detect FM stations (used for filtering)
+                fun isFMStation(s: RadioStation): Boolean {
+                    val n = s.name?.lowercase() ?: ""
+                    val t = s.tags?.lowercase() ?: ""
+                    val u = s.url?.lowercase() ?: ""
+                    if (t.contains(" fm") || t.contains("fm ") || t.split(Regex("[,; ]")).any { it == "fm" }) return true
+                    if (n.contains(" fm") || n.startsWith("fm ") || n.endsWith(" fm") || n.contains("fm ") || n.contains("fm.")) return true
+                    if (u.contains(".fm")) return true
+                    if (Regex("\\b\\d{2,3}(\\.\\d)?\\b").containsMatchIn(n)) return true
+                    return false
+                }
+                 s.stationuuid?.let { if (it.isNotBlank()) keys.add(it.trim().lowercase()) }
+                normalizedUrl(s.url)?.let { if (it.isNotBlank()) keys.add(it) }
+                 // also consider favicon host as a weak key
+                normalizedUrl(s.favicon)?.let { if (it.isNotBlank()) keys.add(it) }
                 if (nameNormalized.isNotBlank()) keys.add(nameNormalized)
 
                 // If any key already seen, skip duplicate
                 if (keys.any { seen.contains(it) }) {
-                    try { Log.d(TAG, "fetchStationsNearGTA: skipping duplicate station: ${formatStation(st)}") } catch (_: Throwable) {}
+                    try { Log.d(TAG, "fetchStationsNearGTA: skipping duplicate station: ${formatStation(s)}") } catch (_: Throwable) {}
                     return
                 }
 
@@ -436,10 +460,7 @@ class Util {
                          "mixcloud",
                          "soundcloud",
                          "player.fm",
-                         "radioparadise",
-                         "tsn",
-                         "rdmix",
-                         "multicultural"
+                         "radioparadise"
                      )
                      if (aggregatorTokens.any { u.contains(it) || n.contains(it) || t.contains(it) }) return true
 
@@ -464,7 +485,12 @@ class Util {
                         "newsradio",
                         "cbc",
                         "globalnews",
-                        "sports"
+                        "sports",
+                        "tsn",
+                        "rdmix",
+                        "multicultural",
+                        "calm",
+                        "680 news toronto"
                     )
                     return newsKeywords.any { kw -> n.contains(kw) || t.contains(kw) || u.contains(kw) }
                 }
@@ -472,23 +498,29 @@ class Util {
                 // If not whitelisted, apply network/FM/geo filters. Whitelisted stations bypass these checks so
                 // common station-name variants (e.g. "Z 103.5" or "CIDC-FM") are preserved.
                 if (!isWhitelisted) {
-                    if (isNetwork(st)) {
-                        //Log.d(TAG, "fetchStationsNearGTA: filtered network/aggregator station: ${formatStation(st)}")
-                        return
-                    }
+                    // evaluate predicates once for clear logging
+                    val net = isNetwork(s)
+                    val news = isNewsStation(s)
+                    val fm = isFMStation(s)
 
-                    // Filter out news/talk/weather/traffic stations unless explicitly whitelisted
-                    if (isNewsStation(st)) {
-                        //Log.d(TAG, "fetchStationsNearGTA: filtered news/talk station: ${formatStation(st)}")
-                        return
+                    when {
+                        net -> {
+                            Log.d(TAG, "fetchStationsNearGTA: filtered network/aggregator station: ${s.name}")
+                            return
+                        }
+                        news -> {
+                            Log.d(TAG, "fetchStationsNearGTA: filtered news/talk station: ${s.name}")
+                            return
+                        }
+                        !fm -> {
+                            Log.d(TAG, "fetchStationsNearGTA: filtered non-FM station: news=$news network=$net isFM=$fm name=${s.name}")
+                            return
+                        }
                     }
-
-                     // Apply FM heuristics
-                     if (!isFMStation(st)) return
 
                     // Enforce radius: require geo coords and check distance
-                    val lat = st.geo_lat
-                    val lon = st.geo_long
+                    val lat = s.geo_lat
+                    val lon = s.geo_long
                     if (lat == null || lon == null) {
                         if (!isWhitelisted) {
                             //Log.d(TAG, "fetchStationsNearGTA: skipping station (no geo coords): ${formatStation(st)}")
@@ -506,11 +538,11 @@ class Util {
                 }
                  // Passed filters; mark all normalized keys as seen and add
                  // Allow whitelist to bypass the loose 'isMusicStation' heuristics
-                 if (!isMusicStation(st) && !isWhitelisted) return
+                 if (!isMusicStation(s) && !isWhitelisted) return
                  keys.forEach { seen.add(it) }
-                 results.add(st)
-             }
-
+                 // store the station with formatted name
+                 results.add(s)
+              }
             try {
                 // First, attempt targeted searches for the preferred station names
                 for (q in preferredQueries) {
@@ -546,7 +578,7 @@ class Util {
                 try {
                     val customVirgin = RadioStation(
                         stationuuid = "custom-virgin-999",
-                        name = "Virgin 99.9",
+                        name = formatStation(RadioStation("custom-virgin-999", "Virgin 99.9", "https://18153.live.streamtheworld.com/CKFMFMAAC_SC", favicon = "https://static.mytuner.mobi/media/tvos_radios/LypQKVJVaB.png")),
                         url = "https://18153.live.streamtheworld.com/CKFMFMAAC_SC",
                         favicon = "https://static.mytuner.mobi/media/tvos_radios/LypQKVJVaB.png",
                         tags = "pop, top 40",
@@ -572,7 +604,7 @@ class Util {
                         val byProvince = fetchRadioStations(query = "", limit = limit * 2, country = "Canada", state = "Ontario")
                         for (st in byProvince) {
                             if (results.size >= limit) break
-                            Log.d(TAG, "fetchStationsNearGTA: province candidate: ${formatStation(st)}")
+                            Log.d(TAG, "fetchStationsNearGTA: province candidate: ${st.name}")
                             tryAdd(st)
                         }
                     }
@@ -714,5 +746,108 @@ class Util {
 
             return ""
         }
+
+        /** Return the saved user stations (empty list when none or on error). */
+        fun getUserStations(context: Context): List<RadioStation> {
+            // Per user request: always use hard-coded defaults.
+            // This makes the app reliably return the built-in station list (Z103.5, Virgin 99.9, etc.).
+            return getDefaultUserStations()
+         }
+
+        /** Try to read a stations JSON array from the app assets folder. */
+        fun getUserStationsFromAssets(context: Context, assetFileName: String): List<RadioStation> {
+            return try {
+                val am = context.assets
+                val stream = am.open(assetFileName)
+                val json = stream.bufferedReader().use { it.readText() }
+                val type = object : TypeToken<List<RadioStation>>() {}.type
+                val parsed: List<RadioStation>? = try { gson.fromJson(json, type) as? List<RadioStation> } catch (_: Exception) { null }
+                parsed ?: emptyList()
+            } catch (e: Exception) {
+                // asset missing or parse error -> return empty so callers can fallback
+                Log.d(TAG, "getUserStationsFromAssets: failed to read asset $assetFileName: ${e.message}")
+                emptyList()
+            }
+        }
+
+        /** Return a small, safe default list of stations embedded in the app.
+         *  These should be editable by providing an assets/user_stations.json instead.
+         */
+        fun getDefaultUserStations(): List<RadioStation> {
+             return listOf(
+                 RadioStation(
+                     stationuuid = "cidc-z103",
+                     name = "Z103.5",
+                     url = "https://buf-streamb1-ais-relay1.streamb.live/SB00222/hXYRH27kc5gp-176530778-9984.aac",
+                     favicon = "https://static.mytuner.mobi/media/tvos_radios/kmR5bTLY5B.png",
+                     country = "Canada",
+                     tags = "top40, Euro, Pop",
+                     bitrate = 128
+                 ),
+                 RadioStation(
+                     stationuuid = "virgin-999",
+                     name = "Virgin 99.9",
+                     url = "https://18153.live.streamtheworld.com/CKFMFMAAC_SC",
+                     favicon = "https://static.mytuner.mobi/media/tvos_radios/LypQKVJVaB.png",
+                     country = "Canada",
+                     tags = "pop, top40",
+                     bitrate = 128
+                 ),
+                 RadioStation(
+                     stationuuid = "kiss-925",
+                     name = "KISS 92.5",
+                     url = "https://rogers-hls.leanstream.co/rogers/tor925.stream/playlist.m3u8",
+                     favicon = "https://static.mytuner.mobi/media/tvos_radios/x7349u4XVb.png",
+                     country = "Canada",
+                     tags = "Pop",
+                     bitrate = 0
+                 ),
+                 RadioStation(
+                     stationuuid = "chum-1045",
+                     name = "CHUM 104.5",
+                     url = "https://26293.live.streamtheworld.com/CHUMFMAAC_SC",
+                     favicon = "https://static.mytuner.mobi/media/tvos_radios/BsymEw9muQ.png",
+                     country = "Canada",
+                     tags = "classic, rock",
+                     bitrate = 0
+                 ),
+                 RadioStation(
+                     stationuuid = "chfi-981",
+                     name = "CHFI 98.1",
+                     url = "https://rogers-hls.leanstream.co/rogers/tor981.stream/playlist.m3u8",
+                     favicon = "https://static.mytuner.mobi/media/tvos_radios/Assbtg6dyc.png",
+                     country = "Canada",
+                     tags = "classic, rock",
+                     bitrate = 0
+                 ),
+                 RadioStation(
+                     stationuuid = "Boom-973",
+                     name = "Boom 97.3",
+                     url = "https://newcap.leanstream.co/CHBMFM-MP3",
+                     favicon = "https://static.mytuner.mobi/media/tvos_radios/hJRnRqsLFv.png",
+                     country = "Canada",
+                     tags = "classic, rock",
+                     bitrate = 0
+                 ),
+                 RadioStation(
+                     stationuuid = "Flow-987",
+                     name = "Flow 98.7",
+                     url = "https://ice64.securenetsystems.net/CKFG",
+                     favicon = "https://static.mytuner.mobi/media/tvos_radios/793/flow-987-fm.43dcaeb7.jpg",
+                     country = "Canada",
+                     tags = "classic, rock",
+                     bitrate = 0
+                 ),
+                 RadioStation(
+                     stationuuid = "Fresh-931",
+                     name = "Fresh 93.1",
+                     url = "https://live.leanstream.co/CHAYFM-MP3?args=tunein",
+                     favicon = "https://cdn-profiles.tunein.com/s31156/images/logod.png?t=155144",
+                     country = "Canada",
+                     tags = "classic, rock",
+                     bitrate = 0
+                 ),
+             )
+         }
      }
  }

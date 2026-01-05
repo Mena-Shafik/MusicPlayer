@@ -102,6 +102,10 @@ import com.example.musicplayer.composable.MainBackground
 import coil.compose.AsyncImage
 import android.widget.Toast
 import com.example.musicplayer.model.RadioStation
+import android.content.Intent
+import android.net.Uri
+import androidx.core.content.ContextCompat
+import androidx.navigation.compose.rememberNavController
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -122,11 +126,11 @@ fun ListSongsScreen(
         try { onToggleSearch() } catch (_: Throwable) {}
         searchVisible = !searchVisible
     }
-    // local radio state and toggle (fix for "No value passed for parameter 'isRadio'")
-    var isRadioSelected by remember { mutableStateOf(false) }
-    val toggleRadio: () -> Unit = {
-        isRadioSelected = !isRadioSelected
-    }
+
+    // Use persistent radio selection stored in the SongListViewModel so selection
+    // survives navigation (e.g., returning from RadioPlayerScreen)
+    val isRadioSelected by viewModel.isRadioSelected.collectAsState()
+    val toggleRadio: () -> Unit = { viewModel.toggleRadioSelected() }
 
     // removed local showSearch state; parent may control it via the new params
 
@@ -220,8 +224,10 @@ fun ListSongsScreen(
                 val playerVm: MusicPlayerViewModel = viewModel()
                 if (isRadioSelected) {
                     // When radio is selected, show the radio stations list UI
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        DisplayListRadioStations()
+                    Box(modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()) {
+                        DisplayListRadioStations(navController = navController, viewModel = viewModel)
                     }
                 } else {
                     DisplayListSongs(
@@ -371,31 +377,24 @@ fun DisplayListSongs(
 }
 
 @Composable
-fun DisplayListRadioStations(modifier: Modifier = Modifier) {
+fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHostController, viewModel: SongListViewModel = viewModel()) {
     val context = LocalContext.current
-    var stations by remember { mutableStateOf<List<RadioStation>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        loading = true
-        error = null
-        try {
-            // fetch stations near the Greater Toronto Area (GTA)
-            val list = Util.fetchStationsNearGTA(limit = 40)
-            stations = list
-            if (list.isEmpty()) error = "No stations found in the GTA"
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to load GTA stations"
-        } finally {
-            loading = false
-        }
-    }
+    // Use built-in default stations provided by the ViewModel
+    val stations by viewModel.userStations.collectAsState()
+    // Keep the radio loading/error flows for compatibility, but UI shows defaults
+    val loading by viewModel.radioLoading.collectAsState()
+    val error by viewModel.radioError.collectAsState()
+
+    // Load the default (hard-coded) stations when this composable enters composition
+    LaunchedEffect(Unit) { viewModel.loadDefaultUserStations() }
 
     Column(modifier = modifier.fillMaxWidth()) {
         when {
             loading -> {
-                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             }
@@ -430,13 +429,50 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier) {
                                 error = painterResource(id = com.example.musicplayer.R.drawable.ic_radio)
                             )
 
-                            Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+                            Column(modifier = Modifier
+                                .padding(start = 12.dp)
+                                .weight(1f)) {
                                 Text(text = displayName, color = Color.White, fontWeight = FontWeight.Bold)
                             }
 
                             Button(onClick = {
-                                // For now show a toast; later this can start playback via PlayerService
-                                Toast.makeText(context, "Play $displayName", Toast.LENGTH_SHORT).show()
+                                // Start the RadioPlayerService to play the stream URL, then navigate to RadioPlayerScreen
+                                val url = station.url ?: ""
+                                if (url.isBlank()) {
+                                    Toast.makeText(context, "No stream URL for $displayName", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+
+                                try {
+                                    // start service with play-station action so playback begins in background
+                                    val svcIntent = Intent().apply {
+                                        action = "com.example.musicplayer.action.PLAY_STATION"
+                                        putExtra("extra_station_url", url)
+                                        putExtra("extra_station_title", displayName)
+                                        setClassName(context.packageName, "com.example.musicplayer.radio.RadioPlayerService")
+                                    }
+                                    // Use startForegroundService on O+ so the service can enter foreground mode
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        ContextCompat.startForegroundService(context, svcIntent)
+                                    } else {
+                                        context.startService(svcIntent)
+                                    }
+                                    Log.d("DisplayListRadioStations", "Started RadioPlayerService for $displayName -> $url")
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Failed to start radio service: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+
+                                // mark radio view selected so returning from player shows the radio list
+                                try { viewModel.setRadioSelected(true) } catch (_: Throwable) {}
+                                // navigate to radio player screen with encoded name/url path segments
+                                val encName = Uri.encode(displayName)
+                                val encUrl = Uri.encode(url)
+                                val favicon = station.favicon ?: ""
+                                val encFav = Uri.encode(favicon)
+                                val tagsRaw = station.tags ?: ""
+                                val encTags = Uri.encode(tagsRaw)
+                                try { Log.d("DisplayListRadioStations", "Navigating to player: name=$displayName url=$url favicon=$favicon tags=$tagsRaw") } catch (_: Throwable) {}
+                                navController.navigate("radioPlayer/$encName/$encUrl/$encFav/$encTags")
                             }) {
                                 Text("Play")
                             }
@@ -466,6 +502,7 @@ fun SongCardRow(
             .fillMaxWidth()
             //.background(Color.Black) // removed so list items are semi-transparent over the background
             .clickable(onClick = onClick)
+            .padding(10.dp,0.dp,0.dp,0.dp)
     ) {
         if (imageBitmap != null) {
             Image(
@@ -483,13 +520,15 @@ fun SongCardRow(
                 contentDescription = "Placeholder image",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .width(60.dp)
+                    .width(70.dp)
                     .height(60.dp)
                     .clip(RoundedCornerShape(2.dp))
             )
         }
 
-        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+        Column(Modifier
+            .padding(start = 12.dp)
+            .weight(1f)) {
             Text(
                 text = title,
                 color = Color.White,
@@ -506,7 +545,9 @@ fun SongCardRow(
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 text = Util.converter(duration),
-                Modifier.width(80.dp).padding(10.dp),
+                Modifier
+                    .width(80.dp)
+                    .padding(10.dp),
                 color = Color.White,
                 textAlign = TextAlign.End,
 
@@ -698,7 +739,9 @@ fun MiniPlayer(
             // determinate progress bar
             LinearProgressIndicator(
                 progress = { progress },
-                modifier = Modifier.fillMaxWidth().padding(2.dp,0.dp,2.dp,0.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(2.dp, 0.dp, 2.dp, 0.dp),
                 color = Color(0xFFFFA500),
                 trackColor = Color(0xFFFFDAB9)
             )
@@ -742,7 +785,9 @@ private fun MiniPlayerPreview() {
     }
 
     MaterialTheme {
-        Box(modifier = Modifier.fillMaxWidth().background(Color.Black)) {
+        Box(modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Black)) {
             MiniPlayer(modifier = Modifier.align(Alignment.Center))
         }
     }
@@ -803,7 +848,9 @@ fun DisplayListPreview() {
             {
                 MainBackground()
 
-                Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                Column(modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)) {
                     DisplayListSongs(
                         songs = sampleSongs,
                         onSongClicked = {},
@@ -814,10 +861,34 @@ fun DisplayListPreview() {
                         PlayerRepository.setPlaylist(sampleSongs, 0)
                         PlayerRepository.setIsPlaying(false)
                     }
-                    Box(modifier = Modifier.fillMaxWidth().background(Color.Black)) {
+                    Box(modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black)) {
                         MiniPlayer(modifier = Modifier.align(Alignment.Center))
                     }
                 }
+            }
+        }
+    }
+}
+
+// Add DisplayListRadioStations preview
+@Preview(showBackground = true, name = "DisplayListRadioStations Preview", backgroundColor = 0xFF000000, showSystemUi = true)
+@Composable
+fun DisplayListRadioStationsPreview() {
+    MaterialTheme {
+        val context = LocalContext.current
+        val navController = rememberNavController()
+        // Create a view model instance for preview and load the built-in default stations
+        val vm = remember { SongListViewModel() }
+        LaunchedEffect(Unit) {
+            // Load defaults (this is cheap and synchronous in the VM implementation)
+            vm.loadDefaultUserStations()
+        }
+
+        Surface(color = Color.Black) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                DisplayListRadioStations(navController = navController, viewModel = vm, modifier = Modifier.fillMaxSize())
             }
         }
     }

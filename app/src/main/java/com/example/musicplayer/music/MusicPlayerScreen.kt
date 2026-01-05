@@ -55,7 +55,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.runtime.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,7 +76,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsControllerCompat
@@ -85,18 +90,24 @@ import com.example.musicplayer.composable.AudioVisualizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.collections.firstOrNull
-import kotlin.collections.getOrNull
-import kotlin.collections.isNotEmpty
-import kotlin.let
-import kotlin.ranges.coerceAtLeast
-import kotlin.ranges.coerceIn
-import kotlin.ranges.rangeTo
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import android.util.Log
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.unit.Dp
+import kotlin.compareTo
+
+private const val LYRICS_TAG = "LyricsFetch"
 
 @SuppressLint("ContextCastToActivity")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MusicScreen(
+fun MusicPlayerScreen(
     songId: Int,
     songs: List<Song>,
     navController: NavController,
@@ -177,6 +188,11 @@ fun MusicScreen(
     LaunchedEffect(positionMs) {
         if (!isUserSeeking) sliderPosition = positionMs.toFloat()
     }
+
+    // compute a consistent sheet peek height that includes any navigation bar inset
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val visiblePeek = 90.dp // desired visible peek portion
+    val sheetPeekHeight = visiblePeek + navBarBottom
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -311,7 +327,8 @@ fun MusicScreen(
                         viewModel.play(ctx)
                         showSheet = false
                     },
-                    backgroundColor = backgroundColor
+                    backgroundColor = backgroundColor,
+                    peekHeight = sheetPeekHeight
                 )
             }
         }
@@ -519,13 +536,14 @@ fun SongsModalBottomSheet(
     visible: Boolean,
     onDismiss: () -> Unit,
     onSongSelected: (index: Int) -> Unit,
-    backgroundColor: Color // new param: pass MusicScreen's backgroundColor
+    backgroundColor: Color, // new param: pass MusicScreen's backgroundColor
+    peekHeight: Dp // new param
 ) {
     // Use BottomSheetScaffold state so we can expand/collapse programmatically
     val scaffoldState = androidx.compose.material.rememberBottomSheetScaffoldState(
         bottomSheetState = androidx.compose.material.rememberBottomSheetState(
-            initialValue = if (visible) androidx.compose.material.BottomSheetValue.Expanded
-            else androidx.compose.material.BottomSheetValue.Collapsed
+            initialValue = if (visible) BottomSheetValue.Expanded
+            else BottomSheetValue.Collapsed
         )
     )
 
@@ -572,7 +590,7 @@ fun SongsModalBottomSheet(
         scaffoldState = scaffoldState,
         sheetShape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
         sheetElevation = 8.dp,
-        sheetPeekHeight = 100.dp,
+        sheetPeekHeight = peekHeight,
         sheetBackgroundColor = Color.Transparent,
         // don't draw a white background behind the sheet content — let the host UI show through
         backgroundColor = Color.Transparent,
@@ -592,93 +610,134 @@ fun SongsModalBottomSheet(
                         .clip(RoundedCornerShape(2.dp))
                         .background(handleColor)
                 )
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Up Next",
-                        color = contentOnBg,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
 
-                HorizontalDivider(color = subtle)
-
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .heightIn(max = 520.dp)
-                ) {
-                    itemsIndexed(songs) { idx, song ->
-                        val isCurrent = idx == currentIndex
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    // debounce rapid taps
-                                    if (selectionInProgress.value) return@clickable
-                                    selectionInProgress.value = true
-
-                                    // Only call onSongSelected when the user picks a different index.
-                                    if (idx != currentIndex) {
-                                        onSongSelected(idx)
-                                    } else {
-                                        // collapse the sheet if the user taps the already-selected item
-                                        scope.launch { scaffoldState.bottomSheetState.collapse() }
-                                    }
-
-                                    // keep selections blocked briefly to avoid double-processing
-                                    scope.launch {
-                                        kotlinx.coroutines.delay(600)
-                                        selectionInProgress.value = false
-                                    }
+                // Two-tab header: Up Next (list) and Lyrics
+                var selectedTab by remember { mutableStateOf(0) }
+                val tabs = listOf("Up Next", "Lyrics")
+                // Make tab header visually match the sheet by painting the TabRow background explicitly
+                // and use TabDefaults.tabColors to ensure selected/unselected colors behave consistently.
+                // Use an explicit Box background so header color is consistent across compose versions/themes
+                Box(modifier = Modifier
+                    .fillMaxWidth()
+                    .background(sheetBg.copy(alpha = 0.90f))) {
+                    TabRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        selectedTabIndex = selectedTab,
+                        containerColor = Color.Transparent,
+                        contentColor = contentOnBg,
+                        indicator = { tabPositions ->
+                            TabRowDefaults.Indicator(
+                                modifier = Modifier
+                                    .padding(start = tabPositions[selectedTab].left)
+                                    .width(tabPositions[selectedTab].width),
+                                color = Color.Transparent,
+                                height = 3.dp
+                            )
+                        },
+                        divider = {}
+                    ) {
+                        tabs.forEachIndexed { index, title ->
+                            Tab(
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                text = {
+                                    val textColor = if (selectedTab == index) contentOnBg else contentOnBg.copy(alpha = 0.65f)
+                                    Text(text = title, color = textColor, modifier = Modifier.padding(12.dp), fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.SemiBold)
                                 }
-                                .background(if (isCurrent) currentBg else Color.Transparent)
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = song.title,
-                                    color = contentOnBg,
-                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 16.sp
-                                )
-                                Text(
-                                    text = song.artist,
-                                    color = contentOnBg.copy(alpha = 0.75f),
-                                    fontSize = 13.sp
-                                )
-                            }
-
-                            if (isCurrent) {
-                                // small constrained visualizer that fits inside the row
-                                Box(Modifier.width(40.dp).height(40.dp).align(Alignment.CenterVertically)) {
-                                    AudioVisualizer(
-                                        audioSessionId = null,
-                                        isPlaying = isPlaying,
-                                        modifier = Modifier.fillMaxSize(),
-                                        barCount = 3,
-                                        barWidth = 6.dp,
-                                        heightDp = 24.dp,
-                                        barColor = Color(0xFFFFA500),
-                                        speed = 1.6f
-                                    )
-                                }
-
-                                // Show a pause icon when the current item is playing, otherwise show play
-                                val currentIcon = if (isPlaying) Icons.Filled.PauseCircleFilled else Icons.Filled.PlayCircleFilled
-                                Icon(
-                                    imageVector = currentIcon,
-                                    contentDescription = if (isPlaying) "Pause" else "Play",
-                                    tint = Color(0xFFFFA500),
-                                    modifier = Modifier.size(40.dp)
-                                )
-                            }
+                            )
                         }
                     }
                 }
+
+                // Content for selected tab
+                if (selectedTab == 0) {
+
+                    HorizontalDivider(color = subtle)
+
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .heightIn(max = 520.dp)
+                    ) {
+                        itemsIndexed(songs) { idx, song ->
+                            val isCurrent = idx == currentIndex
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        // debounce rapid taps
+                                        if (selectionInProgress.value) return@clickable
+                                        selectionInProgress.value = true
+
+                                        // Only call onSongSelected when the user picks a different index.
+                                        if (idx != currentIndex) {
+                                            onSongSelected(idx)
+                                        } else {
+                                            // collapse the sheet if the user taps the already-selected item
+                                            scope.launch { scaffoldState.bottomSheetState.collapse() }
+                                        }
+
+                                        // keep selections blocked briefly to avoid double-processing
+                                        scope.launch {
+                                            kotlinx.coroutines.delay(600)
+                                            selectionInProgress.value = false
+                                        }
+                                    }
+                                    .background(if (isCurrent) currentBg else Color.Transparent)
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = song.title,
+                                        color = contentOnBg,
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                                        fontSize = 16.sp
+                                    )
+                                    Text(
+                                        text = song.artist,
+                                        color = contentOnBg.copy(alpha = 0.75f),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                if (isCurrent) {
+                                    // small constrained visualizer that fits inside the row
+                                    Box(Modifier.width(40.dp).height(40.dp).align(Alignment.CenterVertically)) {
+                                        AudioVisualizer(
+                                            audioSessionId = null,
+                                            isPlaying = isPlaying,
+                                            modifier = Modifier.fillMaxSize(),
+                                            barCount = 3,
+                                            barWidth = 6.dp,
+                                            heightDp = 24.dp,
+                                            barColor = contentOnBg, //Color(0xFFFFA500) old color
+                                            speed = 1.6f
+                                        )
+                                    }
+
+                                    // Show a pause icon when the current item is playing, otherwise show play
+                                    /*val currentIcon = if (isPlaying) Icons.Filled.PauseCircleFilled else Icons.Filled.PlayCircleFilled
+                                    Icon(
+                                        imageVector = currentIcon,
+                                        contentDescription = if (isPlaying) "Pause" else "Play",
+                                        tint = Color(0xFFFFA500),
+                                        modifier = Modifier.size(40.dp)
+                                    )*/
+                                }
+                            }
+                        }
+                    }
+
+                } else {
+                    // Lyrics tab — try to find a local `.lrc` next to the currently-playing song
+                    val currentSong = songs.getOrNull(currentIndex)
+                    LyricsTab(currentSong = currentSong, contentColor = contentOnBg)
+                }
+
             }
         }
     ) {
@@ -687,10 +746,87 @@ fun SongsModalBottomSheet(
     }
 }
 
-// Peek bar composable placed in this file so it uses the same colors and callbacks.
+@Composable
+fun LyricsTab(currentSong: Song?, modifier: Modifier = Modifier, contentColor: Color = Color.White) {
+    var loading by remember { mutableStateOf(false) }
+    var lyrics by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(currentSong) {
+        loading = true
+        lyrics = withContext(Dispatchers.IO) {
+            try {
+                fetchLyricsOnline(currentSong)
+            } catch (_: Throwable) { null }
+        }
+        loading = false
+    }
+
+    val scrollState = rememberScrollState()
+    Box(modifier = modifier.padding(12.dp)) {
+        when {
+            loading -> CircularProgressIndicator()
+            lyrics.isNullOrBlank() -> Text(text = "Lyrics not available", color = Color.White)
+            else -> {
+                // Put lyrics in a vertically-scrollable container so long lyrics are fully visible
+                Column(modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(scrollState)
+                    .padding(8.dp)
+                ) {
+                    Text(text = lyrics ?: "", color = contentColor, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Fetch lyrics from an online API. Uses lyrics.ovh (simple, no auth):
+ *  GET https://api.lyrics.ovh/v1/{artist}/{title} -> { "lyrics": "..." }
+ * Returns null if not found or on error.
+ */
+suspend fun fetchLyricsOnline(song: Song?): String? {
+    if (song == null) return null
+    return withContext(Dispatchers.IO) {
+        try {
+            val artist = song.artist.ifBlank { "" }
+            val title = song.title.ifBlank { "" }
+            if (artist.isBlank() && title.isBlank()) return@withContext null
+
+            val encArtist = URLEncoder.encode(artist, "UTF-8")
+            val encTitle = URLEncoder.encode(title, "UTF-8")
+            val urlStr = "https://api.lyrics.ovh/v1/$encArtist/$encTitle"
+            val url = URL(urlStr)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 6000
+                readTimeout = 6000
+                doInput = true
+            }
+
+            try {
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val text = stream.bufferedReader().use { it.readText() }
+                // Log response size and a short preview for debugging truncation issues
+                try { Log.d(LYRICS_TAG, "fetched lyrics response length=${text.length}; preview=${text.take(300)}") } catch (_: Throwable) {}
+                val json = JSONObject(text)
+                val lyrics = json.optString("lyrics", "").trim()
+                if (lyrics.isBlank()) null else lyrics
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Throwable) {
+            null
+        }
+    }
+}
+
 @Composable
 fun SongsPeekBar(
     backgroundColor: Color,
+    peekHeight: Dp = 70.dp, // default kept for previews/legacy calls
     modifier: Modifier = Modifier,
     onExpand: () -> Unit
 ) {
@@ -700,19 +836,13 @@ fun SongsPeekBar(
     // Compute an accent color derived from the background. For dark backgrounds pick a
     // white-ish accent to ensure readability; for light backgrounds use a darker tint of the bg.
     val accentColor = remember(sheetBg) {
-        if (sheetBg.luminance() < 0.5f) {
-            // dark background -> use white for strong contrast
-            Color.White
-        } else {
-            // light background -> darken the background to produce an accent
-            Util.darkerColor(sheetBg, 0.45f)
-        }
+        if (sheetBg.luminance() < 0.6f) Color.White else Util.darkerColor(sheetBg, 0.6f)
     }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(70.dp)
+            .height(peekHeight)
             .clickable(onClick = onExpand)
             .background(Color.Transparent),
         contentAlignment = Alignment.CenterStart
@@ -770,37 +900,32 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
     }
 }
 
-/*@Preview(showBackground = true, name = "MusicScreen Preview (default)", backgroundColor = 0xFF000000)
-@Composable
-fun MusicScreenPreview() {
-    MaterialTheme {
-        val context = LocalContext.current
-        val navController = remember { NavController(context) }
+// @Preview(showBackground = true, name = "MusicScreen Preview (default)", backgroundColor = 0xFF000000)
+// @Composable
+// fun MusicScreenPreview() {
+//     MaterialTheme {
+//         val context = LocalContext.current
+//         val navController = remember { NavController(context) }
 
-        // No sample songs provided for preview; pass an empty list
-        MusicScreen(
-            songId = 0,
-            songs = emptyList(),
-            navController = navController
-        )
-    }
-}
+//         // No sample songs provided for preview; pass an empty list
+//         MusicScreen(
+//             songId = 0,
+//             songs = emptyList(),
+//             navController = navController
+//         )
+//     }
+// }
 
-@Preview(showBackground = true, name = "MusicScreen Preview (middle song)", backgroundColor = 0xFF000000)
-@Composable
-fun MusicScreenPreview_Middle() {
-    MaterialTheme {
-        val context = LocalContext.current
-        val navController = remember { NavController(context) }
+// @Preview(showBackground = true, name = "MusicScreen Preview (middle song)", backgroundColor = 0xFF000000)
+// @Composable
+// fun MusicScreenPreview_Middle() {
+//     MaterialTheme {
+//         val context = LocalContext.current
+//         val navController = remember { NavController(context) }
 
-        // No sample songs provided for preview; pass an empty list
-        MusicScreen(
-            songId = 1,
-            songs = emptyList(),
-            navController = navController
-        )
-    }
-}
+//         // No sample songs provided for preview; pass an empty list
+//         MusicScreen(
+
 
 @Preview(
     showBackground = true,
@@ -823,7 +948,6 @@ fun MusicControlsPreview_Toggled() {
     }
 }
 
-
 @Preview(showBackground = true, name = "SongsPeekBar - Dark", backgroundColor = 0xFF000000)
 @Composable
 fun SongsPeekBarPreview_Dark() {
@@ -833,12 +957,11 @@ fun SongsPeekBarPreview_Dark() {
             onExpand = {}
         )
     }
-}*/
-
+}
 
 @Preview(showBackground = true, name = "MusicScreen (full) Preview", backgroundColor = 0xFF000000, showSystemUi = true)
 @Composable
-fun MusicScreenFullPreview() {
+fun MusicPlayerScreenFullPreview() {
     MaterialTheme {
         val context = LocalContext.current
         val navController = remember { androidx.navigation.NavController(context) }
@@ -852,7 +975,7 @@ fun MusicScreenFullPreview() {
         val vm = remember { MusicPlayerViewModel() }
 
         // call the real MusicScreen with a sample start song id of 0
-        MusicScreen(songId = 0, songs = sampleSongs, navController = navController, viewModel = vm)
+        MusicPlayerScreen(songId = 0, songs = sampleSongs, navController = navController, viewModel = vm)
     }
 }
 
@@ -872,7 +995,8 @@ fun SongsModalBottomSheetPreview_Expanded() {
             visible = true,
             onDismiss = {},
             onSongSelected = {},
-            backgroundColor = Color(0xFF121212)
+            backgroundColor = Color(0xFF121212),
+            peekHeight = 70.dp
         )
     }
 }
@@ -892,9 +1016,8 @@ fun SongsModalBottomSheetPreview_Collapsed() {
             visible = false,
             onDismiss = {},
             onSongSelected = {},
-            backgroundColor = Color(0xFF222222)
+            backgroundColor = Color(0xFF222222),
+            peekHeight = 80.dp
         )
     }
 }
-
-

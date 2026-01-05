@@ -10,15 +10,21 @@ interface RadioRepository {
 
 class RadioRepositoryImpl(private val api: RadioApiService) : RadioRepository {
     override suspend fun searchStations(query: String, limit: Int): List<RadioStation> {
-        return api.searchStations(query, limit)
+        return api.searchStations(query, limit).map { st ->
+            // store the station with formatted name
+            st.copy(name = com.example.musicplayer.Util.formatStation(st))
+        }
     }
 
     override suspend fun topVoted(limit: Int): List<RadioStation> {
-        return api.topVoted(limit)
+        return api.topVoted(limit).map { st ->
+            st.copy(name = com.example.musicplayer.Util.formatStation(st))
+        }
     }
 
     override suspend fun getStationById(id: String): RadioStation? {
         val list = api.searchStations("", 100)
-        return list.firstOrNull { it.stationuuid == id }
+        val found = list.firstOrNull { it.stationuuid == id }
+        return found?.copy(name = com.example.musicplayer.Util.formatStation(found))
     }
 }

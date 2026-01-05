@@ -3,23 +3,17 @@ package com.example.musicplayer.songlist
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.musicplayer.model.RadioStation
 import com.example.musicplayer.model.Song
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlin.collections.filter
-import kotlin.collections.filterNot
-import kotlin.collections.indices
-import kotlin.collections.sortedBy
-import kotlin.collections.sortedByDescending
-import kotlin.collections.toList
-import kotlin.text.contains
-import kotlin.text.isBlank
-import kotlin.text.lowercase
-import kotlin.text.trim
+import kotlinx.coroutines.withContext
+import com.example.musicplayer.Util
 
 class SongListViewModel(initialSongs: List<Song> = emptyList()) : ViewModel() {
 
@@ -123,5 +117,80 @@ class SongListViewModel(initialSongs: List<Song> = emptyList()) : ViewModel() {
 
     fun clearSelection() {
         _selectedId.value = null
+    }
+
+    // --- Radio stations caching/fetching ---
+    private val _radioStations = MutableStateFlow<List<RadioStation>>(emptyList())
+    val radioStations: StateFlow<List<RadioStation>> = _radioStations
+
+    private val _radioLoading = MutableStateFlow(false)
+    val radioLoading: StateFlow<Boolean> = _radioLoading
+
+    private val _radioError = MutableStateFlow<String?>(null)
+    val radioError: StateFlow<String?> = _radioError
+
+    /**
+     * Fetch radio stations for GTA only when we don't already have cached stations.
+     * Use this to avoid re-fetching when navigating back from the player screen.
+     */
+    fun fetchRadioStationsIfNeeded(limit: Int = 100) {
+        if (_radioStations.value.isNotEmpty() || _radioLoading.value) return
+        viewModelScope.launch {
+            _radioLoading.value = true
+            _radioError.value = null
+            try {
+                val list = withContext(Dispatchers.IO) { Util.fetchStationsNearGTA(limit = limit) }
+                _radioStations.value = list
+                if (list.isEmpty()) _radioError.value = "No stations found in the GTA"
+            } catch (e: Exception) {
+                _radioError.value = e.message ?: "Failed to load GTA stations"
+            } finally {
+                _radioLoading.value = false
+            }
+        }
+    }
+
+    /** Force refresh the radio station list. */
+    fun refreshRadioStations(limit: Int = 100) {
+        viewModelScope.launch {
+            _radioLoading.value = true
+            _radioError.value = null
+            try {
+                val list = withContext(Dispatchers.IO) { Util.fetchStationsNearGTA(limit = limit) }
+                _radioStations.value = list
+                if (list.isEmpty()) _radioError.value = "No stations found in the GTA"
+            } catch (e: Exception) {
+                _radioError.value = e.message ?: "Failed to load GTA stations"
+            } finally {
+                _radioLoading.value = false
+            }
+        }
+    }
+
+    // --- Provide the default (built-in) user stations for the UI ---
+    private val _userStations = MutableStateFlow<List<RadioStation>>(emptyList())
+    val userStations: StateFlow<List<RadioStation>> = _userStations
+
+    /** Load the built-in default user stations from Util (synchronous, cheap). */
+    fun loadDefaultUserStations() {
+        viewModelScope.launch {
+            try {
+                _userStations.value = Util.getDefaultUserStations()
+            } catch (e: Exception) {
+                _userStations.value = emptyList()
+            }
+        }
+    }
+
+    // --- Persistent UI state for radio selection ---
+    private val _isRadioSelected = MutableStateFlow(false)
+    val isRadioSelected: StateFlow<Boolean> = _isRadioSelected
+
+    fun setRadioSelected(selected: Boolean) {
+        _isRadioSelected.value = selected
+    }
+
+    fun toggleRadioSelected() {
+        _isRadioSelected.value = !_isRadioSelected.value
     }
 }

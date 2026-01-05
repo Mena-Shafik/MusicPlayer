@@ -34,7 +34,8 @@ fun MainBackground(){
             RadialSpec(fx = 0.8f, fy = 0.2f, radius = 180.dp, colors = listOf(Color(0xFF4CAF50), Color(0xFF009688), Color.Transparent), alpha = 0.2f),
             RadialSpec(fx = 0.3f, fy = 0.2f, radius = 180.dp, colors = listOf(Color(0xFFE53935), Color(0xFFF4511E), Color.Transparent), alpha = 0.2f),
             RadialSpec(fx = 0.0f, fy = 0.0f, radius = 220.dp, colors = listOf(Color(0xFF1F53A2), Color(0xFF142E8C), Color.Transparent), alpha = 0.3f),
-        ),
+
+            ),
         blurRadius = 90.dp // slightly less blur so smaller spots stay focused
     )
     // Black vertical gradient overlay (top -> bottom)

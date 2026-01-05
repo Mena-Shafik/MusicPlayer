@@ -21,26 +21,27 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.musicplayer.model.Song
-import com.example.musicplayer.music.MusicScreen
+import com.example.musicplayer.model.RadioStation
+import com.example.musicplayer.music.MusicPlayerScreen
+import com.example.musicplayer.radio.RadioPlayerScreen
 import com.example.musicplayer.songlist.ListSongsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import android.graphics.Color as AndroidColor
 
 class MainActivity : ComponentActivity() {
 
     private val REQUESTCODE: Int = 99
     private val viewModel: MainViewModel by viewModels()
 
+    @androidx.annotation.OptIn(UnstableApi::class)
     @OptIn(ExperimentalAnimationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,19 +94,56 @@ class MainActivity : ComponentActivity() {
                         val songs: List<Song> = remember(context) { Util.getAllAudioFromDevice(context) }
                         val song = songId?.let { id -> songs.find { it.id == id } }
                         song?.let {
-                            MusicScreen(
+                            MusicPlayerScreen(
                                 songId = songId,
                                 songs = songs,
                                 navController = navController
                             )
                         }
                     }
+
+                    // Radio player route: optionally pass a Serializable RadioStation object
+                    composable(
+                        "radioPlayer",
+                        arguments = listOf(navArgument("station") { type = NavType.ParcelableType(RadioStation::class.java) })
+                    ) { backStackEntry ->
+                        val station = backStackEntry.arguments?.getParcelable<RadioStation>("station")
+                        if (station != null) {
+                            RadioPlayerScreen(radioStation = station, navController = navController)
+                        } else {
+                            // No station object provided; show placeholder player
+                            RadioPlayerScreen(radioStation = RadioStation(null, "Unknown Station", null), navController = navController)
+                        }
+                    }
+
+                    // Backwards-compatible route: encoded name/url/fav/tags path (used in many places in the app)
+                    composable(
+                        "radioPlayer/{name}/{url}/{favicon}/{tags}",
+                        arguments = listOf(
+                            navArgument("name") { type = NavType.StringType },
+                            navArgument("url") { type = NavType.StringType },
+                            navArgument("favicon") { type = NavType.StringType },
+                            navArgument("tags") { type = NavType.StringType }
+                        )
+                    ) { backStackEntry ->
+                        val nameEnc = backStackEntry.arguments?.getString("name")
+                        val urlEnc = backStackEntry.arguments?.getString("url")
+                        val favEnc = backStackEntry.arguments?.getString("favicon")
+                        val tagsEnc = backStackEntry.arguments?.getString("tags")
+                        val decodedName = try { if (nameEnc != null) java.net.URLDecoder.decode(nameEnc, "UTF-8") else "Unknown" } catch (_: Exception) { nameEnc ?: "Unknown" }
+                        val decodedUrl = try { if (urlEnc != null) java.net.URLDecoder.decode(urlEnc, "UTF-8") else null } catch (_: Exception) { urlEnc }
+                        val decodedFav = try { if (favEnc != null) java.net.URLDecoder.decode(favEnc, "UTF-8") else null } catch (_: Exception) { favEnc }
+                        val decodedTags = try { if (tagsEnc != null) java.net.URLDecoder.decode(tagsEnc, "UTF-8") else null } catch (_: Exception) { tagsEnc }
+                        try { Log.d("MainActivity", "Decoded radio args: name=$decodedName url=$decodedUrl favicon=$decodedFav tags=$decodedTags") } catch (_: Throwable) {}
+                        val stationFromPath = RadioStation(stationuuid = null, name = decodedName, url = decodedUrl, favicon = decodedFav, tags = decodedTags)
+                        RadioPlayerScreen(radioStation = stationFromPath, navController = navController)
+                    }
                 }
             }
         }
     }
 
-    private fun setupPermissions() {
+    /*private fun setupPermissions() {
         // Use READ_MEDIA_AUDIO (Android 13+) for this project; the project's min sdk ensures availability.
         val readPermission = Manifest.permission.READ_MEDIA_AUDIO
 
@@ -118,10 +156,33 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.i("MainActivity", "All required permissions already granted")
         }
+    }*/
+
+
+    private fun setupPermissions() {
+        val required = mutableListOf<String>()
+        required += Manifest.permission.READ_MEDIA_AUDIO
+        required += Manifest.permission.POST_NOTIFICATIONS
+
+        // Filter only permissions not yet granted
+        val toRequest = required.distinct().filter { perm ->
+            ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (toRequest.isNotEmpty()) {
+            Log.i("MainActivity", "Requesting permissions: ${toRequest.joinToString()}")
+            ActivityCompat.requestPermissions(this, toRequest.toTypedArray(), REQUESTCODE)
+        } else {
+            Log.i("MainActivity", "All required permissions already granted")
+        }
     }
 
     private fun makeRequest() {
-        val perms = arrayOf(Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
+        val perms = arrayOf(
+            Manifest.permission.READ_MEDIA_AUDIO,
+            Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.RECORD_AUDIO // include only if you use microphone/song recognition
+        )
         ActivityCompat.requestPermissions(this, perms, REQUESTCODE)
     }
 
