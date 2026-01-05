@@ -97,4 +97,5 @@ dependencies {
 
     // Image loading (Coil Compose) for remote favicons
     implementation("io.coil-kt:coil-compose:2.4.0")
+// Or the latest stable version
 }
