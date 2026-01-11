@@ -1,5 +1,12 @@
 package com.example.musicplayer.composable
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,51 +53,77 @@ fun MainAppBar(
     onQueryChange: (String) -> Unit,
     onSearchedClicked: (String) -> Unit
 ) {
-    if (showSearch) {
-        TopAppBar(
-            title = {
-                SearchBar(
-                    text = query,
-                    onTextChange = onQueryChange,
-                    onCloseClicked = {
-                        onQueryChange("")
-                        onToggleSearch()
-                    },
-                    onSearchedClicked = {
-                        onSearchedClicked(it)
+    AnimatedContent(
+        targetState = showSearch,
+        transitionSpec = {
+            if (targetState) {
+                // Entering search mode: fade in + scale in
+                fadeIn(animationSpec = tween(400)) + scaleIn(
+                    initialScale = 0.95f,
+                    animationSpec = tween(400)
+                ) togetherWith fadeOut(animationSpec = tween(200)) + scaleOut(
+                    targetScale = 1.05f,
+                    animationSpec = tween(200)
+                )
+            } else {
+                // Exiting search mode: fade out + scale out
+                fadeIn(animationSpec = tween(300)) + scaleIn(
+                    initialScale = 0.95f,
+                    animationSpec = tween(300)
+                ) togetherWith fadeOut(animationSpec = tween(400)) + scaleOut(
+                    targetScale = 1.05f,
+                    animationSpec = tween(400)
+                )
+            }
+        },
+        label = "Search bar transition"
+    ) { isSearchVisible ->
+        if (isSearchVisible) {
+            TopAppBar(
+                title = {
+                    SearchBar(
+                        text = query,
+                        onTextChange = onQueryChange,
+                        onCloseClicked = {
+                            onQueryChange("")
+                            onToggleSearch()
+                        },
+                        onSearchedClicked = {
+                            onSearchedClicked(it)
+                        }
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+            )
+        } else {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = if (isRadio) "Radio" else "Songs",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                },
+                actions = {
+                    IconButton(onClick = onToggleSearch) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = "Search Icon",
+                            tint = Color.White
+                        )
                     }
-                )
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-        )
-    } else {
-        TopAppBar(
-            title = {
-                Text(
-                    text = if (isRadio) "Radio" else "Songs",
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-            },
-            actions = {
-                IconButton(onClick = onToggleSearch) {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = "Search Icon",
-                        tint = Color.White
-                    )
-                }
-                IconButton(onClick = onToggleRadio) {
-                    Icon(
-                        imageVector = if(isRadio){Icons.Filled.LibraryMusic} else{Icons.Filled.Radio},
-                        contentDescription = "Toggle Song/Radio List",
-                        tint = Color.White
-                    )
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-            modifier = Modifier.statusBarsPadding()
-        )
+                    IconButton(onClick = onToggleRadio) {
+                        Icon(
+                            imageVector = if(isRadio){Icons.Filled.LibraryMusic} else{Icons.Filled.Radio},
+                            contentDescription = "Toggle Song/Radio List",
+                            tint = Color.White
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                modifier = Modifier.statusBarsPadding()
+            )
+        }
     }
 }
 
@@ -165,7 +198,8 @@ fun SearchBar(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
                 disabledContainerColor = Color.Transparent,
-                cursorColor = Color.White.copy(alpha = 0.6f)
+                cursorColor = Color(0xFFFFA500),
+                focusedIndicatorColor = Color(0xFFFFA500)
             )
         )
     }
