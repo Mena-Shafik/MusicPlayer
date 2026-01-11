@@ -33,9 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PauseCircleFilled
 import androidx.compose.material.icons.filled.PlayCircleFilled
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,15 +61,15 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 import com.example.musicplayer.R
 import com.example.musicplayer.Util
-import com.example.musicplayer.radio.RadioPlayerService
+import com.example.musicplayer.composable.RadioTagChips
 import com.example.musicplayer.model.RadioStation
-import kotlinx.coroutines.launch
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @SuppressLint("ContextCastToActivity")
 @OptIn(ExperimentalMaterial3Api::class)
-@UnstableApi
 @Composable
 fun RadioPlayerScreen(
     radioStation: RadioStation,
@@ -105,6 +103,26 @@ fun RadioPlayerScreen(
             s.contains("playing") || s == "ready" || s.contains("androidplayer_playing")
         }
     }
+
+    // Read latest metadata published by the service and split into title/artist for display
+    val stationMeta = try { RadioPlayerService.lastMetadata } catch (_: Throwable) { null }
+
+    fun splitMeta(meta: String?): Pair<String?, String?> {
+        if (meta.isNullOrBlank()) return Pair(null, null)
+        val clean = meta.trim().replace(Regex("[\n\r\t]+"), " ")
+        val seps = listOf(" - ", " — ", " – ", " / ", " | ")
+        for (sep in seps) {
+            if (clean.contains(sep)) {
+                val parts = clean.split(sep, limit = 2)
+                val artist = parts.getOrNull(0)?.trim()
+                val title = parts.getOrNull(1)?.trim()
+                return Pair(title.takeIf { !it.isNullOrBlank() }, artist.takeIf { !it.isNullOrBlank() })
+            }
+        }
+        return Pair(clean.takeIf { it.isNotBlank() }, null)
+    }
+
+    val (playingTitle, playingArtist) = splitMeta(stationMeta)
 
     // Keep polling the service status so UI stays in sync with the actual service.
     LaunchedEffect(Unit) {
@@ -181,16 +199,46 @@ fun RadioPlayerScreen(
                 StationImage(path = favUrl, onDominantColor = { extracted -> backgroundColor = extracted })
                 Column(modifier = Modifier.size(340.dp, 130.dp).padding(10.dp).align(Alignment.CenterHorizontally)) {
                     Text(text = radioStation.name ?: "Unknown", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp, textAlign = TextAlign.Center, modifier = Modifier.width(340.dp).padding(10.dp))
-                    RadioTagChips(tagsRaw = radioStation.tags, modifier = Modifier.width(340.dp), chipBackground = Color.White.copy(alpha = 0.12f), chipContentColor = Color.LightGray)
+                    RadioTagChips(
+                        tagsRaw = radioStation.tags,
+                        modifier = Modifier.width(340.dp),
+                        chipBackground = Color.White.copy(alpha = 0.12f),
+                        chipContentColor = Color.LightGray
+                    )
 
-                    // (status row removed: status will be shown at bottom as a simple text)
+                    // Show current song metadata (title then artist) when available from the service
+                    if (!playingTitle.isNullOrBlank()) {
+                        Text(
+                            text = playingTitle,
+                            color = Color.White.copy(alpha = 0.95f),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.width(340.dp).padding(top = 6.dp)
+                        )
+                    }
+
+                    if (!playingArtist.isNullOrBlank()) {
+                        Text(
+                            text = playingArtist,
+                            color = Color.White.copy(alpha = 0.75f),
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.width(340.dp).padding(top = 2.dp)
+                        )
+                    }
                 }
                 RadioControls(isPlaying = isPlaying, onPlayPause = { togglePlayPause() })
+                // Separate composable to display now-playing title and artist under the controls
+                RadioNowPlayingInfo(title = playingTitle, artist = playingArtist)
             }
 
             // Show the raw stream/service status as plain text at the bottom center of the screen
+            // Keep service status separate from title/artist — always show svcStatus here.
+            val statusText = svcStatus.ifBlank { "IDLE" }
+
             Text(
-                text = svcStatus.ifBlank { "Idle" },
+                text = statusText,
                 color = Color.White.copy(alpha = 0.50f),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
@@ -287,11 +335,11 @@ fun RadioControls(
     accentColor: Color = Color.White
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // Row containing the play/pause button
         Row(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         ) {
 
             val morphDuration = 320
@@ -352,6 +400,38 @@ fun RadioControls(
     }
 }
 
+@Composable
+fun RadioNowPlayingInfo(title: String?, artist: String?, modifier: Modifier = Modifier) {
+    // Separate composable that displays title and artist in a centered column.
+    Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (!title.isNullOrBlank()) {
+            Text(
+                text = title,
+                color = Color.White.copy(alpha = 0.95f),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        if (!artist.isNullOrBlank()) {
+            Text(
+                text = artist,
+                color = Color.White.copy(alpha = 0.75f),
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "RadioNowPlayingInfo Preview", backgroundColor = 0xFF000000)
+@Composable
+fun RadioNowPlayingInfoPreview() {
+    MaterialTheme {
+        RadioNowPlayingInfo(title = "Preview Title", artist = "Preview Artist")
+    }
+}
 
 @Suppress("unused")
 @Composable
@@ -378,23 +458,9 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
     }
 }
 
-
-
-
-@Preview(showBackground = true, name = "RadioControls Preview - Paused", backgroundColor = 0xFF000000)
-@Composable
-fun RadioControlsPreview_Paused() {
-    MaterialTheme {
-        Column(modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.Black)
-            .padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            RadioControls(isPlaying = false, onPlayPause = {})
-        }
-    }
-}
-
-@Preview(showBackground = true, name = "RadioScreen (real) Preview", backgroundColor = 0xFF000000, showSystemUi = true)
+// Preview: Full Radio Screen (playing)
+@OptIn(UnstableApi::class)
+@Preview(showBackground = true, showSystemUi = true, name = "RadioScreen (real) Preview", backgroundColor = 0xFF000000)
 @Composable
 fun RadioScreenPreview() {
     MaterialTheme {
@@ -415,31 +481,11 @@ fun RadioScreenPreview() {
             geo_long = null
         )
 
-        // Call the real RadioPlayerScreen preview with the sample station
-        RadioPlayerScreen(radioStation = sampleStation, navController = navController)
-    }
-}
+        // Provide sample metadata and status for the preview so the UI shows title/artist
+        try { RadioPlayerService.lastMetadata = "Ed Sheeran - Shape of You" } catch (_: Throwable) {}
+        try { RadioPlayerService.lastStatus = "playing" } catch (_: Throwable) {}
 
-// Clean single preview for RadioPlayerScreen
-@Preview(showBackground = true)
-@Composable
-fun RadioPlayerScreenPreview() {
-    MaterialTheme {
-        val sampleStation = RadioStation(
-            stationuuid = "preview-z103",
-            name = "Z103.5",
-            url = "https://evanov.leanstream.co/CIDCFM",
-            favicon = "",
-            country = "Canada",
-            tags = "top40",
-            bitrate = 128,
-            codec = "mp3",
-            votes = 0,
-            geo_lat = null,
-            geo_long = null
-        )
-        val ctx = LocalContext.current
-        val navController = remember { androidx.navigation.NavController(ctx) }
+        // Call the real RadioPlayerScreen preview with the sample station
         RadioPlayerScreen(radioStation = sampleStation, navController = navController)
     }
 }

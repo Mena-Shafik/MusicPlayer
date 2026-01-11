@@ -1,10 +1,13 @@
 package com.example.musicplayer.songlist
 
-import MainAppBar
 import android.app.Activity
 import android.os.Build //keep
 import android.util.Log
 import androidx.annotation.RequiresApi  //keep
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +21,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -99,9 +105,12 @@ import kotlin.collections.getOrNull
 import kotlin.text.isNotEmpty
 import androidx.compose.runtime.SideEffect
 import com.example.musicplayer.composable.MainBackground
+import com.example.musicplayer.composable.RadioTagChips
+import com.example.musicplayer.composable.CompactRadioTagChips
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import android.widget.Toast
-import com.example.musicplayer.model.RadioStation
+import com.example.musicplayer.composable.MainAppBar
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.ContextCompat
@@ -365,10 +374,7 @@ fun DisplayListSongs(
         LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
             itemsIndexed(songs) { index, song ->
                 SongCardRow(
-                    artist = song.artist,
-                    title = song.title,
-                    duration = song.duration,
-                    path = song.path,
+                    song = song,
                     onClick = { onSongClicked(index) }
                 )
             }
@@ -412,7 +418,7 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val imageUrl = Util.getStationImageUrl(station).ifBlank { null }
@@ -425,22 +431,31 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(Color.White),
                                 contentScale = ContentScale.Crop,
-                                placeholder = painterResource(id = com.example.musicplayer.R.drawable.ic_radio),
-                                error = painterResource(id = com.example.musicplayer.R.drawable.ic_radio)
+                                placeholder = painterResource(id = R.drawable.ic_radio),
+                                error = painterResource(id = R.drawable.ic_radio)
                             )
 
                             Column(modifier = Modifier
-                                .padding(start = 12.dp)
+                                .padding(start = 10.dp)
                                 .weight(1f)) {
                                 Text(text = displayName, color = Color.White, fontWeight = FontWeight.Bold)
+                                // Add compact chip tags below the station name
+                                CompactRadioTagChips(
+                                    tagsRaw = station.tags,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    chipBackground = Color.White.copy(alpha = 0.2f),
+                                    chipContentColor = Color.White
+                                )
                             }
 
-                            Button(onClick = {
+                            IconButton(
+                                modifier = Modifier.size(60.dp),
+                                onClick = {
                                 // Start the RadioPlayerService to play the stream URL, then navigate to RadioPlayerScreen
                                 val url = station.url ?: ""
                                 if (url.isBlank()) {
                                     Toast.makeText(context, "No stream URL for $displayName", Toast.LENGTH_SHORT).show()
-                                    return@Button
+                                    return@IconButton
                                 }
 
                                 try {
@@ -474,7 +489,12 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                 try { Log.d("DisplayListRadioStations", "Navigating to player: name=$displayName url=$url favicon=$favicon tags=$tagsRaw") } catch (_: Throwable) {}
                                 navController.navigate("radioPlayer/$encName/$encUrl/$encFav/$encTags")
                             }) {
-                                Text("Play")
+                                Icon(
+                                    imageVector = Icons.Filled.PlayCircle,
+                                    contentDescription = "Play",
+                                    modifier = Modifier.size(50.dp),
+                                    tint = Color.White
+                                )
                             }
                         }
                     }
@@ -484,17 +504,28 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
     }
 }
 
+
 @Composable
 fun SongCardRow(
-    artist: String,
-    title: String,
-    duration: Double,
-    path: String,
+    song: Song,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val imageBitmap = Util.getAlbumArt(context, path)
+    var imageBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+
+    LaunchedEffect(song.path) {
+         imageBitmap = null  // reset when song changes
+        if (song.path.isNotBlank()) {
+            imageBitmap = withContext(Dispatchers.IO) {
+                try {
+                    Util.getAlbumArt(context, song.path)
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+        }
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -504,39 +535,45 @@ fun SongCardRow(
             .clickable(onClick = onClick)
             .padding(10.dp,0.dp,0.dp,0.dp)
     ) {
-        if (imageBitmap != null) {
-            Image(
-                bitmap = imageBitmap,
-                contentDescription = "Artist image",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(60.dp)
-                    .height(60.dp)
-                    .clip(RoundedCornerShape(2.dp))
-            )
-        } else {
-            Image(
-                painter = painterResource(id = R.drawable.ic_album),
-                contentDescription = "Placeholder image",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(70.dp)
-                    .height(60.dp)
-                    .clip(RoundedCornerShape(2.dp))
-            )
+        val imgModifier = Modifier
+            .width(60.dp)
+            .height(60.dp)
+            .clip(RoundedCornerShape(2.dp))
+
+        Crossfade(
+            targetState = imageBitmap,
+            animationSpec = tween(500),
+            label = "Album art crossfade"
+        ) { bitmap ->
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = "Album art",
+                    contentScale = ContentScale.Crop,
+                    modifier = imgModifier
+                )
+            } else {
+                // Show placeholder while loading or if no album art found
+                Image(
+                    painter = painterResource(id = R.drawable.ic_album),
+                    contentDescription = "Placeholder image",
+                    contentScale = ContentScale.Crop,
+                    modifier = imgModifier
+                )
+            }
         }
 
         Column(Modifier
             .padding(start = 12.dp)
             .weight(1f)) {
             Text(
-                text = title,
+                text = song.title,
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
             )
             Text(
-                text = artist,
+                text = song.artist,
                 color = Color.White.copy(alpha = 0.85f),
                 maxLines = 1
             )
@@ -544,7 +581,7 @@ fun SongCardRow(
 
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = Util.converter(duration),
+                text = Util.converter(song.duration),
                 Modifier
                     .width(80.dp)
                     .padding(10.dp),
@@ -759,10 +796,7 @@ fun CardPreview() {
     MaterialTheme {
         Surface(color = Color.Black) {
             SongCardRow(
-                artist = "Artist",
-                title = "Title",
-                duration = 260000.0,
-                path = "", // empty path triggers vinyl placeholder
+                song = Song(id = 1, title = "Title", artist = "Artist", duration = 260000.0, path = ""),
                 onClick = {}
             )
         }
@@ -798,34 +832,10 @@ private fun MiniPlayerPreview() {
 fun DisplayListPreview() {
     MaterialTheme {
         val sampleSongs = listOf(
-            Song(
-                id = 1,
-                title = "Preview Song",
-                artist = "Preview Artist",
-                duration = 180000.0,
-                path = ""
-            ),
-            Song(
-                id = 2,
-                title = "Another Track",
-                artist = "Artist Two",
-                duration = 200000.0,
-                path = ""
-            ),
-            Song(
-                id = 3,
-                title = "Another Track",
-                artist = "Artist Three",
-                duration = 200000.0,
-                path = ""
-            ),
-            Song(
-                id = 4,
-                title = "Another Track",
-                artist = "Artist Four",
-                duration = 200000.0,
-                path = ""
-            )
+            Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = ""),
+            Song(id = 2, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = ""),
+            Song(id = 3, title = "Another Track", artist = "Artist Three", duration = 200000.0, path = ""),
+            Song(id = 4, title = "Another Track", artist = "Artist Four", duration = 200000.0, path = "")
         )
         Scaffold(
             topBar = {
@@ -877,17 +887,14 @@ fun DisplayListPreview() {
 @Composable
 fun DisplayListRadioStationsPreview() {
     MaterialTheme {
-        val context = LocalContext.current
         val navController = rememberNavController()
-        // Create a view model instance for preview and load the built-in default stations
-        val vm = remember { SongListViewModel() }
-        LaunchedEffect(Unit) {
-            // Load defaults (this is cheap and synchronous in the VM implementation)
-            vm.loadDefaultUserStations()
-        }
+        // Create a view model instance for preview with pre-populated default stations
+        val sampleStations = Util.getDefaultUserStations()
+        val vm = remember { SongListViewModel(userStationsInitial = sampleStations) }
 
         Surface(color = Color.Black) {
             Box(modifier = Modifier.fillMaxSize()) {
+                MainBackground()
                 DisplayListRadioStations(navController = navController, viewModel = vm, modifier = Modifier.fillMaxSize())
             }
         }

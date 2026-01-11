@@ -90,14 +90,25 @@ class PlayerForegroundService : Service() {
 
         // initialize player
         mediaPlayer = MediaPlayer().apply {
+            // Set audio attributes for music playback
             setAudioAttributes(
-                AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .setUsage(AudioAttributes.USAGE_MEDIA).build()
+                AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .build()
             )
+
             setOnCompletionListener {
                 // when track completes, move to next
                 nextInternal()
             }
+
+            setOnErrorListener { _, what, extra ->
+                Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
+                // Return true if error is handled, false otherwise
+                true
+            }
+
             setOnPreparedListener { mp ->
                 try {
                     val d = try { mp.duration.toLong() } catch (_: Throwable) { 0L }
@@ -287,6 +298,8 @@ class PlayerForegroundService : Service() {
         try {
             Log.d(TAG, "prepareCurrent requested idx=$idx path=${song.path}")
             mediaPlayer?.reset()
+
+
             // Use the correct setDataSource overload depending on path format.
             try {
                 val p = song.path
@@ -316,7 +329,7 @@ class PlayerForegroundService : Service() {
             // fetch album art asynchronously so we don't block service startup/main thread
             try {
                 val artPath = song.path
-                // Launch IO work to extract embedded artwork (may use MediaMetadataRetriever)
+                // Launch single IO coroutine to extract and update artwork
                 scope.launch(Dispatchers.IO) {
                     try {
                         val art = try {
@@ -324,8 +337,8 @@ class PlayerForegroundService : Service() {
                         } catch (_: Throwable) { null }
                         if (art != null) {
                             currentArtwork = art
-                            // update the ongoing notification with artwork on the main thread
-                            launch(Dispatchers.Main) { try { updateNotificationFromSession() } catch (_: Throwable) {} }
+                            // Update notification on completion (stays on IO thread for safety)
+                            updateNotificationFromSession()
                         }
                     } catch (_: Throwable) { /* ignore */ }
                 }
@@ -334,6 +347,8 @@ class PlayerForegroundService : Service() {
             currentPreparedIndex = idx
             currentPreparedPath = song.path
             Log.d(TAG, "prepareCurrent: marked currentPreparedIndex=$currentPreparedIndex currentPreparedPath=$currentPreparedPath isPreparing=$isPreparing")
+
+
             // prepare async and start when prepared
             // prevent overlapping prepares
             if (!isPreparing) {
@@ -397,9 +412,11 @@ class PlayerForegroundService : Service() {
 
     private fun pauseInternal(suppressNotification: Boolean = false) {
         try {
-            mediaPlayer?.pause()
-            PlayerRepository.setIsPlaying(false)
-            updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.pause()
+                PlayerRepository.setIsPlaying(false)
+                updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+            }
             if (suppressNotification) {
                 // user dismissed notification; cancel it and do not re-post
                 PlayerNotificationManager.cancel(this)
@@ -472,7 +489,6 @@ class PlayerForegroundService : Service() {
                     // wraps currentPosition access in try/catch. Duration is sourced from the repo's
                     // last-known prepared duration (set in onPrepared via markPrepared).
                     PlayerRepository.updatePositionFromPlayerSafe(mediaPlayer)
-                    val pos = PlayerRepository.positionMs.value
                     val dur = PlayerRepository.getSafeDuration()
                     // reflect into the repo flows (position already updated). Keep duration if known.
                     if (dur > 0L) PlayerRepository.setDurationMs(dur)
@@ -483,7 +499,7 @@ class PlayerForegroundService : Service() {
                         lastNotificationUpdateTime = now
                     }
                 } catch (_: Throwable) {}
-                delay(200)
+                delay(500)
             }
         }
     }

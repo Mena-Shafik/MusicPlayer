@@ -89,8 +89,6 @@ dependencies {
     // Media session helper
     implementation("androidx.media:media:1.6.0")
 
-    // OkHttp core
-    implementation("com.squareup.okhttp3:okhttp:4.11.0")
 
     // For Slider
     implementation(libs.androidx.compose.material)

@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.musicplayer.Util
 
-class SongListViewModel(initialSongs: List<Song> = emptyList()) : ViewModel() {
+class SongListViewModel(initialSongs: List<Song> = emptyList(), userStationsInitial: List<RadioStation> = emptyList()) : ViewModel() {
 
     // raw playlist
     private val _songs = MutableStateFlow<List<Song>>(initialSongs)
@@ -168,7 +168,8 @@ class SongListViewModel(initialSongs: List<Song> = emptyList()) : ViewModel() {
     }
 
     // --- Provide the default (built-in) user stations for the UI ---
-    private val _userStations = MutableStateFlow<List<RadioStation>>(emptyList())
+    // Initialize from constructor param so previews can be synchronous and not recreate UI
+    private val _userStations = MutableStateFlow<List<RadioStation>>(userStationsInitial)
     val userStations: StateFlow<List<RadioStation>> = _userStations
 
     /** Load the built-in default user stations from Util (synchronous, cheap). */

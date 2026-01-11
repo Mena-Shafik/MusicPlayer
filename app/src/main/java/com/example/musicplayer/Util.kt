@@ -20,6 +20,12 @@ import java.util.ArrayList
 import java.util.Locale
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.net.URL
+import java.net.URLEncoder
+import java.net.HttpURLConnection
+import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class Util {
 
@@ -40,6 +46,7 @@ class Util {
                 MediaStore.Audio.AudioColumns.DATA,
                 MediaStore.Audio.AudioColumns.TITLE,
                 MediaStore.Audio.ArtistColumns.ARTIST,
+                MediaStore.Audio.AlbumColumns.ALBUM,
                 MediaStore.Audio.AudioColumns.DURATION
             )
             // check if it is a song
@@ -54,9 +61,9 @@ class Util {
                     if (path.toString().isBlank()) continue
                     val title = c.getString(1) ?: "Unknown"
                     val artist = c.getString(2) ?: "Unknown"
-                    val duration = c.getDouble(3)
-                    //val song = Song(count, title, artist, path, duration, getAlbumArt(c.getString(0)))
-                    val song = Song(count, title, artist, duration, path.toString() )
+                    val album = c.getString(3) ?: "Unknown"
+                    val duration = c.getDouble(4)
+                    val song = Song(count, title, artist, duration, path.toString(), album)
                     tempAudioList.add(song)
                     count++
 
@@ -64,7 +71,7 @@ class Util {
                         "Album id: ${song.id} | Title: ${song.title} | Artist: ${song.artist} | Path: ${song.path} | Duration: ${
                             Util.converter(song.duration)
                         }"
-                    Log.i("data", formatSongRow(song))
+                    //Log.i("data", formatSongRow(song))
                 }
                 c.close()
             }
@@ -104,17 +111,20 @@ class Util {
 
         fun formatSongTableHeader(): String {
             // %-4s = left-aligned width 4, %-30s = left-aligned width 30, etc.
-            return String.format(Locale.US, "%-4s %-30s %-20s %-40s %8s",
-                "ID", "Title", "Artist", "Path", "Duration")
+            // Columns: ID, Title, Artist, Album, Path, Duration
+            return String.format(Locale.US, "%-4s %-30s %-20s %-20s %-40s %8s",
+                "ID", "Title", "Artist", "Album", "Path", "Duration")
         }
 
         fun formatSongRow(song: Song): String {
             val id = song.id.toString()
-            val title = padOrTruncate(song.title, 40)
-            val artist = padOrTruncate(song.artist, 40)
+            val title = padOrTruncate(song.title.trim(), 30)
+            val artist = padOrTruncate(song.artist.trim(), 20)
+            // Normalize album and path presentation
+            val album = padOrTruncate(song.album?.trim(), 40)
             val duration = padOrTruncate(song.duration.toString(), 10)
             val path = padOrTruncate(song.path, 70)
-            return String.format(Locale.US, "%-4s %-30s %-20s %8s %-40s",id, title, artist, duration, path)
+            return String.format(Locale.US, "%-4s %-25s %-15s %-40s %-40s %8s", id, title, artist, album, path, duration)
         }
 
         fun converter(time: Double): String {
@@ -125,6 +135,16 @@ class Util {
             if (seconds < 10) elapsedTime += "0"
             elapsedTime += seconds
             return elapsedTime
+        }
+
+        suspend fun getAlbumArtAsync(context: Context, uri: String?): ImageBitmap? {
+            return withContext(Dispatchers.IO) {
+                try {
+                    getAlbumArt(context, uri)
+                } catch (_: Throwable) {
+                    null
+                }
+            }
         }
 
         fun getAlbumArt(context: Context, uri: String?): ImageBitmap? {
@@ -176,54 +196,106 @@ class Util {
             }
         }
 
-        /**
-         * Return an Android Bitmap of the embedded album art for the provided uri/path, or null.
-         * This mirrors the logic in getAlbumArt but returns Bitmap to be used for Palette and caching.
-         */
-        fun getAlbumArtBitmap(context: Context, uri: String?): Bitmap? {
-            if (uri.isNullOrBlank()) return null
+        suspend fun fetchLyricsOnline(song: Song?): String? {
+            if (song == null) return null
+            return withContext(Dispatchers.IO) {
+                try {
+                    val artist = song.artist.ifBlank { "" }
+                    val title = song.title.ifBlank { "" }
+                    if (artist.isBlank() && title.isBlank()) {
+                        try { Log.d(TAG, "fetchLyricsOnline: skip, empty artist/title for id=${song.id}") } catch (_: Throwable) {}
+                        return@withContext null
+                    }
 
-            val retriever = MediaMetadataRetriever()
-            return try {
-                val parsedUri = try { Uri.parse(uri) } catch (_: Exception) { null }
-                val hasScheme = parsedUri?.scheme?.isNotBlank() == true
+                    val encArtist = URLEncoder.encode(artist, "UTF-8")
+                    val encTitle = URLEncoder.encode(title, "UTF-8")
+                    val urlStr = "https://api.lyrics.ovh/v1/$encArtist/$encTitle"
+                    try { Log.d(TAG, "fetchLyricsOnline: request url=$urlStr title='${song.title}' artist='${song.artist}'") } catch (_: Throwable) {}
+                    val url = URL(urlStr)
+                    val conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        connectTimeout = 6000
+                        readTimeout = 6000
+                        doInput = true
+                    }
 
-                if (hasScheme) {
                     try {
-                        retriever.setDataSource(context, parsedUri)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "getAlbumArtBitmap: setDataSource(context, uri) failed for parsedUri=$parsedUri", e)
-                        return null
-                    }
-                } else {
-                    val file = File(uri)
-                    if (file.exists()) {
-                        try {
-                            retriever.setDataSource(file.absolutePath)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "getAlbumArtBitmap: setDataSource(file) failed for file=${file.absolutePath}", e)
-                            return null
+                        val code = conn.responseCode
+                        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                        val text = stream.bufferedReader().use { it.readText() }
+                        try { Log.d(TAG, "fetchLyricsOnline: http=$code responseLen=${text.length}") } catch (_: Throwable) {}
+                        if (code !in 200..299) {
+                            // Log a short snippet to help diagnose failures
+                            val snippet = text.take(200).replace('\n', ' ')
+                            try { Log.w(TAG, "fetchLyricsOnline: non-2xx code=$code body='${snippet}'") } catch (_: Throwable) {}
                         }
-                    } else {
-                        Log.w(TAG, "getAlbumArtBitmap: file does not exist: $uri")
-                        return null
+                        val json = JSONObject(text)
+                        val lyrics = json.optString("lyrics", "").trim()
+                        if (lyrics.isBlank()) {
+                            try { Log.d(TAG, "fetchLyricsOnline: no lyrics found for '${song.title}'") } catch (_: Throwable) {}
+                            null
+                        } else {
+                            try { Log.d(TAG, "fetchLyricsOnline: lyrics length=${lyrics.length} for '${song.title}'") } catch (_: Throwable) {}
+                            lyrics
+                        }
+                    } finally {
+                        conn.disconnect()
                     }
-                }
-
-                val art = retriever.embeddedPicture
-                if (art == null || art.isEmpty()) {
+                } catch (e: Throwable) {
+                    try { Log.w(TAG, "fetchLyricsOnline: exception for '${song.title}': ${e.message}", e) } catch (_: Throwable) {}
                     null
-                } else {
-                    BitmapFactory.decodeByteArray(art, 0, art.size)
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "getAlbumArtBitmap failed for uri=$uri", e)
-                null
-            } finally {
-                try { retriever.release() } catch (_: Exception) {}
             }
         }
 
+        /**
+         * Return a list of related songs that share the same album as the song at [currentIndex].
+         * The result is a list of Pair(index, Song). Fast-path uses Song.album when available
+         * and falls back to extracting album metadata from the file/uri when needed.
+         * This is a suspend function and should be called from a coroutine (it runs IO work).
+         */
+        suspend fun getRelatedSongs(songs: List<Song>, currentIndex: Int): List<Pair<Int, Song>> {
+            return withContext(Dispatchers.IO) {
+                if (currentIndex < 0 || currentIndex >= songs.size) return@withContext emptyList()
+                val current = songs[currentIndex]
+                val currentAlbum = if (!current.album.isNullOrBlank()) current.album else null
+                if (currentAlbum.isNullOrBlank()) return@withContext emptyList()
+
+                // Treat plain "Single"/"Singles" albums as not eligible for related songs.
+                val currentNorm = currentAlbum.trim().lowercase(Locale.getDefault())
+                if (currentNorm == "single" || currentNorm == "singles") return@withContext emptyList()
+
+                val related = ArrayList<Pair<Int, Song>>()
+                for ((idx, s) in songs.withIndex()) {
+                    if (idx == currentIndex) continue
+                    val album = if (!s.album.isNullOrBlank()) s.album else null
+                    if (!album.isNullOrBlank() && album.trim() == currentAlbum.trim()) {
+                        related.add(Pair(idx, s))
+                    }
+                }
+                related
+            }
+        }
+
+
+        /**
+         * Parse tags from Radio Browser's tags field (space or comma separated).
+         * Keep quoted segments intact if provided (e.g. "classic rock").
+         */
+        fun parseTags(raw: String?): List<String> {
+            if (raw.isNullOrBlank()) return emptyList()
+            // radio-browser tags often are space-separated or comma-separated
+            // Normalize commas to spaces, then split on whitespace, but keep quoted groups
+            val regex = Regex("\"([^\"]+)\"|'([^']+)'|([^,\\s]+)")
+            val matches = regex.findAll(raw)
+            val out = matches.mapNotNull { m ->
+                val g1 = m.groups[1]?.value
+                val g2 = m.groups[2]?.value
+                val g3 = m.groups[3]?.value
+                (g1 ?: g2 ?: g3)?.trim()?.takeIf { it.isNotEmpty() }
+            }.toList()
+            return out
+        }
 
 
         /*fun converter(time: Float): Float {
@@ -253,6 +325,34 @@ class Util {
                 blue = (color.blue * factor).coerceIn(0f, 1f),
                 alpha = color.alpha
             )
+        }
+
+        /**
+         * Insert an extra blank line after each of the first [firstLines] lines in the lyrics text.
+         * Preserves existing newline style and is robust to shorter inputs.
+         * Returns null if the input is null.
+         */
+        fun addSpacingToFirstLines(lyrics: String?, firstLines: Int = 5): String? {
+            if (lyrics == null) return null
+            if (lyrics.isBlank()) return lyrics
+
+            // Normalize to \n, then split.
+            val normalized = lyrics.replace("\r\n", "\n").replace("\r", "\n")
+            val parts = normalized.split("\n")
+            if (parts.size <= 1) return lyrics
+
+            val builder = StringBuilder()
+            for ((i, line) in parts.withIndex()) {
+                builder.append(line)
+                // Append original single newline after each line except last
+                if (i < parts.size - 1) builder.append('\n')
+
+                // After the first N lines append an extra newline to create spacing
+                if (i < firstLines && i < parts.size - 1) {
+                    builder.append('\n')
+                }
+            }
+            return builder.toString()
         }
 
         fun dim(clicked: Boolean): Color{
@@ -316,7 +416,7 @@ class Util {
                 try { Log.d(TAG, "fetchRadioStationsNearby: lat=$lat lng=$lng limit=$limit distanceKm=${distanceKm ?: "<any>"}") } catch (_: Throwable) {}
                 val api = com.example.musicplayer.radio.RadioApiService.create()
                 api.searchStationsNearby(lat, lng, limit, distanceKm)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 //Log.w(TAG, "fetchRadioStationsNearby failed for lat=$lat lng=$lng limit=$limit distanceKm=$distanceKm", e)
                 emptyList()
             }
@@ -328,340 +428,20 @@ class Util {
          * such as CHUM 104.5, KISS 92.5, VIRGIN 99.9 and Z103.5.
          */
         suspend fun fetchStationsNearGTA(limit: Int = 50): List<RadioStation> {
-            // preferred search keywords (ordered by preference)
-            val preferredQueries = listOf("boom 97.3", "energy 95.3", "kiss 92.5", "z103.5")
-            // Whitelist of known GTA station name tokens (lowercase substrings) to always include
-            val whitelist = listOf("z103.5", "chum 104.5", "chum fm", "kiss 92.5", "kiss fm", "virgin 99.9", "boom 97.3", "fresh radio 93.1", "energy 95.3")
-
-            fun isMusicStation(st: RadioStation): Boolean {
-                val tags = st.tags?.lowercase() ?: ""
-                val name = st.name?.lowercase() ?: ""
-                // simple genre/keyword check in tags or name
-                val musicKeywords = listOf("music", "pop", "rock", "dance", "hip", "hip-hop", "hiphop", "hits", "top 40", "top40", "chart", "r&b", "indie", "adult contemporary")
-                if (musicKeywords.any { tags.contains(it) || name.contains(it) }) return true
-
-                // prefer stations that appear to be FM music stations (name contains fm or frequency)
-                if (name.contains("fm") || Regex("\\b\\d{2,3}(\\.\\d)?\\b").containsMatchIn(name)) return true
-
-                // fallback: reasonable bitrate suggests a music stream
-                val bitrate = st.bitrate ?: 0
-                if (bitrate >= 32) return true
-
-                return false
-            }
-
-            val results = mutableListOf<RadioStation>()
-            val seen = mutableSetOf<String>()
-
-            // Helper to format station info for logging (use shared formatter)
-            // note: formatStation(st) returns the preferred stored name
-            // Keep for local logging; no change to semantics
-            fun formatStationInfo(st: RadioStation?): String {
-                if (st == null) return "<null>"
-                val nameRaw = st.name ?: "<no-name>"
-                val displayName = extractQuotedOrOriginal(nameRaw).ifBlank { nameRaw }
-                val uuid = st.stationuuid ?: "<no-uuid>"
-                val url = st.url ?: "<no-url>"
-                val tags = st.tags ?: ""
-                val br = st.bitrate ?: 0
-                // Include both displayName (quoted-extracted) and raw name for clearer logs
-                return "name=${displayName} raw=${nameRaw} | uuid=$uuid | url=$url | tags=$tags | br=$br"
-            }
-
-            // Haversine formula to compute distance between two lat/lon points in kilometers
-            fun haversineDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-                val r = 6371.0 // Earth radius km
-                val dLat = Math.toRadians(lat2 - lat1)
-                val dLon = Math.toRadians(lon2 - lon1)
-                val a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2)
-                val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-                return r * c
-            }
-
-            // GTA center (Toronto) and radius filter in km
+            // Simplified version: prefer geo-nearby endpoint and fall back to a general search.
+            // This avoids heavy heuristic filtering and complex deduping logic which was brittle.
             val GTA_LAT = 43.6532
             val GTA_LON = -79.3832
-            val RADIUS_KM = 200.0
-
-
-
-            fun tryAdd(st: RadioStation?) {
-                if (st == null) return
-                // Allow per-station overrides (e.g. known stations with better-hosted favicons).
-                // Create a local copy `s0` so we can tweak fields (RadioStation is an immutable data class).
-                val nameRaw = st.name ?: ""
-                val s0 = when {
-                    nameRaw.contains("Boom 97.3", ignoreCase = true) -> st.copy(favicon = "https://static.mytuner.mobi/media/tvos_radios/hJRnRqsLFv.png")
-                    nameRaw.contains("KISS 92.5", ignoreCase = true) -> st.copy(favicon = "https://static.mytuner.mobi/media/tvos_radios/x7349u4XVb.png")
-                    else -> st
-                }
-
-                // Always store the station with a formatted name (prefer quoted token)
-                val s = s0.copy(name = formatStation(s0))
-
-                val nameLower = s.name?.lowercase() ?: ""
-                // normalize name (remove non-alphanumeric) to match variants like "Z 103.5", "CIDC-FM", etc.
-                val nameNormalized = nameLower.replace(Regex("[^a-z0-9]"), "")
-                val whitelistNormalized = whitelist.map { it.replace(Regex("[^a-z0-9]"), "") }
-                val urlLower = s.url?.lowercase() ?: ""
-                val faviconLower = s.favicon?.lowercase() ?: ""
-                val urlTokens = listOf("cidcfm", "evanov", "leanstream", "z103")
-                val isWhitelisted = whitelist.any { nameLower.contains(it) } || whitelistNormalized.any { nameNormalized.contains(it) } || urlTokens.any { urlLower.contains(it) || faviconLower.contains(it) }
-
-                val keys = mutableListOf<String>()
-                // Helper: normalize urls (remove query and trailing slash) to use as dedupe keys
-                fun normalizedUrl(u: String?): String? {
-                    if (u.isNullOrBlank()) return null
-                    val noQuery = u.split('?')[0]
-                    return noQuery.trim().lowercase().trimEnd('/')
-                }
-
-                // Heuristic to detect FM stations (used for filtering)
-                fun isFMStation(s: RadioStation): Boolean {
-                    val n = s.name?.lowercase() ?: ""
-                    val t = s.tags?.lowercase() ?: ""
-                    val u = s.url?.lowercase() ?: ""
-                    if (t.contains(" fm") || t.contains("fm ") || t.split(Regex("[,; ]")).any { it == "fm" }) return true
-                    if (n.contains(" fm") || n.startsWith("fm ") || n.endsWith(" fm") || n.contains("fm ") || n.contains("fm.")) return true
-                    if (u.contains(".fm")) return true
-                    if (Regex("\\b\\d{2,3}(\\.\\d)?\\b").containsMatchIn(n)) return true
-                    return false
-                }
-                 s.stationuuid?.let { if (it.isNotBlank()) keys.add(it.trim().lowercase()) }
-                normalizedUrl(s.url)?.let { if (it.isNotBlank()) keys.add(it) }
-                 // also consider favicon host as a weak key
-                normalizedUrl(s.favicon)?.let { if (it.isNotBlank()) keys.add(it) }
-                if (nameNormalized.isNotBlank()) keys.add(nameNormalized)
-
-                // If any key already seen, skip duplicate
-                if (keys.any { seen.contains(it) }) {
-                    try { Log.d(TAG, "fetchStationsNearGTA: skipping duplicate station: ${formatStation(s)}") } catch (_: Throwable) {}
-                    return
-                }
-
-                 // Heuristic to identify aggregator/network entries (TuneIn, Radio.net, etc.) and skip them
-                 fun isNetwork(s: RadioStation): Boolean {
-                     val n = s.name?.lowercase() ?: ""
-                     val t = s.tags?.lowercase() ?: ""
-                     val u = s.url?.lowercase() ?: ""
-
-                     val networkKeywords = listOf("network", "networks", "affiliate", "affiliates", "group", "syndicat", "syndicated")
-                     if (networkKeywords.any { n.contains(it) || t.contains(it) }) return true
-
-                     val aggregatorTokens = listOf(
-                         "tunein",
-                         "radio.net",
-                         "radioplayer",
-                         "streema",
-                         "shoutcast",
-                         "icecast",
-                         "dirble",
-                         "audacy",
-                         "mixcloud",
-                         "soundcloud",
-                         "player.fm",
-                         "radioparadise"
-                     )
-                     if (aggregatorTokens.any { u.contains(it) || n.contains(it) || t.contains(it) }) return true
-
-                     return false
-                  }
-
-                // Heuristic: detect news/talk/traffic/weather/sports stations to skip them (unless whitelisted)
-                fun isNewsStation(s: RadioStation): Boolean {
-                    val n = s.name?.lowercase() ?: ""
-                    val t = s.tags?.lowercase() ?: ""
-                    val u = s.url?.lowercase() ?: ""
-                    val newsKeywords = listOf(
-                        "news",
-                        "talk",
-                        "traffic",
-                        "weather",
-                        "headline",
-                        "headlines",
-                        "newstalk",
-                        "talkradio",
-                        "talk radio",
-                        "newsradio",
-                        "cbc",
-                        "globalnews",
-                        "sports",
-                        "tsn",
-                        "rdmix",
-                        "multicultural",
-                        "calm",
-                        "680 news toronto"
-                    )
-                    return newsKeywords.any { kw -> n.contains(kw) || t.contains(kw) || u.contains(kw) }
-                }
-
-                // If not whitelisted, apply network/FM/geo filters. Whitelisted stations bypass these checks so
-                // common station-name variants (e.g. "Z 103.5" or "CIDC-FM") are preserved.
-                if (!isWhitelisted) {
-                    // evaluate predicates once for clear logging
-                    val net = isNetwork(s)
-                    val news = isNewsStation(s)
-                    val fm = isFMStation(s)
-
-                    when {
-                        net -> {
-                            Log.d(TAG, "fetchStationsNearGTA: filtered network/aggregator station: ${s.name}")
-                            return
-                        }
-                        news -> {
-                            Log.d(TAG, "fetchStationsNearGTA: filtered news/talk station: ${s.name}")
-                            return
-                        }
-                        !fm -> {
-                            Log.d(TAG, "fetchStationsNearGTA: filtered non-FM station: news=$news network=$net isFM=$fm name=${s.name}")
-                            return
-                        }
-                    }
-
-                    // Enforce radius: require geo coords and check distance
-                    val lat = s.geo_lat
-                    val lon = s.geo_long
-                    if (lat == null || lon == null) {
-                        if (!isWhitelisted) {
-                            //Log.d(TAG, "fetchStationsNearGTA: skipping station (no geo coords): ${formatStation(st)}")
-                            return
-                        } else {
-                            //Log.d(TAG, "fetchStationsNearGTA: whitelisted station with no geo coords, including: ${formatStation(st)}")
-                        }
-                    } else {
-                        val dist = haversineDistanceKm(lat, lon, GTA_LAT, GTA_LON)
-                        if (dist > RADIUS_KM && !isWhitelisted) {
-                            //Log.d(TAG, "fetchStationsNearGTA: skipping station (outside ${RADIUS_KM}km): ${formatStation(st)} dist=${"%.1f".format(Locale.US, dist)}km")
-                            return
-                        }
-                    }
-                }
-                 // Passed filters; mark all normalized keys as seen and add
-                 // Allow whitelist to bypass the loose 'isMusicStation' heuristics
-                 if (!isMusicStation(s) && !isWhitelisted) return
-                 keys.forEach { seen.add(it) }
-                 // store the station with formatted name
-                 results.add(s)
-              }
-            try {
-                // First, attempt targeted searches for the preferred station names
-                for (q in preferredQueries) {
-                    if (results.size >= limit) break
-                    try {
-                        val list = fetchRadioStations(query = q, limit = 10, country = "Canada", state = "Ontario")
-                        // try to find an exact/strong match first
-                        val strong = list.firstOrNull { st ->
-                            val n = st.name?.lowercase() ?: ""
-                            // match against any preferred keyword
-                            preferredQueries.any { pref -> n.contains(pref) }
-                        }
-                        if (strong != null) {
-                            Log.d(TAG, "fetchStationsNearGTA: preferred query='$q' found strong match: ${formatStation(strong)}")
-                            tryAdd(strong)
-                            if (results.size >= limit) break
-                        } else {
-                            // otherwise add first music-like station from the results
-                            Log.d(TAG, "fetchStationsNearGTA: preferred query='$q' returned ${list.size} stations")
-                            // log a subset of returned stations for inspection
-                            try {
-                                Log.d(TAG, "fetchStationsNearGTA: sample returned: ${list.take(6).joinToString(" | ") { formatStation(it) }}")
-                            } catch (_: Throwable) {}
-                            val music = list.firstOrNull { isMusicStation(it) }
-                            tryAdd(music)
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "preferred query failed: $q", e)
-                    }
-                }
-
-                // Before performing searches, ensure the custom Virgin 99.9 stream is included.
-                try {
-                    val customVirgin = RadioStation(
-                        stationuuid = "custom-virgin-999",
-                        name = formatStation(RadioStation("custom-virgin-999", "Virgin 99.9", "https://18153.live.streamtheworld.com/CKFMFMAAC_SC", favicon = "https://static.mytuner.mobi/media/tvos_radios/LypQKVJVaB.png")),
-                        url = "https://18153.live.streamtheworld.com/CKFMFMAAC_SC",
-                        favicon = "https://static.mytuner.mobi/media/tvos_radios/LypQKVJVaB.png",
-                        tags = "pop, top 40",
-                        bitrate = 128,
-                        geo_lat = null,
-                        geo_long = null
-                    )
-                    tryAdd(customVirgin)
-                } catch (_: Throwable) {}
-
-                // If we still need more, fetch Ontario-wide stations and prioritize music ones
-                if (results.size < limit) {
-                    // First try the geo-based nearby endpoint using GTA center and radius
-                    val byNearby = fetchRadioStationsNearby(GTA_LAT, GTA_LON, limit * 2, distanceKm = RADIUS_KM.toInt())
-                    if (byNearby.isNotEmpty()) {
-                        for (st in byNearby) {
-                            if (results.size >= limit) break
-                            try { Log.d(TAG, "fetchStationsNearGTA: nearby candidate: ${formatStation(st)}") } catch (_: Throwable) {}
-                            tryAdd(st)
-                        }
-                    } else {
-                        // Fallback to province-wide search if nearby endpoint didn't return data
-                        val byProvince = fetchRadioStations(query = "", limit = limit * 2, country = "Canada", state = "Ontario")
-                        for (st in byProvince) {
-                            if (results.size >= limit) break
-                            Log.d(TAG, "fetchStationsNearGTA: province candidate: ${st.name}")
-                            tryAdd(st)
-                        }
-                    }
-                }
-
-                // Final ordering: ensure preferred stations appear first in the defined order
-                val order = preferredQueries.map { it.lowercase() }
-                results.sortWith(compareBy { st ->
-                    val name = st.name?.lowercase() ?: ""
-                    val idx = order.indexOfFirst { name.contains(it) }
-                    if (idx == -1) Int.MAX_VALUE else idx
-                })
-
-                // Helper: build a simple ASCII table for logs (ensure this is available in scope)
-                fun makeTable(headers: List<String>, rows: List<List<String>>): String {
-                    if (rows.isEmpty()) return headers.joinToString(" | ")
-                    val colCount = headers.size
-                    val widths = IntArray(colCount) { i ->
-                        val headLen = headers.getOrNull(i)?.length ?: 0
-                        val maxCell = rows.mapNotNull { it.getOrNull(i) }.map { it.length }.maxOrNull() ?: 0
-                        maxOf(headLen, maxCell)
-                    }
-                    val sb = StringBuilder()
-                    sb.append(headers.mapIndexed { i, h -> h.padEnd(widths[i]) }.joinToString(" | "))
-                    sb.append('\n')
-                    sb.append(widths.map { "-".repeat(it) }.joinToString("-+-"))
-                    sb.append('\n')
-                    for (r in rows) {
-                        val rowLine = (0 until colCount).map { i -> (r.getOrNull(i) ?: "").padEnd(widths[i]) }.joinToString(" | ")
-                        sb.append(rowLine).append('\n')
-                    }
-                    return sb.toString()
-                }
-
-                fun stationToRow(st: RadioStation?): List<String> {
-                    if (st == null) return listOf("<null>")
-                    fun short(s: String?, max: Int): String {
-                        val str = (s ?: "").replace('\n',' ').trim()
-                        return if (str.length <= max) str else str.take(max - 3) + "..."
-                    }
-                    val name = short(extractQuotedOrOriginal(st.name), 30)
-                     val uuid = short(st.stationuuid, 8)
-                     val url = short(st.url, 40)
-                     val tags = short(st.tags, 20)
-                     val br = (st.bitrate ?: 0).toString()
-                     val lat = st.geo_lat
-                     val lon = st.geo_long
-                     val distStr = if (lat != null && lon != null) String.format(Locale.US, "%.1fkm", haversineDistanceKm(lat, lon, 43.6532, -79.3832)) else "n/a"
-                     return listOf(name, uuid, url, tags, br, distStr)
-                 }
-
-
-                 val rows = results.map { stationToRow(it) }
-                 val table = makeTable(listOf("Name", "UUID", "URL", "Tags", "BR", "Dist"), rows)
-                 Log.d(TAG, "fetchStationsNearGTA: final filtered results (${results.size}):\n$table")
-            } catch (_: Throwable) {}
-            return results.take(limit)
+            return try {
+                val nearby = fetchRadioStationsNearby(GTA_LAT, GTA_LON, limit)
+                if (nearby.isNotEmpty()) return nearby.take(limit)
+                // fallback to a province-wide / simple search
+                val province = fetchRadioStations(query = "", limit = limit, country = "Canada", state = "Ontario")
+                province.take(limit)
+            } catch (e: Exception) {
+                try { Log.w(TAG, "fetchStationsNearGTA simplified failed", e) } catch (_: Throwable) {}
+                emptyList()
+            }
         }
 
         /**
@@ -676,73 +456,23 @@ class Util {
             if (st == null) return ""
 
             fun toHttps(u: String?): String? {
-                if (u.isNullOrBlank()) return null
-                var s = u.trim()
-                if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith('\'') && s.endsWith('\''))) {
-                    s = s.substring(1, s.length - 1)
-                }
-                if (s.startsWith("//")) s = "https:$s"
-                if (s.startsWith("http://")) s = s.replaceFirst("http://", "https://")
+                val s = u?.trim() ?: return null
+                if (s.startsWith("//")) return "https:$s"
+                if (s.startsWith("http://")) return s.replaceFirst("http://", "https://")
                 if (s.startsWith("https://")) return s
                 return null
             }
 
-            val favCandidate = toHttps(st.favicon)
-            if (!favCandidate.isNullOrBlank()) return favCandidate
+            // Prefer explicit https favicon if available
+            val fav = toHttps(st.favicon)
+            if (!fav.isNullOrBlank()) return fav
 
-            var hostOnly: String? = null
-            val srcUrl = st.url ?: st.favicon
-            if (!srcUrl.isNullOrBlank()) {
-                try {
-                    val uri = java.net.URI(srcUrl)
-                    val host = uri.host ?: uri.schemeSpecificPart
-                    if (!host.isNullOrBlank()) hostOnly = host.trim().lowercase().removePrefix("www.")
-                } catch (_: Exception) {}
-            }
-
-            fun abs(host: String, path: String) = "https://$host${if (path.startsWith("/")) path else "/$path"}"
-
-            if (!hostOnly.isNullOrBlank()) {
-                val host = hostOnly
-                val candidates = listOf(
-                    abs(host, "apple-touch-icon.png"),
-                    abs(host, "favicon-196x196.png"),
-                    abs(host, "favicon-32x32.png"),
-                    abs(host, "favicon.ico"),
-                    abs(host, "logo.png"),
-                    abs(host, "images/logo.png"),
-                    // provisioning.streamtheworld.com heuristic candidates (HTTPS)
-                    // common patterns: logos by station uuid or by customer/host; these are heuristics — verify per-station.
-                    "https://provisioning.streamtheworld.com/logos/${st.stationuuid ?: ""}.png",
-                    "https://provisioning.streamtheworld.com/logo/${st.stationuuid ?: ""}.png",
-                    "https://provisioning.streamtheworld.com/images/${st.stationuuid ?: ""}.png",
-                    "https://provisioning.streamtheworld.com/${host}/logo.png",
-                    "https://provisioning.streamtheworld.com/${host}/favicon.png",
-                    // favicon services
-                    "https://www.google.com/s2/favicons?sz=256&domain_url=$host",
-                    "https://icons.duckduckgo.com/ip3/$host.ico",
-                    "https://www.google.com/s2/favicons?sz=64&domain_url=$host"
-                )
-                for (c in candidates) {
-                    if (!c.isNullOrBlank()) return c
-                }
-            }
-
-            val rawFav = st.favicon
-            if (!rawFav.isNullOrBlank() && hostOnly != null) {
-                val s = rawFav.trim()
-                if (s.startsWith("/")) return "https://$hostOnly$s"
-                if (s.startsWith("//")) return "https:$s"
-                if (!s.startsWith("http://") && !s.startsWith("https://")) return "https://$hostOnly/$s"
-            }
-
-            if (!srcUrl.isNullOrBlank()) {
-                try {
-                    val uri2 = java.net.URI(srcUrl)
-                    val host = (uri2.host ?: uri2.schemeSpecificPart)?.toString()?.lowercase()?.removePrefix("www.")
-                    if (!host.isNullOrBlank()) return "https://$host/favicon.ico"
-                } catch (_: Exception) {}
-            }
+            // Fallback: use host's favicon via Google's s2 helper when we can derive a host
+            val src = st.url ?: st.favicon
+            val host = try {
+                if (src.isNullOrBlank()) null else java.net.URL(if (src.contains("://")) src else "https://$src").host?.lowercase()?.removePrefix("www.")
+            } catch (_: Exception) { null }
+            if (!host.isNullOrBlank()) return "https://www.google.com/s2/favicons?sz=256&domain_url=$host"
 
             return ""
         }
@@ -778,44 +508,44 @@ class Util {
                  RadioStation(
                      stationuuid = "cidc-z103",
                      name = "Z103.5",
-                     url = "https://buf-streamb1-ais-relay1.streamb.live/SB00222/hXYRH27kc5gp-176530778-9984.aac",
-                     favicon = "https://static.mytuner.mobi/media/tvos_radios/kmR5bTLY5B.png",
+                     url = "https://buf-streamb1-ais-relay1.streamb.live/SB00222/playlist.m3u8?listeningSessionID=6922047d0079a643_3999634_eTaWePVI_YnVmLXN0cmVhbWIxLWFpcy1yZWxheTEuc3RyZWFtYi5saXZlOjgwMDA!_0000001rk4j&downloadSessionID=0&args=app_04&clientType=web&host=webapp.CA&modTime=1767836142893&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CIDC-FM&devicename=web-desktop&stationid=7757&dist=iheart&subscription_type=free",
+                     favicon = "https://cdn-profiles.tunein.com/s12366/images/logod.png?t=637554031500000000",
                      country = "Canada",
-                     tags = "top40, Euro, Pop",
+                     tags = "Top40, Euro, Pop, Hip-Hop, Reggae",
                      bitrate = 128
                  ),
                  RadioStation(
                      stationuuid = "virgin-999",
                      name = "Virgin 99.9",
                      url = "https://18153.live.streamtheworld.com/CKFMFMAAC_SC",
-                     favicon = "https://static.mytuner.mobi/media/tvos_radios/LypQKVJVaB.png",
+                     favicon = "https://archive.org/services/img/ckfm_20230202",
                      country = "Canada",
-                     tags = "pop, top40",
+                     tags = "Pop, Top40",
                      bitrate = 128
                  ),
                  RadioStation(
                      stationuuid = "kiss-925",
                      name = "KISS 92.5",
-                     url = "https://rogers-hls.leanstream.co/rogers/tor925.stream/playlist.m3u8",
-                     favicon = "https://static.mytuner.mobi/media/tvos_radios/x7349u4XVb.png",
+                     url = "https://radio-dai.rogersdigitalmedia.com/hls/chi/rogers/tor925.stream/48k/6shJwgOxffa-176783403-10031.aac",
+                     favicon = "https://cdn-radiotime-logos.tunein.com/s31199d.png",
                      country = "Canada",
-                     tags = "Pop",
+                     tags = "Top 40, Pop, Hip-Hop, R&B, Dance",
                      bitrate = 0
                  ),
                  RadioStation(
                      stationuuid = "chum-1045",
                      name = "CHUM 104.5",
                      url = "https://26293.live.streamtheworld.com/CHUMFMAAC_SC",
-                     favicon = "https://static.mytuner.mobi/media/tvos_radios/BsymEw9muQ.png",
+                     favicon = "https://cdn-profiles.tunein.com/s31180/images/logod.png?t=637400097550000000",
                      country = "Canada",
-                     tags = "classic, rock",
+                     tags = "Classic, Rock, Pop",
                      bitrate = 0
                  ),
                  RadioStation(
                      stationuuid = "chfi-981",
                      name = "CHFI 98.1",
-                     url = "https://rogers-hls.leanstream.co/rogers/tor981.stream/playlist.m3u8",
-                     favicon = "https://static.mytuner.mobi/media/tvos_radios/Assbtg6dyc.png",
+                     url = "https://19313.live.streamtheworld.com/CHUMFM_ADP/HLS/playlist.m3u8?clientType=web&host=webapp.CA&modTime=1767836142893&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CHUM-FM&devicename=web-desktop&stationid=6270&dist=iheart&subscription_type=free&partnertok=eyJraWQiOiJpaGVhcnQiLCJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJ0ZCIsImNvcHBhIjowLCJwcm92aWRlcklkIjo0OCwicHJvZmlsZWlkIjoiMTE4MTU5OTU4MzMiLCJpc3MiOiJpaGVhcnQiLCJ1c19wcml2YWN5IjoiMVlZTiIsImRpc3QiOiJpaGVhcnQiLCJleHAiOjE3Njc5MTk4ODcsImlhdCI6MTc2NzgzMzQ4Nywib21pZCI6MH0.XNols_EQzgf7w0jxwCTavH6zmV-BtjM-_aGmMwK5mhs&country=CA&locale=en-CA&site-url=https%3A%2F%2Fwww.iheart.com%2Flive%2Fchum-1045-6270%2F",
+                     favicon = "https://www.seekyoursounds.com/wp-content/uploads/2024/06/Seekr-RadioCover-CHFI-981-1-300x300.png",
                      country = "Canada",
                      tags = "classic, rock",
                      bitrate = 0
@@ -823,19 +553,19 @@ class Util {
                  RadioStation(
                      stationuuid = "Boom-973",
                      name = "Boom 97.3",
-                     url = "https://newcap.leanstream.co/CHBMFM-MP3",
-                     favicon = "https://static.mytuner.mobi/media/tvos_radios/hJRnRqsLFv.png",
+                     url = "https://stingray.leanstream.co/stingray/CHBMFM.stream/playlist.m3u8?dist=iheart&args=other_04&clientType=web&host=webapp.CA&modTime=1767837779840&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CHBM-FM&devicename=web-desktop&stationid=9824&dist=iheart&subscription_type=free",
+                     favicon = "https://cdn-radiotime-logos.tunein.com/s31212d.png",
                      country = "Canada",
-                     tags = "classic, rock",
+                     tags = "70's, 80's, 90's, Pop, Rock, Soul, R&B",
                      bitrate = 0
                  ),
                  RadioStation(
                      stationuuid = "Flow-987",
                      name = "Flow 98.7",
                      url = "https://ice64.securenetsystems.net/CKFG",
-                     favicon = "https://static.mytuner.mobi/media/tvos_radios/793/flow-987-fm.43dcaeb7.jpg",
+                     favicon = "https://cdn-profiles.tunein.com/s142066/images/logod.jpg?t=637808074610000000",
                      country = "Canada",
-                     tags = "classic, rock",
+                     tags = "Hip-Hop, Pop, Afrobeat, Reggae, Soul, Soca, R&B",
                      bitrate = 0
                  ),
                  RadioStation(
@@ -849,5 +579,7 @@ class Util {
                  ),
              )
          }
+
+
      }
  }

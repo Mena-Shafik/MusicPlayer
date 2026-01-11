@@ -8,8 +8,11 @@ class Song {
     var title: String = "-"
     var artist: String = "-"
     var path: String = "-"
+    var album: String? = "-"
     var duration: Double = 00.00
     var cover: ByteArray? = null
+    var lyrics: String? = null
+    var lyricsFetched: Boolean = false
 
     @Parcelize
     data class Song(
@@ -18,27 +21,26 @@ class Song {
         val artist: String?,
         val duration: Double = 00.00,
         val path: String?,
+        val album: String? = null,
     ) : Parcelable
 
-   constructor(id: Int, title: String, artist: String, duration: Double, path: String?,) {
-    this.id = id
-    this.title = title
-    this.artist = artist
-    this.duration = duration
-    this.path = path?: "-"
+    constructor(id: Int, title: String, artist: String, duration: Double, path: String?, album: String? = null) {
+        this.id = id
+        this.title = title
+        this.artist = artist
+        this.duration = duration
+        this.path = path?: "-"
+        this.album = album
 
-   }
+    }
 
-   constructor(id: Int, title: String, artist: String, duration: Double, path: String, cover:ByteArray?) {
-    this.id = id
-    this.title = title
-    this.artist = artist
-    this.duration = duration
-    this.path = path
-    this.cover = cover
-   }
-  }
-
-
-
-
+    constructor(id: Int, title: String, artist: String, duration: Double, path: String, cover:ByteArray?, album: String? = null) {
+        this.id = id
+        this.title = title
+        this.artist = artist
+        this.duration = duration
+        this.path = path
+        this.cover = cover
+        this.album = album
+    }
+}
