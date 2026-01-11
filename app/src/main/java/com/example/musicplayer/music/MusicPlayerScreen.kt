@@ -321,6 +321,11 @@ fun SongsSheetContent(
     val startIndex = currentIndex.coerceAtLeast(0)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
 
+    // Auto-scroll to current song when it changes
+    LaunchedEffect(currentIndex) {
+        listState.animateScrollToItem(startIndex)
+    }
+
     // shared tab data/state (must be declared before we reference it in modifiers)
     val tabs = listOf("Up Next", "Lyrics", "Related")
     var selectedTab by remember { mutableStateOf(initialSelectedTab) }
