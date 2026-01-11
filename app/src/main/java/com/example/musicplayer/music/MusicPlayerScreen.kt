@@ -10,6 +10,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -133,8 +134,16 @@ fun MusicPlayerScreen(
     val positionMs by viewModel.positionMs.collectAsState()
     val durationMs by viewModel.durationMs.collectAsState()
 
-    // background color extracted from album art - smoothly transitions between colors
-    var backgroundColor by remember { mutableStateOf(Color.Black) }
+    // background color target extracted from album art
+    var targetBackgroundColor by remember { mutableStateOf(Color.Black) }
+
+    // Animate the background color smoothly when target changes
+    val backgroundColor by animateColorAsState(
+        targetValue = targetBackgroundColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "Background color transition"
+    )
+
     val backgroundBrush = remember(backgroundColor) {
         Brush.verticalGradient(listOf(backgroundColor, Util.darkerColor(backgroundColor, 0.25f)))
     }
@@ -259,7 +268,7 @@ fun MusicPlayerScreen(
                             val currentSong = songs.find { it.id == songId }
                             if (currentSong != null) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    AlbumImage(song = currentSong, onDominantColor = { c: Color -> backgroundColor = c })
+                                    AlbumImage(song = currentSong, onDominantColor = { c: Color -> targetBackgroundColor = c })
                                     Column(modifier = Modifier
                                         .size(340.dp, 130.dp)
                                         .padding(10.dp).align(Alignment.CenterHorizontally),) {
