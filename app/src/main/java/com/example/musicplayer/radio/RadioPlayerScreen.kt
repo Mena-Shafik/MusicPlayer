@@ -66,6 +66,8 @@ import com.example.musicplayer.R
 import com.example.musicplayer.Util
 import com.example.musicplayer.composable.RadioTagChips
 import com.example.musicplayer.model.RadioStation
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @SuppressLint("ContextCastToActivity")
@@ -257,13 +259,10 @@ fun StationImage(
 ) {
     val context = LocalContext.current
 
-    // Use a bundled fallback drawable when Coil is loading or fails
-    val fallbackPainter = painterResource(id = R.drawable.img)
-
     // If path is blank just show the fallback immediately
     if (path.isBlank()) {
         Image(
-            painter = fallbackPainter,
+            painter = painterResource(id = R.drawable.img),
             contentDescription = "Station Art",
             modifier = modifier
                 .width(340.dp)
@@ -279,51 +278,26 @@ fun StationImage(
         return
     }
 
-    // Build a simple Coil ImageRequest that uses exactly the provided path
-    val imageRequest = coil.request.ImageRequest.Builder(context)
-        .data(path)
-        .crossfade(true)
-        .placeholder(R.drawable.img)
-        .error(R.drawable.img)
-        .build()
-
-    val painter = coil.compose.rememberAsyncImagePainter(model = imageRequest)
-
-    // Image container
-    Box(
+    // Use AsyncImage with built-in crossfade for smooth transitions
+    AsyncImage(
+        model = ImageRequest.Builder(context)
+            .data(path)
+            .crossfade(500)
+            .build(),
+        contentDescription = "Station Art",
         modifier = modifier
             .width(340.dp)
             .height(340.dp)
-            .clip(RoundedCornerShape(5.dp))
-    ) {
-        // Show the image (painter will draw placeholder/error automatically)
-        Image(
-            painter = painter,
-            contentDescription = "Station Art",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-    }
+            .clip(RoundedCornerShape(5.dp)),
+        contentScale = ContentScale.Crop,
+        placeholder = painterResource(id = R.drawable.img),
+        error = painterResource(id = R.drawable.img)
+    )
 
-    // React to painter state changes: on success or error use safe defaults and notify caller.
-    LaunchedEffect(key1 = painter.state) {
-        when (painter.state) {
-            is coil.compose.AsyncImagePainter.State.Success -> {
-                // Image loaded successfully; call color callbacks with simple defaults.
-                try {
-                    onDominantColor(Color.Black)
-                    onAccentColor(Color.White)
-                } catch (_: Throwable) {}
-            }
-            is coil.compose.AsyncImagePainter.State.Error -> {
-                // Loading failed, use fallback colors
-                try { onDominantColor(Color.Black); onAccentColor(Color.White) } catch (_: Throwable) {}
-            }
-            else -> {
-                // Placeholder/loading state: keep neutral defaults
-                try { onDominantColor(Color.Black); onAccentColor(Color.White) } catch (_: Throwable) {}
-            }
-        }
+    // Default colors for now (AsyncImage handles image loading internally)
+    LaunchedEffect(path) {
+        onDominantColor(Color.Black)
+        onAccentColor(Color.White)
     }
 }
 

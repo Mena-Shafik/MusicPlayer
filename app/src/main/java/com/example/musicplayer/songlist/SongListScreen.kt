@@ -423,7 +423,10 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                         ) {
                             val imageUrl = Util.getStationImageUrl(station).ifBlank { null }
                             AsyncImage(
-                                model = imageUrl,
+                                model = ImageRequest.Builder(context)
+                                    .data(imageUrl)
+                                    .crossfade(500)
+                                    .build(),
                                 contentDescription = displayName,
                                 modifier = Modifier
                                     .width(56.dp)
