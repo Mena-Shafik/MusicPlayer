@@ -6,6 +6,7 @@ import android.app.Activity
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -132,7 +133,7 @@ fun MusicPlayerScreen(
     val positionMs by viewModel.positionMs.collectAsState()
     val durationMs by viewModel.durationMs.collectAsState()
 
-    // background color extracted from album art
+    // background color extracted from album art - smoothly transitions between colors
     var backgroundColor by remember { mutableStateOf(Color.Black) }
     val backgroundBrush = remember(backgroundColor) {
         Brush.verticalGradient(listOf(backgroundColor, Util.darkerColor(backgroundColor, 0.25f)))
@@ -241,12 +242,32 @@ fun MusicPlayerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     if (song != null) {
-                        AlbumImage(song = song, onDominantColor = { c: Color -> backgroundColor = c })
-                        Column(modifier = Modifier
-                            .size(340.dp, 130.dp)
-                            .padding(10.dp).align(Alignment.CenterHorizontally),) {
-                            Text(text = song.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp, textAlign = TextAlign.Center, modifier = Modifier.width(340.dp).padding(10.dp))
-                            Text(text = song.artist, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.padding(10.dp).width(340.dp))
+                        AnimatedContent(
+                            targetState = song.id,
+                            transitionSpec = {
+                                (fadeIn(animationSpec = tween(500)) + scaleIn(
+                                    initialScale = 0.95f,
+                                    animationSpec = tween(500)
+                                )) togetherWith
+                                        (fadeOut(animationSpec = tween(300)) + scaleOut(
+                                            targetScale = 1.05f,
+                                            animationSpec = tween(300)
+                                        ))
+                            },
+                            label = "Song transition"
+                        ) { songId ->
+                            val currentSong = songs.find { it.id == songId }
+                            if (currentSong != null) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    AlbumImage(song = currentSong, onDominantColor = { c: Color -> backgroundColor = c })
+                                    Column(modifier = Modifier
+                                        .size(340.dp, 130.dp)
+                                        .padding(10.dp).align(Alignment.CenterHorizontally),) {
+                                        Text(text = currentSong.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp, textAlign = TextAlign.Center, modifier = Modifier.width(340.dp).padding(10.dp))
+                                        Text(text = currentSong.artist, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.padding(10.dp).width(340.dp))
+                                    }
+                                }
+                            }
                         }
 
 
@@ -451,40 +472,41 @@ fun AlbumImage(
     val context = LocalContext.current
     val albumBitmap = Util.getAlbumArt(context, song.path)
 
-    if (albumBitmap != null) {
-        Image(
-            bitmap = albumBitmap,
-            contentDescription = "Album Art",
-            modifier = modifier
-                .width(340.dp)
-                .height(340.dp)
-                .clip(RoundedCornerShape(5.dp))
-        )
+    val imageModifier = modifier
+        .width(340.dp)
+        .height(340.dp)
+        .clip(RoundedCornerShape(5.dp))
 
-        LaunchedEffect(albumBitmap) {
-            val (dominantInt, accentInt) = withContext(Dispatchers.Default) {
-                try {
-                    val palette = Palette.from(albumBitmap.asAndroidBitmap()).generate()
-                    val dominant = palette.getDominantColor(android.graphics.Color.BLACK)
-                    // prefer vibrant swatch, fallback to dominant
-                    val accent = palette.vibrantSwatch?.rgb ?: palette.mutedSwatch?.rgb ?: dominant
-                    Pair(dominant, accent)
-                } catch (_: Throwable) {
-                    Pair(android.graphics.Color.BLACK, android.graphics.Color.WHITE)
+    Crossfade(targetState = albumBitmap, animationSpec = tween(500), label = "Album art crossfade") { bitmap ->
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = "Album Art",
+                modifier = imageModifier
+            )
+
+            LaunchedEffect(bitmap) {
+                val (dominantInt, accentInt) = withContext(Dispatchers.Default) {
+                    try {
+                        val palette = Palette.from(bitmap.asAndroidBitmap()).generate()
+                        val dominant = palette.getDominantColor(android.graphics.Color.BLACK)
+                        // prefer vibrant swatch, fallback to dominant
+                        val accent = palette.vibrantSwatch?.rgb ?: palette.mutedSwatch?.rgb ?: dominant
+                        Pair(dominant, accent)
+                    } catch (_: Throwable) {
+                        Pair(android.graphics.Color.BLACK, android.graphics.Color.WHITE)
+                    }
                 }
+                onDominantColor(Color(dominantInt))
+                onAccentColor(Color(accentInt))
             }
-            onDominantColor(Color(dominantInt))
-            onAccentColor(Color(accentInt))
+        } else {
+            Image(
+                painter = painterResource(id = R.drawable.img),
+                contentDescription = "Album Art",
+                modifier = imageModifier
+            )
         }
-    } else {
-        Image(
-            painter = painterResource(id = R.drawable.img),
-            contentDescription = "Album Art",
-            modifier = modifier
-                .width(340.dp)
-                .height(340.dp)
-                .clip(RoundedCornerShape(5.dp))
-        )
     }
 }
 
@@ -864,20 +886,22 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
         Util.getAlbumArt(context, path)
     } catch (_: Throwable) { null }
 
-    if (imageBitmap != null) {
-        Image(
-            bitmap = imageBitmap,
-            contentDescription = null,
-            modifier = modifier.size(size),
-            contentScale = ContentScale.Crop
-        )
-    } else {
-        Image(
-            painter = painterResource(id = R.drawable.img),
-            contentDescription = null,
-            modifier = modifier.size(size),
-            contentScale = ContentScale.Crop
-        )
+    Crossfade(targetState = imageBitmap, animationSpec = tween(500), label = "Small album art crossfade") { bitmap ->
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                modifier = modifier.size(size),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Image(
+                painter = painterResource(id = R.drawable.img),
+                contentDescription = null,
+                modifier = modifier.size(size),
+                contentScale = ContentScale.Crop
+            )
+        }
     }
 }
 
