@@ -33,6 +33,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PauseCircleFilled
 import androidx.compose.material.icons.filled.PlayCircleFilled
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -68,6 +70,7 @@ import com.example.musicplayer.composable.RadioTagChips
 import com.example.musicplayer.model.RadioStation
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.musicplayer.composable.RadioControls
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @SuppressLint("ContextCastToActivity")
@@ -99,6 +102,9 @@ fun RadioPlayerScreen(
 
     // Track service status and derive playing state based on strings
     var svcStatus by remember { mutableStateOf(RadioPlayerService.lastStatus) }
+    var currentStationName by remember { mutableStateOf(radioStation.name ?: "Unknown") }
+    var currentStationFavicon by remember { mutableStateOf(radioStation.favicon ?: "") }
+    var currentStationTags by remember { mutableStateOf(radioStation.tags ?: "") }
     val isPlaying by remember(svcStatus) {
         derivedStateOf {
             val s = svcStatus.lowercase()
@@ -128,9 +134,19 @@ fun RadioPlayerScreen(
 
     // Keep polling the service status so UI stays in sync with the actual service.
     LaunchedEffect(Unit) {
-        try { svcStatus = RadioPlayerService.lastStatus } catch (_: Throwable) {}
+        try {
+            svcStatus = RadioPlayerService.lastStatus
+            currentStationName = RadioPlayerService.lastStationName ?: currentStationName
+            currentStationFavicon = RadioPlayerService.lastStationFavicon ?: currentStationFavicon
+            currentStationTags = RadioPlayerService.lastStationTags ?: currentStationTags
+        } catch (_: Throwable) {}
         while (true) {
-            try { svcStatus = RadioPlayerService.lastStatus } catch (_: Throwable) {}
+            try {
+                svcStatus = RadioPlayerService.lastStatus
+                currentStationName = RadioPlayerService.lastStationName ?: currentStationName
+                currentStationFavicon = RadioPlayerService.lastStationFavicon ?: currentStationFavicon
+                currentStationTags = RadioPlayerService.lastStationTags ?: currentStationTags
+            } catch (_: Throwable) {}
             kotlinx.coroutines.delay(300L)
         }
     }
@@ -150,6 +166,8 @@ fun RadioPlayerScreen(
                     action = "com.example.musicplayer.action.PLAY_STATION"
                     putExtra("extra_station_url", url)
                     putExtra("extra_station_title", radioStation.name ?: "")
+                    putExtra(RadioPlayerService.EXTRA_STATION_FAVICON, radioStation.favicon)
+                    putExtra(RadioPlayerService.EXTRA_STATION_TAGS, radioStation.tags)
                     setClassName(ctx.packageName, "com.example.musicplayer.radio.RadioPlayerService")
                 }
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -192,7 +210,7 @@ fun RadioPlayerScreen(
                 // Use the raw station-provided favicon exactly as supplied by the API, but
                 // normalize protocol-relative URLs ("//host/...") to "https://host/..." so Coil can load them.
                 // StationImage will display the bundled fallback if the favicon is blank or fails to load.
-                val favRaw = radioStation.favicon ?: ""
+                val favRaw = currentStationFavicon
                 val favUrl = when {
                     favRaw.startsWith("//") -> "https:$favRaw"
                     else -> favRaw
@@ -200,9 +218,9 @@ fun RadioPlayerScreen(
                 try { Log.d("RadioPlayerScreen", "Loading station favicon: $favUrl") } catch (_: Throwable) {}
                 StationImage(path = favUrl, onDominantColor = { extracted -> backgroundColor = extracted })
                 Column(modifier = Modifier.size(340.dp, 130.dp).padding(10.dp).align(Alignment.CenterHorizontally)) {
-                    Text(text = radioStation.name ?: "Unknown", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp, textAlign = TextAlign.Center, modifier = Modifier.width(340.dp).padding(10.dp))
+                    Text(text = currentStationName.ifBlank { "Unknown" }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp, textAlign = TextAlign.Center, modifier = Modifier.width(340.dp).padding(10.dp))
                     RadioTagChips(
-                        tagsRaw = radioStation.tags,
+                        tagsRaw = currentStationTags,
                         modifier = Modifier.width(340.dp),
                         chipBackground = Color.White.copy(alpha = 0.12f),
                         chipContentColor = Color.LightGray
@@ -230,7 +248,22 @@ fun RadioPlayerScreen(
                         )
                     }
                 }
-                RadioControls(isPlaying = isPlaying, onPlayPause = { togglePlayPause() })
+                RadioControls(
+                    isPlaying = isPlaying,
+                    onPlayPause = { togglePlayPause() },
+                    onPrevStation = {
+                        try {
+                            val intent = Intent(context, RadioPlayerService::class.java).apply { action = RadioPlayerService.ACTION_PREV_STATION }
+                            context.startService(intent)
+                        } catch (_: Throwable) {}
+                    },
+                    onNextStation = {
+                        try {
+                            val intent = Intent(context, RadioPlayerService::class.java).apply { action = RadioPlayerService.ACTION_NEXT_STATION }
+                            context.startService(intent)
+                        } catch (_: Throwable) {}
+                    }
+                )
                 // Separate composable to display now-playing title and artist under the controls
                 RadioNowPlayingInfo(title = playingTitle, artist = playingArtist)
             }
@@ -301,78 +334,7 @@ fun StationImage(
     }
 }
 
-@OptIn(ExperimentalAnimationApi::class)
-@Composable
-fun RadioControls(
-    isPlaying: Boolean,
-    onPlayPause: () -> Unit,
-    accentColor: Color = Color.White
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // Row containing the play/pause button
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
 
-            val morphDuration = 320
-            val targetSize = if (isPlaying) 96.dp else 96.dp
-            val animatedSize by animateDpAsState(
-                targetValue = targetSize,
-                animationSpec = tween(durationMillis = morphDuration)
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(animatedSize)
-                    .background(Color.Transparent),
-                contentAlignment = Alignment.Center
-            ) {
-                IconButton(
-                    onClick = onPlayPause,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    AnimatedContent(
-                        targetState = isPlaying,
-                        transitionSpec = {
-                            val spec = tween<Float>(durationMillis = morphDuration)
-                            (fadeIn(animationSpec = spec) + scaleIn(
-                                initialScale = 1.15f,
-                                animationSpec = spec
-                            )) togetherWith
-                                    (fadeOut(animationSpec = spec) + scaleOut(
-                                        targetScale = 1.15f,
-                                        animationSpec = spec
-                                    ))
-                        },
-                        contentAlignment = Alignment.Center
-                    ) { isPlaying ->
-                        val iconModifier = Modifier
-                            .fillMaxSize()
-                            .padding(5.dp, 0.dp, 5.dp, 0.dp)
-
-                        if (isPlaying) {
-                            Icon(
-                                imageVector = Icons.Filled.PauseCircleFilled,
-                                contentDescription = "Pause",
-                                modifier = iconModifier,
-                                tint = accentColor
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.PlayCircleFilled,
-                                contentDescription = "Play",
-                                modifier = iconModifier,
-                                tint = accentColor
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun RadioNowPlayingInfo(title: String?, artist: String?, modifier: Modifier = Modifier) {
@@ -396,14 +358,6 @@ fun RadioNowPlayingInfo(title: String?, artist: String?, modifier: Modifier = Mo
                 textAlign = TextAlign.Center
             )
         }
-    }
-}
-
-@Preview(showBackground = true, name = "RadioNowPlayingInfo Preview", backgroundColor = 0xFF000000)
-@Composable
-fun RadioNowPlayingInfoPreview() {
-    MaterialTheme {
-        RadioNowPlayingInfo(title = "Preview Title", artist = "Preview Artist")
     }
 }
 
@@ -433,6 +387,7 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
 }
 
 // Preview: Full Radio Screen (playing)
+@androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(UnstableApi::class)
 @Preview(showBackground = true, showSystemUi = true, name = "RadioScreen (real) Preview", backgroundColor = 0xFF000000)
 @Composable

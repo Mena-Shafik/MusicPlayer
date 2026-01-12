@@ -23,6 +23,7 @@ import com.example.musicplayer.MainActivity
 import android.app.Service
 import androidx.media3.common.util.UnstableApi
 import android.media.MediaPlayer
+import com.example.musicplayer.Util
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,6 +34,7 @@ import kotlinx.coroutines.launch
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import com.example.musicplayer.model.RadioStation
 
 @UnstableApi
 class RadioPlayerService : Service() {
@@ -41,6 +43,8 @@ class RadioPlayerService : Service() {
     private var currentTitle: String? = null
     private var currentUrl: String? = null
     private var androidPlayer: MediaPlayer? = null
+    private var stationList: List<RadioStation>? = null
+    private var currentIndex: Int = -1
     // Feature flag: disable ICY metadata polling while it's not working on device.
     // Set to `true` to re-enable polling later.
     private val enableIcyMetadataPolling = false
@@ -58,8 +62,14 @@ class RadioPlayerService : Service() {
         const val ACTION_PAUSE = "com.example.musicplayer.action.PAUSE"
         const val ACTION_STOP = "com.example.musicplayer.action.STOP"
         const val ACTION_PLAY_STATION = "com.example.musicplayer.action.PLAY_STATION"
+        const val ACTION_PREV_STATION = "com.example.musicplayer.action.PREV_STATION"
+        const val ACTION_NEXT_STATION = "com.example.musicplayer.action.NEXT_STATION"
         const val EXTRA_STATION_URL = "extra_station_url"
         const val EXTRA_STATION_TITLE = "extra_station_title"
+        const val EXTRA_STATION_LIST = "extra_station_list"
+        const val EXTRA_STATION_INDEX = "extra_station_index"
+        const val EXTRA_STATION_FAVICON = "extra_station_favicon"
+        const val EXTRA_STATION_TAGS = "extra_station_tags"
 
         // Expose a volatile status field so UI can read quick debug status
         @JvmStatic
@@ -82,6 +92,9 @@ class RadioPlayerService : Service() {
         @JvmStatic
         @Volatile
         var lastMetadata: String? = null
+        @JvmStatic @Volatile var lastStationName: String? = null
+        @JvmStatic @Volatile var lastStationFavicon: String? = null
+        @JvmStatic @Volatile var lastStationTags: String? = null
     }
 
     @SuppressLint("RestrictedApi")
@@ -207,15 +220,41 @@ class RadioPlayerService : Service() {
             ACTION_PLAY_STATION -> {
                 val url = intent.getStringExtra(EXTRA_STATION_URL)
                 val title = intent.getStringExtra(EXTRA_STATION_TITLE)
-                Log.d("RadioPlayerService", "ACTION_PLAY_STATION url=$url title=$title")
+                val fav = intent.getStringExtra(EXTRA_STATION_FAVICON)
+                val tags = intent.getStringExtra(EXTRA_STATION_TAGS)
+                val list = intent.getParcelableArrayListExtra<RadioStation>(EXTRA_STATION_LIST)
+                val idx = intent.getIntExtra(EXTRA_STATION_INDEX, -1)
+                if (!list.isNullOrEmpty()) {
+                    stationList = list
+                    currentIndex = idx.coerceIn(list.indices)
+                }
+                Log.d("RadioPlayerService", "ACTION_PLAY_STATION url=$url title=$title idx=$idx listSize=${stationList?.size}")
                 if (!url.isNullOrBlank()) {
                     currentTitle = title
+                    lastStationName = title ?: lastStationName
+                    lastStationFavicon = fav ?: lastStationFavicon
+                    lastStationTags = tags ?: lastStationTags
                     playUrl(url)
-
-                    // start metadata polling for this station
                     startMetadataPolling(url)
+                } else if (!stationList.isNullOrEmpty()) {
+                    // fallback to current index from list
+                    playCurrentFromList(startPlaying = true)
                 } else {
                     Log.w("RadioPlayerService", "ACTION_PLAY_STATION: url was blank")
+                }
+            }
+            ACTION_PREV_STATION -> {
+                if (!stationList.isNullOrEmpty()) {
+                    stepStation(-1)
+                } else {
+                    Log.d("RadioPlayerService", "No station list for prev")
+                }
+            }
+            ACTION_NEXT_STATION -> {
+                if (!stationList.isNullOrEmpty()) {
+                    stepStation(1)
+                } else {
+                    Log.d("RadioPlayerService", "No station list for next")
                 }
             }
             else -> {
@@ -461,6 +500,10 @@ class RadioPlayerService : Service() {
 
         val stopIntent = Intent(this, RadioPlayerService::class.java).apply { action = ACTION_STOP }
         val stopPi = PendingIntent.getService(this, 3, stopIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val prevIntent = Intent(this, RadioPlayerService::class.java).apply { action = ACTION_PREV_STATION }
+        val prevPi = PendingIntent.getService(this, 4, prevIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val nextIntent = Intent(this, RadioPlayerService::class.java).apply { action = ACTION_NEXT_STATION }
+        val nextPi = PendingIntent.getService(this, 5, nextIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(com.example.musicplayer.R.drawable.ic_music_note)
@@ -473,6 +516,10 @@ class RadioPlayerService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(if (isPlaying) NotificationCompat.Action(0, "Pause", pausePi) else NotificationCompat.Action(0, "Play", playPi))
             .addAction(NotificationCompat.Action(0, "Stop", stopPi))
+        if ((stationList?.size ?: 0) > 1) {
+            builder.addAction(NotificationCompat.Action(0, "Prev", prevPi))
+            builder.addAction(NotificationCompat.Action(0, "Next", nextPi))
+        }
 
         val style = MediaAppNotificationCompat.MediaStyle()
             .setShowActionsInCompactView(0)
@@ -509,4 +556,37 @@ class RadioPlayerService : Service() {
             block()
         }
     }
+
+    private fun stepStation(delta: Int) {
+        val list = stationList
+        if (list.isNullOrEmpty()) return
+        if (currentIndex !in list.indices) currentIndex = 0
+        currentIndex = (currentIndex + delta).floorMod(list.size)
+        playCurrentFromList(startPlaying = true)
+    }
+
+    private fun playCurrentFromList(startPlaying: Boolean) {
+        val list = stationList
+        if (list.isNullOrEmpty()) return
+        if (currentIndex !in list.indices) currentIndex = 0
+        val station = list[currentIndex]
+        val url = station.url
+        if (url.isNullOrBlank()) {
+            Log.w("RadioPlayerService", "playCurrentFromList: blank url for idx=$currentIndex")
+            return
+        }
+        currentTitle = Util.extractQuotedOrOriginal(station.name).ifBlank { station.name }
+        lastStationName = currentTitle
+        lastStationFavicon = station.favicon
+        lastStationTags = station.tags
+        stopMetadataPolling()
+        startMetadataPolling(url)
+        playUrl(url)
+    }
+}
+
+private fun Int.floorMod(mod: Int): Int {
+    if (mod <= 0) return this
+    val r = this % mod
+    return if (r >= 0) r else r + mod
 }

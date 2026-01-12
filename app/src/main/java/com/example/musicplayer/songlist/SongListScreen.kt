@@ -114,7 +114,11 @@ import com.example.musicplayer.composable.MainAppBar
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.ContextCompat
+import androidx.media3.common.util.UnstableApi
 import androidx.navigation.compose.rememberNavController
+import com.example.musicplayer.composable.MiniPlayer
+import com.example.musicplayer.composable.SongCardRow
+import com.example.musicplayer.radio.RadioPlayerService
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -211,7 +215,8 @@ fun ListSongsScreen(
                     onToggleRadio = toggleRadio,
                     query = query,
                     onQueryChange = { onQueryChange(it) },
-                    onSearchedClicked = { onSearchedClicked(it) }
+                    onSearchedClicked = { onSearchedClicked(it) },
+                    onToggleAlbumView = {}
                 )
             }
         }
@@ -382,6 +387,7 @@ fun DisplayListSongs(
     }
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHostController, viewModel: SongListViewModel = viewModel()) {
     val context = LocalContext.current
@@ -411,7 +417,7 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
 
             else -> {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    itemsIndexed(stations) { _, station ->
+                    itemsIndexed(stations) { idx, station ->
                         // Prefer quoted name (e.g. "CIDC-FM") when present for UI display
                         val displayName = Util.extractQuotedOrOriginal(station.name).ifBlank { station.name ?: "Unknown" }
 
@@ -464,9 +470,13 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                 try {
                                     // start service with play-station action so playback begins in background
                                     val svcIntent = Intent().apply {
-                                        action = "com.example.musicplayer.action.PLAY_STATION"
-                                        putExtra("extra_station_url", url)
-                                        putExtra("extra_station_title", displayName)
+                                        action = RadioPlayerService.ACTION_PLAY_STATION
+                                        putExtra(RadioPlayerService.EXTRA_STATION_URL, url)
+                                        putExtra(RadioPlayerService.EXTRA_STATION_TITLE, displayName)
+                                        putExtra(RadioPlayerService.EXTRA_STATION_FAVICON, station.favicon)
+                                        putExtra(RadioPlayerService.EXTRA_STATION_TAGS, station.tags)
+                                        putParcelableArrayListExtra(RadioPlayerService.EXTRA_STATION_LIST, ArrayList(stations))
+                                        putExtra(RadioPlayerService.EXTRA_STATION_INDEX, idx)
                                         setClassName(context.packageName, "com.example.musicplayer.radio.RadioPlayerService")
                                     }
                                     // Use startForegroundService on O+ so the service can enter foreground mode
@@ -475,7 +485,7 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                     } else {
                                         context.startService(svcIntent)
                                     }
-                                    Log.d("DisplayListRadioStations", "Started RadioPlayerService for $displayName -> $url")
+                                    Log.d("DisplayListRadioStations", "Started RadioPlayerService for $displayName -> $url index=$idx size=${stations.size}")
                                 } catch (e: Exception) {
                                     Toast.makeText(context, "Failed to start radio service: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
@@ -508,327 +518,16 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
 }
 
 
-@Composable
-fun SongCardRow(
-    song: Song,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    var imageBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-
-    LaunchedEffect(song.path) {
-         imageBitmap = null  // reset when song changes
-        if (song.path.isNotBlank()) {
-            imageBitmap = withContext(Dispatchers.IO) {
-                try {
-                    Util.getAlbumArt(context, song.path)
-                } catch (_: Throwable) {
-                    null
-                }
-            }
-        }
-    }
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .fillMaxWidth()
-            //.background(Color.Black) // removed so list items are semi-transparent over the background
-            .clickable(onClick = onClick)
-            .padding(10.dp,0.dp,0.dp,0.dp)
-    ) {
-        val imgModifier = Modifier
-            .width(60.dp)
-            .height(60.dp)
-            .clip(RoundedCornerShape(2.dp))
-
-        Crossfade(
-            targetState = imageBitmap,
-            animationSpec = tween(500),
-            label = "Album art crossfade"
-        ) { bitmap ->
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = "Album art",
-                    contentScale = ContentScale.Crop,
-                    modifier = imgModifier
-                )
-            } else {
-                // Show placeholder while loading or if no album art found
-                Image(
-                    painter = painterResource(id = R.drawable.ic_album),
-                    contentDescription = "Placeholder image",
-                    contentScale = ContentScale.Crop,
-                    modifier = imgModifier
-                )
-            }
-        }
-
-        Column(Modifier
-            .padding(start = 12.dp)
-            .weight(1f)) {
-            Text(
-                text = song.title,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
-            )
-            Text(
-                text = song.artist,
-                color = Color.White.copy(alpha = 0.85f),
-                maxLines = 1
-            )
-        }
-
-        Column(horizontalAlignment = Alignment.End) {
-            Text(
-                text = Util.converter(song.duration),
-                Modifier
-                    .width(80.dp)
-                    .padding(10.dp),
-                color = Color.White,
-                textAlign = TextAlign.End,
-
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-//@RequiresApi(Build.VERSION_CODES.M) //keep
-@Composable
-fun SearchBar(
-    text: String,
-    onTextChange: (String) -> Unit,
-    onCloseClicked: () -> Unit,
-    onSearchedClicked: (String) -> Unit
-) {
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .statusBarsPadding(), // ensure SearchBar sits below the status bar
-        //elevation = AppBarDefaults.TopAppBarElevation,
-        //elevation= AppBarDefaults.
-        color = Color.Transparent
-    ) {
-        TextField(
-            modifier = Modifier.fillMaxWidth(),
-            value = text,
-            onValueChange = { onTextChange(it) },
-            placeholder = {
-                Text(
-                    modifier = Modifier.alpha(0.6f),
-                    text = "Search",
-                    color = Color.White
-                )
-            },
-            textStyle = TextStyle(
-                fontSize = MaterialTheme.typography.bodySmall.fontSize,
-                color = Color.White
-            ),
-            singleLine = true,
-            leadingIcon = {
-                IconButton(
-                    modifier = Modifier.alpha(0.6f),
-                    onClick = { onSearchedClicked(text) } // perform search when user taps the icon
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = Color.White
-                    )
-                }
-            },
-            trailingIcon = {
-                IconButton(
-                    onClick = {
-                        if (text.isNotEmpty()) {
-                            onTextChange("")
-                        } else {
-                            onCloseClicked()
-                        }
-                    }) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Search",
-                        tint = Color.White
-                    )
-                }
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearchedClicked(text) }),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                disabledContainerColor = Color.Transparent,
-                cursorColor = Color.White.copy(alpha = 0.6f)
-            )
-        )
-    }
-}
-
-@Composable
-fun MiniPlayer(
-    modifier: Modifier = Modifier,
-    onOpenPlayer: (Song?) -> Unit = {}
-) {
-    val playlist by PlayerRepository.playlist.collectAsState()
-    val currentIndex by PlayerRepository.currentIndex.collectAsState()
-    val isPlaying by PlayerRepository.isPlaying.collectAsState()
-    val positionMs by PlayerRepository.positionMs.collectAsState()
-    val durationMs by PlayerRepository.durationMs.collectAsState()
-    val current = playlist.getOrNull(currentIndex)
-    val context = LocalContext.current
-    // read preview mode inside a composable context
-    val isPreviewMode = LocalInspectionMode.current
-
-    // If there's no playlist and no current song, don't show the mini player
-    if (playlist.isEmpty() && current == null) return
-
-    Column(modifier = modifier) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = modifier
-                .fillMaxWidth()
-                .height(72.dp)
-                .background(Color(0xFF0F0F0F).copy(alpha = 0.95f))
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-        ) {
-            // album art (left) - tappable to open full player
-            val art = remember(current?.path) {
-                try { current?.path?.let { Util.getAlbumArt(context, it) } } catch (_: Throwable) { null }
-            }
-
-            val imageModifier = Modifier
-                .width(56.dp)
-                .height(56.dp)
-                .clip(RoundedCornerShape(6.dp))
-
-            if (art != null) {
-                Image(
-                    bitmap = art,
-                    contentDescription = "Album art",
-                    modifier = imageModifier.clickable { onOpenPlayer(current) },
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_album),
-                    contentDescription = "Album art",
-                    modifier = imageModifier.clickable { onOpenPlayer(current) },
-                    contentScale = ContentScale.Crop
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = current?.title ?: "",
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = current?.artist ?: "",
-                    color = Color.White.copy(alpha = 0.85f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Normal,
-                    fontSize = 12.sp
-                )
-            }
-
-            IconButton(onClick = {
-                val appCtx = context.applicationContext
-                Log.d("MiniPlayer", "play/pause clicked isPlaying=$isPlaying appCtx=$appCtx")
-                if (isPreviewMode) {
-                    // in preview toggle repository state only
-                    PlayerRepository.setIsPlaying(!PlayerRepository.isPlaying.value)
-                } else {
-                    // Optimistically update UI state so the button feels responsive, then send intent to service.
-                    PlayerRepository.setIsPlaying(!isPlaying)
-                    if (isPlaying) PlayerIntentBuilder.startPause(appCtx) else PlayerIntentBuilder.startPlay(appCtx)
-                }
-            }) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.PauseCircle else Icons.Filled.PlayCircle,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    Modifier.size(60.dp,60.dp),
-                    tint = Color.White
-                )
-            }
-        }
-
-        // Progress indicator (determinate) — use LinearProgressIndicator instead of a slider
-        val duration = durationMs
-        val position = positionMs.coerceAtMost(duration)
-        val progress = remember(position, duration) {
-            if (duration > 0L) {
-                (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-            } else 0f
-        }
-
-        Column(modifier = Modifier
-            .fillMaxWidth()) {
-            // determinate progress bar
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(2.dp, 0.dp, 2.dp, 0.dp),
-                color = Color(0xFFFFA500),
-                trackColor = Color(0xFFFFDAB9)
-            )
-        }
-    }
-}
 
 
 
 
-@Preview( name = "SongCardRow Preview", backgroundColor = 0xFF000000)
-@Composable
-fun CardPreview() {
-    // Use the real SongCardRow so preview shows the same UI and placeholder logic
-    MaterialTheme {
-        Surface(color = Color.Black) {
-            SongCardRow(
-                song = Song(id = 1, title = "Title", artist = "Artist", duration = 260000.0, path = ""),
-                onClick = {}
-            )
-        }
-    }
-}
 
-@Preview(showBackground = true, name = "MiniPlayer Preview", backgroundColor = 0xFF000000)
-@Composable
-private fun MiniPlayerPreview() {
-    // Prepare a small sample playlist with empty paths so placeholder art is used in preview
-    val sampleSongs = listOf(
-        Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = ""),
-        Song(id = 2, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "")
-    )
 
-    // populate PlayerRepository with sample data for preview
-    LaunchedEffect(Unit) {
-        PlayerRepository.setPlaylist(sampleSongs, 0)
-        PlayerRepository.setIsPlaying(false)
-    }
 
-    MaterialTheme {
-        Box(modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.Black)) {
-            MiniPlayer(modifier = Modifier.align(Alignment.Center))
-        }
-    }
-}
+
+
+
 
 @Preview(showSystemUi = true, name = "DisplayList Preview", backgroundColor = 0xFF000000, showBackground = true)
 @Composable
@@ -849,7 +548,8 @@ fun DisplayListPreview() {
                     onToggleRadio = {},
                     query = "",
                     onQueryChange = {},
-                    onSearchedClicked = {}
+                    onSearchedClicked = {},
+                    onToggleAlbumView = {}
                 )
             }
         ) { innerPadding ->
@@ -894,11 +594,37 @@ fun DisplayListRadioStationsPreview() {
         // Create a view model instance for preview with pre-populated default stations
         val sampleStations = Util.getDefaultUserStations()
         val vm = remember { SongListViewModel(userStationsInitial = sampleStations) }
-
-        Surface(color = Color.Black) {
-            Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                MainAppBar(
+                    showSearch = false,
+                    onToggleSearch = {},
+                    isRadio = false,
+                    onToggleRadio = {},
+                    query = "",
+                    onQueryChange = {},
+                    onSearchedClicked = {},
+                    onToggleAlbumView = {}
+                )
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
                 MainBackground()
-                DisplayListRadioStations(navController = navController, viewModel = vm, modifier = Modifier.fillMaxSize())
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    DisplayListRadioStations(
+                        navController = navController,
+                        viewModel = vm,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
     }

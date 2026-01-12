@@ -21,6 +21,7 @@ import android.graphics.Bitmap
 import com.example.musicplayer.Util
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
+import android.widget.Toast
 
 class PlayerForegroundService : Service() {
     private val TAG = "PlayerFgService"
@@ -104,7 +105,32 @@ class PlayerForegroundService : Service() {
             }
 
             setOnErrorListener { _, what, extra ->
-                Log.e(TAG, "MediaPlayer error: what=$what extra=$extra")
+                Log.e(TAG, "MediaPlayer error: what=$what extra=$extra currentPreparedIndex=$currentPreparedIndex")
+                // Reset preparing flag so future prepare attempts can succeed
+                isPreparing = false
+                try {
+                    PlayerRepository.clearPrepared()
+                    Toast.makeText(this@PlayerForegroundService, "Playback error. Retrying...", Toast.LENGTH_SHORT).show()
+                } catch (_: Throwable) {}
+
+                // Retry the failed song once
+                val failedIndex = currentPreparedIndex
+                if (failedIndex >= 0) {
+                    scope.launch(Dispatchers.Main) {
+                        delay(500)
+                        Log.d(TAG, "MediaPlayer error: retrying idx=$failedIndex")
+                        try {
+                            // Ensure the repository index matches what we're retrying
+                            PlayerRepository.setCurrentIndex(failedIndex)
+                            // Retry with startPlaying=true since user intended to play this song
+                            prepareCurrent(startPlaying = true)
+                        } catch (e: Throwable) {
+                            Log.w(TAG, "MediaPlayer error: retry failed ${e.message}")
+                            Toast.makeText(this@PlayerForegroundService, "Unable to play this song", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
                 // Return true if error is handled, false otherwise
                 true
             }
@@ -355,6 +381,19 @@ class PlayerForegroundService : Service() {
                 isPreparing = true
                 Log.d(TAG, "prepareCurrent: calling prepareAsync for idx=$idx")
                 mediaPlayer?.prepareAsync()
+
+                // Add a timeout watchdog to reset isPreparing if preparation hangs
+                scope.launch {
+                    delay(5000) // 10 second timeout
+                    if (isPreparing && PlayerRepository.durationMs.value == 0L) {
+                        Log.w(TAG, "prepareCurrent: preparation timeout for idx=$idx, resetting isPreparing flag")
+                        isPreparing = false
+                        PlayerRepository.clearPrepared()
+                        try {
+                            Toast.makeText(this@PlayerForegroundService, "Playback preparation timed out", Toast.LENGTH_SHORT).show()
+                        } catch (_: Throwable) {}
+                    }
+                }
             } else {
                 Log.d(TAG, "prepareCurrent: already preparing, ignoring duplicate request for idx=$idx")
             }
@@ -375,9 +414,60 @@ class PlayerForegroundService : Service() {
                 }
             }
             Log.d(TAG, "prepareCurrent scheduled prepareAsync for idx=$idx (startPlaying=$startPlaying)")
-        } catch (_: Throwable) {
-            Log.w(TAG, "prepareCurrent failed for idx=$idx")
+        } catch (t: Throwable) {
+            Log.w(TAG, "prepareCurrent failed for idx=$idx path=${song.path} err=${t.message}")
+            // Small retry once: show a toast to user and attempt a clean reset + re-prepare
+            try {
+                Toast.makeText(this@PlayerForegroundService, "Failed to load media. Retrying...", Toast.LENGTH_SHORT).show()
+            } catch (_: Throwable) {}
+            // Clear repo prepared state and local flags so next prepare can succeed
+            try { PlayerRepository.clearPrepared() } catch (_: Throwable) {}
             isPreparing = false
+            // Attempt a single retry with a short delay
+            scope.launch(Dispatchers.Main) {
+                try {
+                    delay(250)
+                    Log.d(TAG, "prepareCurrent retrying idx=$idx path=${song.path}")
+                    try { mediaPlayer?.reset() } catch (_: Throwable) {}
+                    // re-run the standard setDataSource flow
+                    try {
+                        val p = song.path
+                        Log.d(TAG, "prepareCurrent(retry): setting data source p=$p")
+                        if (p.startsWith("content://") || p.startsWith("file://") || p.startsWith("http://") || p.startsWith("https://")) {
+                            mediaPlayer?.setDataSource(this@PlayerForegroundService, p.toUri())
+                        } else {
+                            mediaPlayer?.setDataSource(p)
+                        }
+                        Log.d(TAG, "prepareCurrent(retry): setDataSource succeeded for idx=$idx")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "prepareCurrent(retry): setDataSource failed: ${e.message}")
+                        Toast.makeText(this@PlayerForegroundService, "Unable to play this song", Toast.LENGTH_SHORT).show()
+                        // Give up on retry if setDataSource keeps failing
+                        return@launch
+                    }
+                    updateMetadata(song.title, song.artist)
+                    currentPreparedIndex = idx
+                    currentPreparedPath = song.path
+                    isPreparing = true
+                    mediaPlayer?.prepareAsync()
+
+                    // Add timeout watchdog for retry as well
+                    scope.launch {
+                        delay(3000)
+                        if (isPreparing && PlayerRepository.durationMs.value == 0L) {
+                            Log.w(TAG, "prepareCurrent(retry): preparation timeout for idx=$idx")
+                            isPreparing = false
+                            PlayerRepository.clearPrepared()
+                            Toast.makeText(this@PlayerForegroundService, "Retry timed out", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+
+                    Log.d(TAG, "prepareCurrent(retry): scheduled prepareAsync for idx=$idx startPlaying=$startPlaying")
+                } catch (e: Throwable) {
+                    Log.w(TAG, "prepareCurrent(retry): exception ${e.message}")
+                    Toast.makeText(this@PlayerForegroundService, "Retry failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 

@@ -37,6 +37,7 @@ object PlayerRepository {
         _isPrepared.value = true
         _durationMs.value = durationMillis
         safeLog("markPrepared duration=$durationMillis")
+        try { Log.d(TAG, "isPrepared=true durationMs=$durationMillis") } catch (_: Throwable) {}
     }
 
     /**
@@ -46,6 +47,7 @@ object PlayerRepository {
         _isPrepared.value = false
         _durationMs.value = 0L
         safeLog("clearPrepared")
+        try { Log.d(TAG, "isPrepared=false durationMs=0") } catch (_: Throwable) {}
     }
 
     /**

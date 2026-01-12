@@ -19,9 +19,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +36,8 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -51,8 +56,11 @@ fun MainAppBar(
     onToggleRadio: () -> Unit,
     query: String,
     onQueryChange: (String) -> Unit,
-    onSearchedClicked: (String) -> Unit
+    onSearchedClicked: (String) -> Unit,
+    onToggleAlbumView: () -> Unit
 ) {
+    val menuExpanded = remember { mutableStateOf(false) }
+
     AnimatedContent(
         targetState = showSearch,
         transitionSpec = {
@@ -117,6 +125,25 @@ fun MainAppBar(
                             imageVector = if(isRadio){Icons.Filled.LibraryMusic} else{Icons.Filled.Radio},
                             contentDescription = "Toggle Song/Radio List",
                             tint = Color.White
+                        )
+                    }
+                    IconButton(onClick = { menuExpanded.value = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "More options",
+                            tint = Color.White
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded.value,
+                        onDismissRequest = { menuExpanded.value = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Album View") },
+                            onClick = {
+                                onToggleAlbumView()
+                                menuExpanded.value = false
+                            }
                         )
                     }
                 },
@@ -216,7 +243,8 @@ fun MainAppBarSongPreview() {
             onToggleRadio = {},
             query = "",
             onQueryChange = {},
-            onSearchedClicked = {}
+            onSearchedClicked = {},
+            onToggleAlbumView = {}
         )
     }
 }
@@ -232,7 +260,8 @@ fun MainAppBarRadioPreview() {
             onToggleRadio = {},
             query = "",
             onQueryChange = {},
-            onSearchedClicked = {}
+            onSearchedClicked = {},
+            onToggleAlbumView = {}
         )
     }
 }
@@ -249,7 +278,8 @@ fun MainAppBarSearchPreview() {
             onToggleRadio = {},
             query = "Search text",
             onQueryChange = {},
-            onSearchedClicked = {}
+            onSearchedClicked = {},
+            onToggleAlbumView = {}
         )
     }
 }

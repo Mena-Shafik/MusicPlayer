@@ -103,7 +103,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.TabRow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.unit.Dp
-import com.example.musicplayer.songlist.SongCardRow
+import com.example.musicplayer.composable.MusicControls
+import com.example.musicplayer.composable.SongCardRow
 
 
 // Lyrics are now cached on the Song instance (fields: lyrics, lyricsFetched). No global cache needed.
@@ -524,147 +525,7 @@ fun AlbumImage(
     }
 }
 
-@OptIn(ExperimentalAnimationApi::class)
-@Composable
-fun MusicControls(
-    isPlaying: Boolean,
-    replayEnabled: Boolean,
-    shuffleEnabled: Boolean,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onPrev: () -> Unit,
-    onReplayToggle: () -> Unit,
-    onShuffleToggle: (Boolean) -> Unit,
-    accentColor: Color = Color.White
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-        ) {
-            IconButton(
-                onClick = onReplayToggle,
-                modifier = Modifier
-                    .size(45.dp, 45.dp)
-                    .padding(5.dp, 0.dp, 5.dp, 0.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Repeat,
-                    contentDescription = if (replayEnabled) "replay on" else "replay off",
-                    modifier = Modifier.size(45.dp, 45.dp),
-                    tint = if (replayEnabled) accentColor else Util.dim(false)
-                )
-            }
 
-            IconButton(
-                onClick = onPrev,
-                modifier = Modifier
-                    .size(65.dp, 65.dp)
-                    .padding(0.dp, 0.dp, 10.dp, 0.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.SkipPrevious,
-                    contentDescription = "previous button",
-                    modifier = Modifier.size(55.dp, 55.dp),
-                    tint = accentColor
-                )
-            }
-            val morphDuration = 320
-            val targetSize = if (isPlaying) 96.dp else 96.dp
-            val animatedSize by animateDpAsState(
-                targetValue = targetSize,
-                animationSpec = tween(durationMillis = morphDuration)
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(animatedSize)
-                    .background(Color.Transparent),
-                    contentAlignment = Alignment.Center
-            ) {
-                IconButton(
-                    onClick = onPlayPause,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    AnimatedContent(
-                        targetState = isPlaying,
-                        transitionSpec = {
-                            val spec = tween<Float>(durationMillis = morphDuration)
-                            (fadeIn(animationSpec = spec) + scaleIn(
-                                initialScale = 1.15f,
-                                animationSpec = spec
-                            )) togetherWith
-                                    (fadeOut(animationSpec = spec) + scaleOut(
-                                        targetScale = 1.15f,
-                                        animationSpec = spec
-                                    ))
-                        },
-                        contentAlignment = Alignment.Center
-                    ) { playing ->
-                        val iconModifier = Modifier
-                            .fillMaxSize()
-                            .padding(5.dp, 0.dp, 5.dp, 0.dp)
-
-                        if (playing) {
-                            Icon(
-                                imageVector = Icons.Filled.PauseCircleFilled,
-                                contentDescription = "Pause",
-                                modifier = iconModifier,
-                                tint = accentColor
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.PlayCircleFilled,
-                                contentDescription = "Play",
-                                modifier = iconModifier,
-                                tint = accentColor
-                            )
-                        }
-                    }
-                }
-            }
-            /*Icon(
-                imageVector = if (isPlaying) Icons.Filled.PauseCircleFilled else Icons.Filled.PlayCircleFilled,
-                contentDescription = "play/pause Button",
-                modifier = Modifier
-                    .size(84.dp)
-                    .padding(5.dp)
-                    .clickable { onPlayPause() },
-                tint = accentColor
-            )*/
-
-            IconButton(
-                onClick = onNext,
-                modifier = Modifier
-                    .size(65.dp, 65.dp)
-                    .padding(10.dp, 0.dp, 0.dp, 0.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.SkipNext,
-                    contentDescription = "next button",
-                    modifier = Modifier.size(55.dp, 55.dp),
-                    tint = accentColor
-                )
-            }
-
-            IconButton(
-                onClick = { onShuffleToggle(!shuffleEnabled) },
-                modifier = Modifier
-                    .size(45.dp, 45.dp)
-                    .padding(5.dp, 0.dp, 5.dp, 0.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Shuffle,
-                    contentDescription = if (shuffleEnabled) "shuffle on" else "shuffle off",
-                    modifier = Modifier.size(45.dp, 45.dp),
-                    tint = if (shuffleEnabled) accentColor else Util.dim(false)
-                )
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
@@ -776,23 +637,29 @@ fun LyricsTab(currentSong: Song?, modifier: Modifier = Modifier, contentColor: C
         loading = true
         try { Log.d(tag, "Begin fetch lyrics for '${currentSong.title}' by '${currentSong.artist}'") } catch (_: Throwable) {}
         // API-first: try online lyrics, then fallback to embedded file lyrics
-        val fetched = withContext(Dispatchers.IO) {
+        val fetched: String? = withContext(Dispatchers.IO) {
             try {
-                val apiResult = try { Util.fetchLyricsOnline(currentSong) } catch (_: Throwable) { null }
+                val apiResult = try {
+                    val result = Util.fetchLyricsOnline(currentSong)
+                    // Ensure result is a String before using it
+                    if (result is String) result else null
+                } catch (_: Throwable) {
+                    null
+                }
                 if (!apiResult.isNullOrBlank()) {
                     try { Log.d(tag, "Loaded lyrics from API, length=${apiResult.length} title='${currentSong.title}'") } catch (_: Throwable) {}
                     return@withContext apiResult
                 } else {
                     try { Log.d(tag, "API returned no lyrics; attempting embedded for '${currentSong.title}'") } catch (_: Throwable) {}
                 }
-
+                null
             } catch (t: Throwable) {
                 try { Log.w(tag, "Exception while fetching lyrics: ${t.message}", t) } catch (_: Throwable) {}
                 null
             }
         }
         // Store on the song instance (may be null) and mark fetched
-        currentSong.lyrics = fetched as String?
+        currentSong.lyrics = fetched
         currentSong.lyricsFetched = true
         lyrics = fetched
         loading = false
@@ -946,22 +813,7 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
 //         MusicScreen(
 
 
-@Preview(showBackground = true, name = "MusicControls Preview (shuffle on, replay on)", backgroundColor = 0xFF000000)
-@Composable
-fun MusicControlsPreview_Toggled() {
-    MaterialTheme {
-        MusicControls(
-            isPlaying = true,
-            replayEnabled = true,
-            shuffleEnabled = true,
-            onPlayPause = {},
-            onNext = {},
-            onPrev = {},
-            onReplayToggle = { },
-            onShuffleToggle = { _ -> }
-        )
-    }
-}
+
 
 
 @Preview(showBackground = true, showSystemUi = true, name = "MusicScreen (full) Preview", backgroundColor = 0xFF000000)
@@ -1063,10 +915,13 @@ fun SongsModalBottomSheetPreview_LyricsSelected() {
 @Preview(showBackground = true, name = "SongsModalBottomSheet - Related Selected", backgroundColor = 0xFF000000)
 @Composable
 fun SongsModalBottomSheetPreview_RelatedSelected() {
+    // Create songs with the same album so related songs will be shown
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3"),
-        Song(1, "Second Song", "Artist B", 200000.0, "/storage/emulated/0/Music/second.mp3"),
-        Song(2, "Third Song", "Artist C", 240000.0, "/storage/emulated/0/Music/third.mp3")
+        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3", "Greatest Hits"),
+        Song(1, "Second Song", "Artist A", 200000.0, "/storage/emulated/0/Music/second.mp3", "Greatest Hits"),
+        Song(2, "Third Song", "Artist A", 240000.0, "/storage/emulated/0/Music/third.mp3", "Greatest Hits"),
+        Song(3, "Fourth Song", "Artist A", 220000.0, "/storage/emulated/0/Music/fourth.mp3", "Greatest Hits"),
+        Song(4, "Fifth Song", "Artist B", 190000.0, "/storage/emulated/0/Music/fifth.mp3", "Different Album")
     )
 
     MaterialTheme {
@@ -1082,4 +937,5 @@ fun SongsModalBottomSheetPreview_RelatedSelected() {
         )
     }
 }
+
 
