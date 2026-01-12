@@ -300,7 +300,7 @@ fun MusicPlayerScreen(
     }
 }
 
-// SongsSheetContent: sheet UI (Up Next + Lyrics) without its own scaffold so it can be used inside a persistent BottomSheetScaffold.
+// SongsSheetContent: sheet UI (Up Next + Lyrics + Related) without its own scaffold so it can be used inside a persistent BottomSheetScaffold.
 @Composable
 fun SongsSheetContent(
     songs: List<Song>,
@@ -434,8 +434,17 @@ fun SongsSheetContent(
 
                         Row(modifier = rowMod, verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(text = s.title, color = contentOnBg, fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold, fontSize = 16.sp)
-                                Text(text = s.artist, color = contentOnBg.copy(alpha = 0.75f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = s.title,
+                                    color = contentOnBg,
+                                    style = if (isCurrent) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                           else MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = s.artist,
+                                    color = contentOnBg.copy(alpha = 0.75f),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
 
                             if (isCurrent) {
@@ -458,7 +467,10 @@ fun SongsSheetContent(
                         Text(text = "No related songs found", color = contentOnBg.copy(alpha = 0.85f))
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).heightIn(max = 520.dp)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).heightIn(max = 520.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
                         items(items = relatedSongs) { pair ->
                             val idx = pair.first
                             val s = pair.second

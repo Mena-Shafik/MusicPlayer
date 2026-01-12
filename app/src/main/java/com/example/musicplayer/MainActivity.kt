@@ -32,6 +32,7 @@ import com.example.musicplayer.model.RadioStation
 import com.example.musicplayer.music.MusicPlayerScreen
 import com.example.musicplayer.radio.RadioPlayerScreen
 import com.example.musicplayer.songlist.ListSongsScreen
+import com.example.musicplayer.ui.theme.MusicPlayerTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -71,15 +72,16 @@ class MainActivity : ComponentActivity() {
         setupPermissions()
 
         setContent {
-            val navController = rememberNavController()
+            MusicPlayerTheme {
+                val navController = rememberNavController()
 
-            // No top bar — show content full screen
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-            ) {
-                NavHost(navController = navController, startDestination = "home") {
+                // No top bar — show content full screen
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                ) {
+                    NavHost(navController = navController, startDestination = "home") {
                     // Home route shows the songs list directly
                     composable("home") {
                         ListSongsScreen(navController = navController)
@@ -141,6 +143,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
     }
 
     /*private fun setupPermissions() {

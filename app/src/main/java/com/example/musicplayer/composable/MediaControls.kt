@@ -282,7 +282,7 @@ fun RadioControls(
     }
 }
 
-@Preview(showBackground = true, name = "MusicControls Preview (shuffle on, replay on)", backgroundColor = 0xFF000000)
+@Preview(showBackground = true, name = "MusicControls Preview (shuffle off, replay off)", backgroundColor = 0xFF000000)
 @Composable
 fun MusicControlsPreview_Toggled() {
     MaterialTheme {

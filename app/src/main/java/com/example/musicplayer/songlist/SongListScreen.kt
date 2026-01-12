@@ -447,7 +447,11 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                             Column(modifier = Modifier
                                 .padding(start = 10.dp)
                                 .weight(1f)) {
-                                Text(text = displayName, color = Color.White, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = displayName,
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
                                 // Add compact chip tags below the station name
                                 CompactRadioTagChips(
                                     tagsRaw = station.tags,

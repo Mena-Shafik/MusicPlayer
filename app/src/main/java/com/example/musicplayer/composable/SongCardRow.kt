@@ -27,7 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -101,12 +100,13 @@ fun SongCardRow(
             Text(
                 text = song.title,
                 color = Color.White,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
                 maxLines = 1
             )
             Text(
                 text = song.artist,
                 color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1
             )
         }
@@ -114,13 +114,13 @@ fun SongCardRow(
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 text = Util.converter(song.duration),
-                Modifier
+                modifier = Modifier
                     .width(80.dp)
                     .padding(10.dp),
                 color = Color.White,
-                textAlign = TextAlign.End,
-
-                )
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.End
+            )
         }
     }
 }

@@ -231,8 +231,7 @@ fun RadioPlayerScreen(
                         Text(
                             text = playingTitle,
                             color = Color.White.copy(alpha = 0.95f),
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.width(340.dp).padding(top = 6.dp)
                         )
@@ -242,7 +241,7 @@ fun RadioPlayerScreen(
                         Text(
                             text = playingArtist,
                             color = Color.White.copy(alpha = 0.75f),
-                            fontSize = 13.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.width(340.dp).padding(top = 2.dp)
                         )
@@ -275,8 +274,7 @@ fun RadioPlayerScreen(
             Text(
                 text = statusText,
                 color = Color.White.copy(alpha = 0.50f),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
             )
         }
@@ -344,8 +342,7 @@ fun RadioNowPlayingInfo(title: String?, artist: String?, modifier: Modifier = Mo
             Text(
                 text = title,
                 color = Color.White.copy(alpha = 0.95f),
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center
             )
         }
@@ -354,7 +351,7 @@ fun RadioNowPlayingInfo(title: String?, artist: String?, modifier: Modifier = Mo
             Text(
                 text = artist,
                 color = Color.White.copy(alpha = 0.75f),
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
         }
