@@ -1,51 +1,24 @@
 package com.example.musicplayer.songlist
 
-import android.app.Activity
-import android.os.Build //keep
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
-import androidx.annotation.RequiresApi  //keep
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
+import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -56,75 +29,38 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.util.UnstableApi
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
+import com.example.musicplayer.Util
+import com.example.musicplayer.composable.AlbumSongList
+import com.example.musicplayer.composable.MainAppBar
+import com.example.musicplayer.composable.MainBackground
+import com.example.musicplayer.composable.MiniPlayer
+import com.example.musicplayer.composable.RadioCardRow
+import com.example.musicplayer.composable.SongCardRow
+import com.example.musicplayer.model.Song
+import com.example.musicplayer.music.MusicPlayerViewModel
+import com.example.musicplayer.radio.RadioPlayerService
+import com.example.musicplayer.service.PlayerRepository
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
-import com.example.musicplayer.model.Song
-import com.example.musicplayer.R
-import com.example.musicplayer.Util
-import androidx.navigation.NavHostController
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.musicplayer.music.MusicPlayerViewModel
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.filled.PauseCircle
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Radio
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.TopAppBar
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
-import androidx.core.view.WindowCompat
-import com.example.musicplayer.service.PlayerRepository
-import com.example.musicplayer.service.PlayerIntentBuilder
 import kotlin.collections.getOrNull
-import kotlin.text.isNotEmpty
-import androidx.compose.runtime.SideEffect
-import com.example.musicplayer.composable.MainBackground
-import com.example.musicplayer.composable.RadioTagChips
-import com.example.musicplayer.composable.CompactRadioTagChips
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import android.widget.Toast
-import com.example.musicplayer.composable.MainAppBar
-import android.content.Intent
-import android.net.Uri
-import androidx.core.content.ContextCompat
-import androidx.media3.common.util.UnstableApi
-import androidx.navigation.compose.rememberNavController
-import com.example.musicplayer.composable.MiniPlayer
-import com.example.musicplayer.composable.SongCardRow
-import com.example.musicplayer.radio.RadioPlayerService
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun ListSongsScreen(
     navController: NavHostController,
-    viewModel: SongListViewModel = viewModel(),
     // New params: allow parent to control whether the top app bar / search UI is shown.
     showTopBar: Boolean = true,
     showSearch: Boolean = false,
@@ -133,22 +69,35 @@ fun ListSongsScreen(
     onQueryChangeExternal: (String) -> Unit = {},
     onSearchedClickedExternal: (String) -> Unit = {}
 ) {
+    // Get context first for passing to ViewModel
+    val context = LocalContext.current
+    val viewModel: SongListViewModel = viewModel(
+        factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                return SongListViewModel(context = context) as T
+            }
+        }
+    )
+
     // If the parent doesn't manage search visibility (the common case), keep local state
     var searchVisible by remember { mutableStateOf(showSearch) }
     val toggleSearch: () -> Unit = {
         try { onToggleSearch() } catch (_: Throwable) {}
         searchVisible = !searchVisible
     }
+    // album view state comes from viewModel
 
     // Use persistent radio selection stored in the SongListViewModel so selection
     // survives navigation (e.g., returning from RadioPlayerScreen)
     val isRadioSelected by viewModel.isRadioSelected.collectAsState()
     val toggleRadio: () -> Unit = { viewModel.toggleRadioSelected() }
+    val isAlbumView by viewModel.isAlbumView.collectAsState()
+    val toggleAlbumView: () -> Unit = { viewModel.toggleAlbumView() }
 
     // removed local showSearch state; parent may control it via the new params
 
     // load and filter songs
-    val context = LocalContext.current
     /*val view = LocalView.current
     val activity = LocalContext.current as? Activity
     val isPreviewMode = LocalInspectionMode.current
@@ -216,7 +165,7 @@ fun ListSongsScreen(
                     query = query,
                     onQueryChange = { onQueryChange(it) },
                     onSearchedClicked = { onSearchedClicked(it) },
-                    onToggleAlbumView = {}
+                    onToggleAlbumView = { toggleAlbumView() }
                 )
             }
         }
@@ -231,7 +180,6 @@ fun ListSongsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    // leave space at the bottom so the mini player doesn't cover list items
                     .padding(innerPadding)
             ) {
                 // Use a dedicated MusicPlayerViewModel to start playback so setPlaylist + startPlay are atomic
@@ -239,35 +187,44 @@ fun ListSongsScreen(
                 if (isRadioSelected) {
                     // When radio is selected, show the radio stations list UI
                     Box(modifier = Modifier
-                        .weight(1f)
                         .fillMaxWidth()) {
                         DisplayListRadioStations(navController = navController, viewModel = viewModel)
                     }
                 } else {
-                    DisplayListSongs(
-                        songs = songs,
-                        onSongClicked = { index ->
-                            val selected = songs.getOrNull(index)
-                            if (selected != null) {
-                                // use the player VM which calls PlayerRepository.setPlaylist and starts the service
-                                playerVm.setPlaylist(context, songs, index)
-                                // Ensure repository current index is set immediately to the selected index
-                                // so the UI reflects the selection even if setPlaylist coalesced the update.
-                                PlayerRepository.setCurrentIndex(index)
-                                // Ensure playback is explicitly requested for the selected index.
-                                // This covers the case where setPlaylist returns `false` because the
-                                // repository considers the playlist identical; calling `startPlay`
-                                // forces the service to start the requested index.
-                                playerVm.play(context)
-                                // navigate to music screen UI
-                                val songId = selected.id.toString()
-                                navController.navigate("musicScreen/$songId")
+                    if (isAlbumView) {
+                        // Album view: horizontal album cards + song list
+                        AlbumSongList(
+                            songs = songs,
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            onSongClick = { song ->
+                                // Find index for playback selection
+                                val index = songs.indexOfFirst { it.id == song.id }
+                                if (index >= 0) {
+                                    playerVm.setPlaylist(context, songs, index)
+                                    PlayerRepository.setCurrentIndex(index)
+                                    playerVm.play(context)
+                                    navController.navigate("musicScreen/${song.id}")
+                                }
                             }
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    )
+                        )
+                    } else {
+                        DisplayListSongs(
+                            songs = songs,
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            onSongClicked = { index ->
+                                val selected = songs.getOrNull(index)
+                                if (selected != null) {
+                                    playerVm.setPlaylist(context, songs, index)
+                                    PlayerRepository.setCurrentIndex(index)
+                                    playerVm.play(context)
+                                    val songId = selected.id.toString()
+                                    navController.navigate("musicScreen/$songId")
+                                }
+                            }
+                        )
+                    }
                 }
                 // show the mini player only when playback is active so it doesn't take layout space while idle
                 if (showMini) {
@@ -368,8 +325,8 @@ fun MainAppBar(
 @Composable
 fun DisplayListSongs(
     songs: List<Song>,
-    onSongClicked: (Int) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSongClicked: (Int) -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -418,61 +375,20 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
             else -> {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     itemsIndexed(stations) { idx, station ->
-                        // Prefer quoted name (e.g. "CIDC-FM") when present for UI display
                         val displayName = Util.extractQuotedOrOriginal(station.name).ifBlank { station.name ?: "Unknown" }
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val imageUrl = Util.getStationImageUrl(station).ifBlank { null }
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(imageUrl)
-                                    .crossfade(500)
-                                    .build(),
-                                contentDescription = displayName,
-                                modifier = Modifier
-                                    .width(56.dp)
-                                    .height(56.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color.White),
-                                contentScale = ContentScale.Crop,
-                                placeholder = painterResource(id = R.drawable.ic_radio),
-                                error = painterResource(id = R.drawable.ic_radio)
-                            )
-
-                            Column(modifier = Modifier
-                                .padding(start = 10.dp)
-                                .weight(1f)) {
-                                Text(
-                                    text = displayName,
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                // Add compact chip tags below the station name
-                                CompactRadioTagChips(
-                                    tagsRaw = station.tags,
-                                    modifier = Modifier.padding(top = 4.dp),
-                                    chipBackground = Color.White.copy(alpha = 0.2f),
-                                    chipContentColor = Color.White
-                                )
-                            }
-
-                            IconButton(
-                                modifier = Modifier.size(60.dp),
-                                onClick = {
-                                // Start the RadioPlayerService to play the stream URL, then navigate to RadioPlayerScreen
+                        RadioCardRow(
+                            station = station,
+                            displayName = displayName,
+                            modifier = Modifier.fillMaxWidth(),
+                            onPlay = {
                                 val url = station.url ?: ""
                                 if (url.isBlank()) {
                                     Toast.makeText(context, "No stream URL for $displayName", Toast.LENGTH_SHORT).show()
-                                    return@IconButton
+                                    return@RadioCardRow
                                 }
 
                                 try {
-                                    // start service with play-station action so playback begins in background
                                     val svcIntent = Intent().apply {
                                         action = RadioPlayerService.ACTION_PLAY_STATION
                                         putExtra(RadioPlayerService.EXTRA_STATION_URL, url)
@@ -483,20 +399,13 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                         putExtra(RadioPlayerService.EXTRA_STATION_INDEX, idx)
                                         setClassName(context.packageName, "com.example.musicplayer.radio.RadioPlayerService")
                                     }
-                                    // Use startForegroundService on O+ so the service can enter foreground mode
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        ContextCompat.startForegroundService(context, svcIntent)
-                                    } else {
-                                        context.startService(svcIntent)
-                                    }
+                                    ContextCompat.startForegroundService(context, svcIntent)
                                     Log.d("DisplayListRadioStations", "Started RadioPlayerService for $displayName -> $url index=$idx size=${stations.size}")
                                 } catch (e: Exception) {
                                     Toast.makeText(context, "Failed to start radio service: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
 
-                                // mark radio view selected so returning from player shows the radio list
                                 try { viewModel.setRadioSelected(true) } catch (_: Throwable) {}
-                                // navigate to radio player screen with encoded name/url path segments
                                 val encName = Uri.encode(displayName)
                                 val encUrl = Uri.encode(url)
                                 val favicon = station.favicon ?: ""
@@ -505,15 +414,8 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                 val encTags = Uri.encode(tagsRaw)
                                 try { Log.d("DisplayListRadioStations", "Navigating to player: name=$displayName url=$url favicon=$favicon tags=$tagsRaw") } catch (_: Throwable) {}
                                 navController.navigate("radioPlayer/$encName/$encUrl/$encFav/$encTags")
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Filled.PlayCircle,
-                                    contentDescription = "Play",
-                                    modifier = Modifier.size(50.dp),
-                                    tint = Color.White
-                                )
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -603,7 +505,7 @@ fun DisplayListRadioStationsPreview() {
                 MainAppBar(
                     showSearch = false,
                     onToggleSearch = {},
-                    isRadio = false,
+                    isRadio = true,
                     onToggleRadio = {},
                     query = "",
                     onQueryChange = {},

@@ -1,10 +1,12 @@
 package com.example.musicplayer.songlist
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.musicplayer.model.RadioStation
 import com.example.musicplayer.model.Song
+import com.example.musicplayer.preferences.PreferencesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,7 +17,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.musicplayer.Util
 
-class SongListViewModel(initialSongs: List<Song> = emptyList(), userStationsInitial: List<RadioStation> = emptyList()) : ViewModel() {
+class SongListViewModel(
+    initialSongs: List<Song> = emptyList(),
+    userStationsInitial: List<RadioStation> = emptyList(),
+    private val context: Context? = null
+) : ViewModel() {
 
     // raw playlist
     private val _songs = MutableStateFlow<List<Song>>(initialSongs)
@@ -183,15 +189,65 @@ class SongListViewModel(initialSongs: List<Song> = emptyList(), userStationsInit
         }
     }
 
+    // --- Album view toggle (persist UI choice) ---
+    private val _isAlbumView = MutableStateFlow(false)
+    val isAlbumView: StateFlow<Boolean> = _isAlbumView
+
+    fun setAlbumView(enabled: Boolean) {
+        _isAlbumView.value = enabled
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setAlbumView(it, enabled)
+            }
+        }
+    }
+
+    fun toggleAlbumView() {
+        val newValue = !_isAlbumView.value
+        _isAlbumView.value = newValue
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setAlbumView(it, newValue)
+            }
+        }
+    }
+
     // --- Persistent UI state for radio selection ---
     private val _isRadioSelected = MutableStateFlow(false)
     val isRadioSelected: StateFlow<Boolean> = _isRadioSelected
 
     fun setRadioSelected(selected: Boolean) {
         _isRadioSelected.value = selected
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setRadioSelected(it, selected)
+            }
+        }
     }
 
     fun toggleRadioSelected() {
-        _isRadioSelected.value = !_isRadioSelected.value
+        val newValue = !_isRadioSelected.value
+        _isRadioSelected.value = newValue
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setRadioSelected(it, newValue)
+            }
+        }
+    }
+
+    // Load persisted preferences when ViewModel is initialized
+    init {
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.getAlbumViewFlow(it).collect { savedAlbumView ->
+                    _isAlbumView.value = savedAlbumView
+                }
+            }
+            viewModelScope.launch {
+                PreferencesManager.getRadioSelectedFlow(it).collect { savedRadioSelected ->
+                    _isRadioSelected.value = savedRadioSelected
+                }
+            }
+        }
     }
 }

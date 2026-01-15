@@ -61,6 +61,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.6.0")
     implementation(libs.volley)
     testImplementation(libs.junit)
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("androidx.test:core:1.5.0")
+    testImplementation("io.mockk:mockk:1.13.8")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -96,4 +99,7 @@ dependencies {
     // Image loading (Coil Compose) for remote favicons
     implementation("io.coil-kt:coil-compose:2.4.0")
 // Or the latest stable version
+
+    // DataStore for persisting preferences
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
 }
