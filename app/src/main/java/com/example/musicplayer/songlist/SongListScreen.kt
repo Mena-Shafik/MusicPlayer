@@ -47,6 +47,7 @@ import com.example.musicplayer.composable.RadioCardRow
 import com.example.musicplayer.composable.SongCardRow
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.music.MusicPlayerViewModel
+import com.example.musicplayer.navigation.NavRoutes
 import com.example.musicplayer.radio.RadioPlayerService
 import com.example.musicplayer.service.PlayerRepository
 import kotlinx.coroutines.Dispatchers
@@ -137,6 +138,11 @@ fun ListSongsScreen(
     // show mini when we have a playlist and playback has actually started (either playing, or paused with a non-zero position)
     val showMini = (isPlaying || positionMs > 0L)
 
+    // Debug logging
+    LaunchedEffect(isPlaying, positionMs, showMini) {
+        Log.d("SongListScreen", "isPlaying=$isPlaying positionMs=$positionMs showMini=$showMini")
+    }
+
     // Pull-to-refresh state (re-enabled)
     var isRefreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -184,54 +190,56 @@ fun ListSongsScreen(
             ) {
                 // Use a dedicated MusicPlayerViewModel to start playback so setPlaylist + startPlay are atomic
                 val playerVm: MusicPlayerViewModel = viewModel()
-                if (isRadioSelected) {
-                    // When radio is selected, show the radio stations list UI
-                    Box(modifier = Modifier
-                        .fillMaxWidth()) {
+
+                // Song/Radio list takes remaining space above mini player
+                Box(modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()) {
+                    if (isRadioSelected) {
+                        // When radio is selected, show the radio stations list UI
                         DisplayListRadioStations(navController = navController, viewModel = viewModel)
-                    }
-                } else {
-                    if (isAlbumView) {
-                        // Album view: horizontal album cards + song list
-                        AlbumSongList(
-                            songs = songs,
-                            modifier = Modifier
-                                .fillMaxWidth(),
-                            onSongClick = { song ->
-                                // Find index for playback selection
-                                val index = songs.indexOfFirst { it.id == song.id }
-                                if (index >= 0) {
-                                    playerVm.setPlaylist(context, songs, index)
-                                    PlayerRepository.setCurrentIndex(index)
-                                    playerVm.play(context)
-                                    navController.navigate("musicScreen/${song.id}")
-                                }
-                            }
-                        )
                     } else {
-                        DisplayListSongs(
-                            songs = songs,
-                            modifier = Modifier
-                                .fillMaxWidth(),
-                            onSongClicked = { index ->
-                                val selected = songs.getOrNull(index)
-                                if (selected != null) {
-                                    playerVm.setPlaylist(context, songs, index)
-                                    PlayerRepository.setCurrentIndex(index)
-                                    playerVm.play(context)
-                                    val songId = selected.id.toString()
-                                    navController.navigate("musicScreen/$songId")
+                        if (isAlbumView) {
+                            // Album view: horizontal album cards + song list
+                            AlbumSongList(
+                                songs = songs,
+                                modifier = Modifier.fillMaxSize(),
+                                onSongClick = { song ->
+                                    // Find index for playback selection
+                                    val index = songs.indexOfFirst { it.id == song.id }
+                                    if (index >= 0) {
+                                        playerVm.setPlaylist(context, songs, index)
+                                        PlayerRepository.setCurrentIndex(index)
+                                        playerVm.play(context)
+                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        } else {
+                            DisplayListSongs(
+                                songs = songs,
+                                modifier = Modifier.fillMaxSize(),
+                                onSongClicked = { index ->
+                                    val selected = songs.getOrNull(index)
+                                    if (selected != null) {
+                                        playerVm.setPlaylist(context, songs, index)
+                                        PlayerRepository.setCurrentIndex(index)
+                                        playerVm.play(context)
+                                        val songId = selected.id.toString()
+                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
+
                 // show the mini player only when playback is active so it doesn't take layout space while idle
                 if (showMini) {
                     MiniPlayer(
                         modifier = Modifier.fillMaxWidth(),
                         onOpenPlayer = { selectedSong ->
-                            selectedSong?.let { navController.navigate("musicScreen/${it.id}") }
+                            selectedSong?.let { navController.navigate(NavRoutes.MusicPlayer.createRoute(it.id)) }
                         }
                     )
                 }
@@ -241,7 +249,8 @@ fun ListSongsScreen(
                 refreshing = isRefreshing,
                 state = pullRefreshState,
                 modifier = Modifier.align(Alignment.TopCenter),
-                contentColor = Color.White
+                contentColor = Color(0xFFFFA500),
+                backgroundColor = Color.Black.copy(alpha = 0.7f)
             )
 
         }
@@ -406,14 +415,10 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                 }
 
                                 try { viewModel.setRadioSelected(true) } catch (_: Throwable) {}
-                                val encName = Uri.encode(displayName)
-                                val encUrl = Uri.encode(url)
                                 val favicon = station.favicon ?: ""
-                                val encFav = Uri.encode(favicon)
                                 val tagsRaw = station.tags ?: ""
-                                val encTags = Uri.encode(tagsRaw)
                                 try { Log.d("DisplayListRadioStations", "Navigating to player: name=$displayName url=$url favicon=$favicon tags=$tagsRaw") } catch (_: Throwable) {}
-                                navController.navigate("radioPlayer/$encName/$encUrl/$encFav/$encTags")
+                                navController.navigate(NavRoutes.RadioPlayer.createRoute(displayName, url, favicon, tagsRaw))
                             }
                         )
                     }

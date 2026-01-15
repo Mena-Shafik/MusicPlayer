@@ -68,6 +68,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.foundation.MarqueeSpacing
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -273,7 +275,22 @@ fun MusicPlayerScreen(
                                     Column(modifier = Modifier
                                         .size(340.dp, 130.dp)
                                         .padding(10.dp).align(Alignment.CenterHorizontally),) {
-                                        Text(text = currentSong.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp, textAlign = TextAlign.Center, modifier = Modifier.width(340.dp).padding(10.dp))
+                                        Text(
+                                            text = currentSong.title,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 22.sp,
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 1,
+                                            modifier = Modifier
+                                                .width(340.dp)
+                                                .padding(10.dp)
+                                                .basicMarquee(
+                                                    iterations = Int.MAX_VALUE,
+                                                    initialDelayMillis = 2000,
+                                                    spacing = MarqueeSpacing(50.dp)
+                                                )
+                                        )
                                         Text(text = currentSong.artist, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.padding(10.dp).width(340.dp))
                                     }
                                 }

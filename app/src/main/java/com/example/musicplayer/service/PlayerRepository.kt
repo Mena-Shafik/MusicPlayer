@@ -123,10 +123,12 @@ object PlayerRepository {
         playedHistory.clear()
         _shuffleEnabled.value = false
         _replayEnabled.value = false
-        // reset playback state so service will prepare the new item when play is requested
+        // reset position and duration for the new song
         _positionMs.value = 0L
         _durationMs.value = 0L
-        _isPlaying.value = false
+        // DON'T reset isPlaying here - let the caller control playback state
+        // This prevents the MiniPlayer from disappearing when changing songs
+        // _isPlaying.value = false  // REMOVED
         // also clear prepared flag because playlist changed
         _isPrepared.value = false
         return true

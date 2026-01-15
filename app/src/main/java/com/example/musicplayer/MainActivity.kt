@@ -33,6 +33,7 @@ import com.example.musicplayer.music.MusicPlayerScreen
 import com.example.musicplayer.radio.RadioPlayerScreen
 import com.example.musicplayer.songlist.ListSongsScreen
 import com.example.musicplayer.ui.theme.MusicPlayerTheme
+import com.example.musicplayer.navigation.NavRoutes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,14 +82,14 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(Color.Black)
                 ) {
-                    NavHost(navController = navController, startDestination = "home") {
+                    NavHost(navController = navController, startDestination = NavRoutes.Home.route) {
                     // Home route shows the songs list directly
-                    composable("home") {
+                    composable(NavRoutes.Home.route) {
                         ListSongsScreen(navController = navController)
                     }
 
                     composable(
-                        "musicScreen/{songId}",
+                        NavRoutes.MusicPlayer.route,
                         arguments = listOf(navArgument("songId") { type = NavType.IntType })
                     ) { backStackEntry ->
                         val songId = backStackEntry.arguments?.getInt("songId")
@@ -120,7 +121,7 @@ class MainActivity : ComponentActivity() {
 
                     // Backwards-compatible route: encoded name/url/fav/tags path (used in many places in the app)
                     composable(
-                        "radioPlayer/{name}/{url}/{favicon}/{tags}",
+                        NavRoutes.RadioPlayer.route,
                         arguments = listOf(
                             navArgument("name") { type = NavType.StringType },
                             navArgument("url") { type = NavType.StringType },
