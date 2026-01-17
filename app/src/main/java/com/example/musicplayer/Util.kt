@@ -152,44 +152,20 @@ class Util {
 
             val retriever = MediaMetadataRetriever()
             return try {
-                // Parse the URI and decide whether to call setDataSource with a Uri (content://) or a file path
-                val parsedUri = try { Uri.parse(uri) } catch (_: Exception) { null }
-                val hasScheme = parsedUri?.scheme?.isNotBlank() == true
-
-                if (hasScheme) {
-                    // Common case: content:// uri from MediaStore
-                    try {
-                        retriever.setDataSource(context, parsedUri)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "getAlbumArt: setDataSource(context, uri) failed for parsedUri=$parsedUri", e)
-                        return null
-                    }
-                } else {
-                    // Treat as a file path. Ensure the file exists before calling setDataSource.
-                    val file = File(uri)
-                    if (file.exists()) {
-                        try {
-                            retriever.setDataSource(file.absolutePath)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "getAlbumArt: setDataSource(file) failed for file=${file.absolutePath}", e)
-                            return null
-                        }
-                    } else {
-                        // Path doesn't exist on disk; avoid calling setDataSource with a non-existent path
-                        Log.w(TAG, "getAlbumArt: file does not exist: $uri")
-                        return null
-                    }
+                // Try to set data source - handle both content:// URIs and file paths
+                val parsedUri = Uri.parse(uri)
+                when {
+                    parsedUri.scheme != null -> retriever.setDataSource(context, parsedUri)
+                    File(uri).exists() -> retriever.setDataSource(uri)
+                    else -> return null
                 }
 
-                val art = retriever.embeddedPicture
-                if (art == null || art.isEmpty()) {
-                    null
-                } else {
-                    val bmp = BitmapFactory.decodeByteArray(art, 0, art.size)
-                    bmp?.asImageBitmap()
+                // Extract and decode embedded picture
+                retriever.embeddedPicture?.let { art ->
+                    BitmapFactory.decodeByteArray(art, 0, art.size)?.asImageBitmap()
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "getAlbumArt failed for uri=$uri", e)
+                Log.w(TAG, "getAlbumArt failed for uri=$uri: ${e.message}")
                 null
             } finally {
                 try { retriever.release() } catch (_: Exception) {}
@@ -198,52 +174,177 @@ class Util {
 
         suspend fun fetchLyricsOnline(song: Song?): String? {
             if (song == null) return null
+
             return withContext(Dispatchers.IO) {
                 try {
+                    // Validate song has artist and/or title
                     val artist = song.artist.ifBlank { "" }
                     val title = song.title.ifBlank { "" }
-                    if (artist.isBlank() && title.isBlank()) {
-                        try { Log.d(TAG, "fetchLyricsOnline: skip, empty artist/title for id=${song.id}") } catch (_: Throwable) {}
-                        return@withContext null
-                    }
+                    if (artist.isBlank() && title.isBlank()) return@withContext null
 
+                    // Build API URL
                     val encArtist = URLEncoder.encode(artist, "UTF-8")
                     val encTitle = URLEncoder.encode(title, "UTF-8")
                     val urlStr = "https://api.lyrics.ovh/v1/$encArtist/$encTitle"
-                    try { Log.d(TAG, "fetchLyricsOnline: request url=$urlStr title='${song.title}' artist='${song.artist}'") } catch (_: Throwable) {}
-                    val url = URL(urlStr)
-                    val conn = (url.openConnection() as HttpURLConnection).apply {
+
+                    Log.d(TAG, "Fetching lyrics for '${song.title}' by '${song.artist}'")
+
+                    // Make HTTP request
+                    val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
                         requestMethod = "GET"
                         connectTimeout = 6000
                         readTimeout = 6000
-                        doInput = true
                     }
 
                     try {
                         val code = conn.responseCode
-                        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                        val text = stream.bufferedReader().use { it.readText() }
-                        try { Log.d(TAG, "fetchLyricsOnline: http=$code responseLen=${text.length}") } catch (_: Throwable) {}
+                        val text = conn.inputStream.bufferedReader().use { it.readText() }
+
                         if (code !in 200..299) {
-                            // Log a short snippet to help diagnose failures
-                            val snippet = text.take(200).replace('\n', ' ')
-                            try { Log.w(TAG, "fetchLyricsOnline: non-2xx code=$code body='${snippet}'") } catch (_: Throwable) {}
+                            Log.w(TAG, "Lyrics API returned code $code for '${song.title}'")
+                            return@withContext null
                         }
-                        val json = JSONObject(text)
-                        val lyrics = json.optString("lyrics", "").trim()
-                        if (lyrics.isBlank()) {
-                            try { Log.d(TAG, "fetchLyricsOnline: no lyrics found for '${song.title}'") } catch (_: Throwable) {}
-                            null
-                        } else {
-                            try { Log.d(TAG, "fetchLyricsOnline: lyrics length=${lyrics.length} for '${song.title}'") } catch (_: Throwable) {}
+
+                        // Parse JSON response
+                        val lyrics = JSONObject(text).optString("lyrics", "").trim()
+
+                        if (lyrics.isNotBlank()) {
+                            Log.d(TAG, "Found lyrics (${lyrics.length} chars) for '${song.title}'")
                             lyrics
+                        } else {
+                            Log.d(TAG, "No lyrics found for '${song.title}'")
+                            null
                         }
                     } finally {
                         conn.disconnect()
                     }
-                } catch (e: Throwable) {
-                    try { Log.w(TAG, "fetchLyricsOnline: exception for '${song.title}': ${e.message}", e) } catch (_: Throwable) {}
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to fetch lyrics for '${song.title}': ${e.message}")
                     null
+                }
+            }
+        }
+
+        /**
+         * Test a radio station URL to see if it's reachable and what format it returns.
+         * Returns a diagnostic string with details about the URL.
+         * This is a suspend function for background testing.
+         */
+        suspend fun testRadioUrl(url: String): String {
+            return withContext(Dispatchers.IO) {
+                try {
+                    if (url.isBlank()) return@withContext "❌ URL is blank"
+
+                    val result = StringBuilder()
+                    result.appendLine("🔍 Testing URL: $url")
+                    result.appendLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+                    // Parse URL
+                    val parsedUrl = try {
+                        URL(url)
+                    } catch (e: Exception) {
+                        result.appendLine("❌ INVALID URL FORMAT")
+                        result.appendLine("Error: ${e.message}")
+                        return@withContext result.toString()
+                    }
+
+                    result.appendLine("Protocol: ${parsedUrl.protocol}")
+                    result.appendLine("Host: ${parsedUrl.host}")
+                    result.appendLine("Port: ${if (parsedUrl.port == -1) "default" else parsedUrl.port}")
+                    result.appendLine("Path: ${parsedUrl.path.ifBlank { "/" }}")
+                    result.appendLine("")
+
+                    // Test connection
+                    val conn = parsedUrl.openConnection() as? HttpURLConnection
+                    if (conn == null) {
+                        result.appendLine("❌ Could not create HTTP connection")
+                        return@withContext result.toString()
+                    }
+
+                    conn.apply {
+                        requestMethod = "HEAD"
+                        connectTimeout = 10000
+                        readTimeout = 10000
+                        instanceFollowRedirects = true
+                        setRequestProperty("User-Agent", "MusicPlayer/1.0")
+                        setRequestProperty("Icy-MetaData", "1")
+
+                        try {
+                            connect()
+                            val code = responseCode
+
+                            result.appendLine("HTTP Response Code: $code")
+
+                            when (code) {
+                                200 -> result.appendLine("✓ SUCCESS - Server responded OK")
+                                301, 302, 303, 307, 308 -> {
+                                    result.appendLine("⚠ REDIRECT - URL redirects to another location")
+                                    val location = getHeaderField("Location")
+                                    result.appendLine("Redirect to: $location")
+                                }
+                                403 -> result.appendLine("❌ FORBIDDEN - Server denies access")
+                                404 -> result.appendLine("❌ NOT FOUND - Stream doesn't exist")
+                                500, 502, 503 -> result.appendLine("❌ SERVER ERROR - Server is down/misconfigured")
+                                else -> result.appendLine("⚠ Unexpected response code")
+                            }
+
+                            result.appendLine("")
+                            result.appendLine("Headers:")
+                            result.appendLine("  Content-Type: ${contentType ?: "none"}")
+                            result.appendLine("  Content-Length: ${if (contentLength > 0) contentLength else "unknown"}")
+                            result.appendLine("  ICY-Name: ${getHeaderField("icy-name") ?: "none"}")
+                            result.appendLine("  ICY-MetaInt: ${getHeaderField("icy-metaint") ?: "none"}")
+                            result.appendLine("  ICY-BR: ${getHeaderField("icy-br") ?: "none"}")
+                            result.appendLine("  Server: ${getHeaderField("Server") ?: "unknown"}")
+
+                            result.appendLine("")
+                            result.appendLine("Analysis:")
+
+                            // Analyze content type
+                            val ct = contentType?.lowercase() ?: ""
+                            when {
+                                ct.contains("audio/") -> result.appendLine("✓ Valid audio stream")
+                                ct.contains("application/vnd.apple.mpegurl") ||
+                                ct.contains("application/x-mpegurl") -> result.appendLine("✓ HLS playlist (M3U8)")
+                                ct.contains("text/html") -> {
+                                    result.appendLine("❌ PROBLEM: Server returned HTML instead of audio")
+                                    result.appendLine("   This usually means:")
+                                    result.appendLine("   • URL requires authentication")
+                                    result.appendLine("   • Session-based URL has expired")
+                                    result.appendLine("   • URL points to a webpage, not a stream")
+                                }
+                                ct.contains("text/") -> result.appendLine("⚠ WARNING: Returned text content, not audio")
+                                else -> result.appendLine("⚠ Unknown content type - may not be playable")
+                            }
+
+                            // Check for session-based URLs
+                            if (url.contains("listeningSessionID", ignoreCase = true) ||
+                                url.contains("sessionId", ignoreCase = true) ||
+                                url.contains("token", ignoreCase = true)) {
+                                result.appendLine("⚠ WARNING: URL appears to be session-based")
+                                result.appendLine("   Session-based URLs expire and need to be refreshed")
+                            }
+
+                        } catch (e: java.net.ConnectException) {
+                            result.appendLine("❌ CONNECTION FAILED")
+                            result.appendLine("Error: ${e.message}")
+                            result.appendLine("Server may be offline or blocking connections")
+                        } catch (e: java.net.SocketTimeoutException) {
+                            result.appendLine("❌ TIMEOUT")
+                            result.appendLine("Server took too long to respond")
+                        } catch (e: Exception) {
+                            result.appendLine("❌ ERROR: ${e.javaClass.simpleName}")
+                            result.appendLine("Message: ${e.message}")
+                        } finally {
+                            disconnect()
+                        }
+                    }
+
+                    result.appendLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    result.toString()
+
+                } catch (e: Exception) {
+                    "❌ Test failed: ${e.message}"
                 }
             }
         }
@@ -481,7 +582,7 @@ class Util {
         fun getUserStations(context: Context): List<RadioStation> {
             // Per user request: always use hard-coded defaults.
             // This makes the app reliably return the built-in station list (Z103.5, Virgin 99.9, etc.).
-            return getDefaultUserStations()
+            return getDefaultUserStations(context)
          }
 
         /** Try to read a stations JSON array from the app assets folder. */
@@ -500,86 +601,67 @@ class Util {
             }
         }
 
-        /** Return a small, safe default list of stations embedded in the app.
-         *  These should be editable by providing an assets/user_stations.json instead.
+        /**
+         * Load radio stations from JSON file in res/raw/radio_stations.json
          */
-        fun getDefaultUserStations(): List<RadioStation> {
-             return listOf(
-                 RadioStation(
-                     stationuuid = "cidc-z103",
-                     name = "Z103.5",
-                     url = "https://buf-streamb1-ais-relay1.streamb.live/SB00222/playlist.m3u8?listeningSessionID=6922047d0079a643_3999634_eTaWePVI_YnVmLXN0cmVhbWIxLWFpcy1yZWxheTEuc3RyZWFtYi5saXZlOjgwMDA!_0000001rk4j&downloadSessionID=0&args=app_04&clientType=web&host=webapp.CA&modTime=1767836142893&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CIDC-FM&devicename=web-desktop&stationid=7757&dist=iheart&subscription_type=free",
-                     favicon = "https://cdn-profiles.tunein.com/s12366/images/logod.png?t=637554031500000000",
-                     country = "Canada",
-                     tags = "Top40, Euro, Pop, Hip-Hop, Reggae",
-                     bitrate = 128
-                 ),
-                 RadioStation(
-                     stationuuid = "virgin-999",
-                     name = "Virgin 99.9",
-                     url = "https://18153.live.streamtheworld.com/CKFMFMAAC_SC",
-                     favicon = "https://archive.org/services/img/ckfm_20230202",
-                     country = "Canada",
-                     tags = "Pop, Top40",
-                     bitrate = 128
-                 ),
-                 RadioStation(
-                     stationuuid = "kiss-925",
-                     name = "KISS 92.5",
-                     url = "https://radio-dai.rogersdigitalmedia.com/hls/chi/rogers/tor925.stream/48k/6shJwgOxffa-176783403-10031.aac",
-                     favicon = "https://cdn-radiotime-logos.tunein.com/s31199d.png",
-                     country = "Canada",
-                     tags = "Top 40, Pop, Hip-Hop, R&B, Dance",
-                     bitrate = 0
-                 ),
-                 RadioStation(
-                     stationuuid = "chum-1045",
-                     name = "CHUM 104.5",
-                     url = "https://26293.live.streamtheworld.com/CHUMFMAAC_SC",
-                     favicon = "https://cdn-profiles.tunein.com/s31180/images/logod.png?t=637400097550000000",
-                     country = "Canada",
-                     tags = "Classic, Rock, Pop",
-                     bitrate = 0
-                 ),
-                 RadioStation(
-                     stationuuid = "chfi-981",
-                     name = "CHFI 98.1",
-                     url = "https://19313.live.streamtheworld.com/CHUMFM_ADP/HLS/playlist.m3u8?clientType=web&host=webapp.CA&modTime=1767836142893&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CHUM-FM&devicename=web-desktop&stationid=6270&dist=iheart&subscription_type=free&partnertok=eyJraWQiOiJpaGVhcnQiLCJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJ0ZCIsImNvcHBhIjowLCJwcm92aWRlcklkIjo0OCwicHJvZmlsZWlkIjoiMTE4MTU5OTU4MzMiLCJpc3MiOiJpaGVhcnQiLCJ1c19wcml2YWN5IjoiMVlZTiIsImRpc3QiOiJpaGVhcnQiLCJleHAiOjE3Njc5MTk4ODcsImlhdCI6MTc2NzgzMzQ4Nywib21pZCI6MH0.XNols_EQzgf7w0jxwCTavH6zmV-BtjM-_aGmMwK5mhs&country=CA&locale=en-CA&site-url=https%3A%2F%2Fwww.iheart.com%2Flive%2Fchum-1045-6270%2F",
-                     favicon = "https://www.seekyoursounds.com/wp-content/uploads/2024/06/Seekr-RadioCover-CHFI-981-1-300x300.png",
-                     country = "Canada",
-                     tags = "classic, rock",
-                     bitrate = 0
-                 ),
-                 RadioStation(
-                     stationuuid = "Boom-973",
-                     name = "Boom 97.3",
-                     url = "https://stingray.leanstream.co/stingray/CHBMFM.stream/playlist.m3u8?dist=iheart&args=other_04&clientType=web&host=webapp.CA&modTime=1767837779840&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CHBM-FM&devicename=web-desktop&stationid=9824&dist=iheart&subscription_type=free",
-                     favicon = "https://cdn-radiotime-logos.tunein.com/s31212d.png",
-                     country = "Canada",
-                     tags = "70's, 80's, 90's, Pop, Rock, Soul, R&B",
-                     bitrate = 0
-                 ),
-                 RadioStation(
-                     stationuuid = "Flow-987",
-                     name = "Flow 98.7",
-                     url = "https://ice64.securenetsystems.net/CKFG",
-                     favicon = "https://cdn-profiles.tunein.com/s142066/images/logod.jpg?t=637808074610000000",
-                     country = "Canada",
-                     tags = "Hip-Hop, Pop, Afrobeat, Reggae, Soul, Soca, R&B",
-                     bitrate = 0
-                 ),
-                 RadioStation(
-                     stationuuid = "Fresh-931",
-                     name = "Fresh 93.1",
-                     url = "https://live.leanstream.co/CHAYFM-MP3?args=tunein",
-                     favicon = "https://cdn-profiles.tunein.com/s31156/images/logod.png?t=155144",
-                     country = "Canada",
-                     tags = "classic, rock",
-                     bitrate = 0
-                 ),
-             )
-         }
+        fun getDefaultUserStations(context: Context): List<RadioStation> {
+            return try {
+                val inputStream = context.resources.openRawResource(R.raw.radio_stations)
+                val jsonString = inputStream.bufferedReader().use { it.readText() }
 
+                val jsonObject = org.json.JSONObject(jsonString)
+                val stationsArray = jsonObject.getJSONArray("stations")
 
-     }
- }
+                val stations = mutableListOf<RadioStation>()
+                for (i in 0 until stationsArray.length()) {
+                    val stationJson = stationsArray.getJSONObject(i)
+                    stations.add(
+                        RadioStation(
+                            stationuuid = stationJson.optString("stationuuid"),
+                            name = stationJson.optString("name"),
+                            url = stationJson.optString("url"),
+                            favicon = stationJson.optString("favicon"),
+                            country = stationJson.optString("country"),
+                            tags = stationJson.optString("tags"),
+                            bitrate = stationJson.optInt("bitrate", 0)
+                        )
+                    )
+                }
+
+                Log.d("Util", "Loaded ${stations.size} radio stations from JSON")
+                stations
+            } catch (e: Exception) {
+                Log.e("Util", "Failed to load radio stations from JSON: ${e.message}", e)
+                // Return fallback stations if JSON loading fails
+                getFallbackStations()
+            }
+        }
+
+        /**
+         * Fallback stations in case JSON loading fails
+         */
+        private fun getFallbackStations(): List<RadioStation> {
+            return listOf(
+                RadioStation(
+                    stationuuid = "cidc-z103",
+                    name = "Z103.5",
+                    url = "https://21363.live.streamtheworld.com/CIDC_FM.mp3",
+                    favicon = "https://cdn-profiles.tunein.com/s12366/images/logod.png?t=637554031500000000",
+                    country = "Canada",
+                    tags = "Top40, Euro, Pop, Hip-Hop, Reggae",
+                    bitrate = 128
+                ),
+                RadioStation(
+                    stationuuid = "kiss-925",
+                    name = "KISS 92.5",
+                    url = "https://21323.live.streamtheworld.com/CKIS_FM.mp3",
+                    favicon = "https://cdn-radiotime-logos.tunein.com/s31199d.png",
+                    country = "Canada",
+                    tags = "Top 40, Pop, Hip-Hop, R&B, Dance",
+                    bitrate = 0
+                )
+            )
+        }
+    }
+}
+

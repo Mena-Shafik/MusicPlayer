@@ -137,11 +137,37 @@ class RadioPlayerService : Service() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                lastStatus = "error: ${error.message}"
-                Log.e("RadioPlayerService", "Player error: ${error.message}", error)
+                val errorType = when (error.errorCode) {
+                    PlaybackException.ERROR_CODE_IO_UNSPECIFIED -> "IO_UNSPECIFIED - Generic I/O error"
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "IO_NETWORK_CONNECTION_FAILED - Network unreachable"
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "IO_NETWORK_CONNECTION_TIMEOUT - Connection timeout"
+                    PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE -> "IO_INVALID_HTTP_CONTENT_TYPE - Wrong content type"
+                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "IO_BAD_HTTP_STATUS - HTTP error response"
+                    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "IO_FILE_NOT_FOUND - File/stream not found"
+                    PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> "IO_NO_PERMISSION - No permission"
+                    PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED -> "IO_CLEARTEXT_NOT_PERMITTED - HTTP not allowed"
+                    PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE -> "IO_READ_POSITION_OUT_OF_RANGE - Invalid position"
+                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED -> "PARSING_CONTAINER_MALFORMED - Invalid container format"
+                    PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED -> "PARSING_MANIFEST_MALFORMED - Invalid manifest (M3U8/MPD)"
+                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> "PARSING_CONTAINER_UNSUPPORTED - Unsupported format"
+                    PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED -> "PARSING_MANIFEST_UNSUPPORTED - Unsupported manifest"
+                    else -> "ERROR_CODE_${error.errorCode}"
+                }
+
+                Log.e("RadioPlayerService", "════════════════════════════════════════")
+                Log.e("RadioPlayerService", "❌ EXOPLAYER ERROR")
+                Log.e("RadioPlayerService", "URL: $currentUrl")
+                Log.e("RadioPlayerService", "Error Code: ${error.errorCode}")
+                Log.e("RadioPlayerService", "Error Type: $errorType")
+                Log.e("RadioPlayerService", "Message: ${error.message}")
+                Log.e("RadioPlayerService", "Cause: ${error.cause?.javaClass?.simpleName} - ${error.cause?.message}")
+                Log.e("RadioPlayerService", "════════════════════════════════════════")
+
+                lastStatus = "error: $errorType"
+
                 // Try fallback to Android MediaPlayer for simple HTTP streams
                 currentUrl?.let { url ->
-                    Log.w("RadioPlayerService", "ExoPlayer failed, attempting Android MediaPlayer fallback for $url")
+                    Log.w("RadioPlayerService", "⚠ ExoPlayer failed, attempting Android MediaPlayer fallback")
                     startAndroidMediaPlayer(url)
                 }
             }
@@ -281,8 +307,57 @@ class RadioPlayerService : Service() {
     private fun playUrlInternal(url: String) {
         try {
             lastStatus = "preparing"
-            Log.d("RadioPlayerService", "playUrl: preparing $url")
+            Log.d("RadioPlayerService", "════════════════════════════════════════")
+            Log.d("RadioPlayerService", "playUrl: ATTEMPTING TO PLAY")
+            Log.d("RadioPlayerService", "URL: $url")
+            Log.d("RadioPlayerService", "URL Length: ${url.length}")
+            Log.d("RadioPlayerService", "URL Protocol: ${url.substringBefore("://")}")
+            Log.d("RadioPlayerService", "URL Host: ${try { java.net.URL(url).host } catch (e: Exception) { "INVALID_URL: ${e.message}" }}")
+            Log.d("RadioPlayerService", "════════════════════════════════════════")
+
             currentUrl = url
+
+            // Validate URL format before attempting playback
+            if (url.isBlank()) {
+                Log.e("RadioPlayerService", "❌ FAILED: URL is blank")
+                lastStatus = "error: blank URL"
+                return
+            }
+
+            // Check if URL is reachable (optional HEAD request)
+            serviceScope.launch(Dispatchers.IO) {
+                try {
+                    val testUrl = java.net.URL(url)
+                    val conn = testUrl.openConnection() as? HttpURLConnection
+                    conn?.apply {
+                        requestMethod = "HEAD"
+                        connectTimeout = 5000
+                        readTimeout = 5000
+                        setRequestProperty("User-Agent", "MusicPlayer/1.0")
+
+                        try {
+                            connect()
+                            val code = responseCode
+                            val contentType = contentType
+                            Log.d("RadioPlayerService", "✓ URL REACHABILITY CHECK:")
+                            Log.d("RadioPlayerService", "  HTTP Status: $code")
+                            Log.d("RadioPlayerService", "  Content-Type: $contentType")
+                            Log.d("RadioPlayerService", "  Content-Length: ${contentLength}")
+
+                            if (code !in 200..299) {
+                                Log.w("RadioPlayerService", "⚠ URL returned non-2xx status: $code")
+                            }
+                        } catch (e: Exception) {
+                            Log.w("RadioPlayerService", "⚠ URL reachability check failed: ${e.message}")
+                        } finally {
+                            disconnect()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("RadioPlayerService", "⚠ Could not perform URL check: ${e.message}")
+                }
+            }
+
             // Stop Android fallback if active so we don't have two audio pipelines
             try { stopAndroidMediaPlayer() } catch (_: Throwable) {}
 
@@ -298,9 +373,12 @@ class RadioPlayerService : Service() {
             player.prepare()
             player.playWhenReady = true
             player.play()
-            Log.d("RadioPlayerService", "playUrl: requested play for $url")
+            Log.d("RadioPlayerService", "✓ ExoPlayer.play() called successfully")
         } catch (e: Exception) {
-            Log.e("RadioPlayerService", "Failed to play url=$url: ${e.message}", e)
+            Log.e("RadioPlayerService", "❌ FAILED to play url=$url", e)
+            Log.e("RadioPlayerService", "Error Type: ${e.javaClass.simpleName}")
+            Log.e("RadioPlayerService", "Error Message: ${e.message}")
+            Log.e("RadioPlayerService", "Stack Trace: ${e.stackTraceToString().take(500)}")
             lastStatus = "error: ${e.message}"
             // On primary failure try Android MediaPlayer fallback
             startAndroidMediaPlayer(url)
@@ -441,28 +519,97 @@ class RadioPlayerService : Service() {
         }
 
         try {
+            Log.d("RadioPlayerService", "════════════════════════════════════════")
+            Log.d("RadioPlayerService", "FALLBACK: Trying Android MediaPlayer")
+            Log.d("RadioPlayerService", "URL: $url")
+            Log.d("RadioPlayerService", "════════════════════════════════════════")
+
             // Stop ExoPlayer to avoid both players playing simultaneously
             try { player.stop() } catch (_: Throwable) {}
             try { player.clearMediaItems() } catch (_: Throwable) {}
             stopAndroidMediaPlayer()
             lastStatus = "PREPARING"
+
             androidPlayer = MediaPlayer().apply {
-                setDataSource(url)
+                // Set data source with enhanced error handling
+                try {
+                    setDataSource(url)
+                    Log.d("RadioPlayerService", "✓ MediaPlayer.setDataSource() succeeded")
+                } catch (e: Exception) {
+                    Log.e("RadioPlayerService", "❌ MediaPlayer.setDataSource() FAILED: ${e.message}", e)
+                    throw e
+                }
+
                 setOnPreparedListener { mp ->
-                    try { mp.start() } catch (_: Throwable) {}
+                    Log.d("RadioPlayerService", "✓ MediaPlayer PREPARED successfully")
+                    try {
+                        mp.start()
+                        Log.d("RadioPlayerService", "✓ MediaPlayer STARTED successfully")
+                    } catch (e: Throwable) {
+                        Log.e("RadioPlayerService", "❌ MediaPlayer.start() FAILED: ${e.message}", e)
+                    }
                     lastStatus = "PLAYING"
-                    Log.d("RadioPlayerService", "Android MediaPlayer started for $url")
                     updateNotification(true)
                 }
+
                 setOnErrorListener { _, what, extra ->
-                    Log.e("RadioPlayerService", "Android MediaPlayer error what=$what extra=$extra")
-                    lastStatus = "ERROR:$what"
+                    // Decode error codes
+                    val whatStr = when (what) {
+                        MediaPlayer.MEDIA_ERROR_UNKNOWN -> "MEDIA_ERROR_UNKNOWN (1)"
+                        MediaPlayer.MEDIA_ERROR_SERVER_DIED -> "MEDIA_ERROR_SERVER_DIED (100)"
+                        else -> "UNKNOWN_ERROR_CODE ($what)"
+                    }
+
+                    val extraStr = when (extra) {
+                        MediaPlayer.MEDIA_ERROR_IO -> "MEDIA_ERROR_IO (-1004) - I/O error"
+                        MediaPlayer.MEDIA_ERROR_MALFORMED -> "MEDIA_ERROR_MALFORMED (-1007) - Bitstream not conforming to spec"
+                        MediaPlayer.MEDIA_ERROR_UNSUPPORTED -> "MEDIA_ERROR_UNSUPPORTED (-1010) - Unsupported format"
+                        MediaPlayer.MEDIA_ERROR_TIMED_OUT -> "MEDIA_ERROR_TIMED_OUT (-110) - Operation timed out"
+                        -1007 -> "MEDIA_ERROR_MALFORMED (-1007) - The stream/file is malformed or invalid"
+                        else -> "UNKNOWN_EXTRA_CODE ($extra)"
+                    }
+
+                    Log.e("RadioPlayerService", "════════════════════════════════════════")
+                    Log.e("RadioPlayerService", "❌ ANDROID MEDIAPLAYER ERROR")
+                    Log.e("RadioPlayerService", "URL: $url")
+                    Log.e("RadioPlayerService", "WHAT: $whatStr")
+                    Log.e("RadioPlayerService", "EXTRA: $extraStr")
+                    Log.e("RadioPlayerService", "════════════════════════════════════════")
+                    Log.e("RadioPlayerService", "DIAGNOSIS:")
+                    Log.e("RadioPlayerService", "  -1007 = Stream format is not recognized or is corrupted")
+                    Log.e("RadioPlayerService", "  Common causes:")
+                    Log.e("RadioPlayerService", "    • URL requires authentication/cookies")
+                    Log.e("RadioPlayerService", "    • URL has expired (session-based URLs)")
+                    Log.e("RadioPlayerService", "    • Server expects specific headers")
+                    Log.e("RadioPlayerService", "    • Stream format not supported by Android")
+                    Log.e("RadioPlayerService", "    • URL returns HTML/error page instead of audio")
+                    Log.e("RadioPlayerService", "════════════════════════════════════════")
+
+                    lastStatus = "ERROR: $whatStr / $extraStr"
                     true
                 }
+
+                setOnInfoListener { _, what, extra ->
+                    val infoStr = when (what) {
+                        MediaPlayer.MEDIA_INFO_BUFFERING_START -> "BUFFERING_START"
+                        MediaPlayer.MEDIA_INFO_BUFFERING_END -> "BUFFERING_END"
+                        MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START -> "VIDEO_RENDERING_START"
+                        else -> "INFO_$what"
+                    }
+                    Log.d("RadioPlayerService", "ℹ MediaPlayer Info: $infoStr (extra=$extra)")
+                    false
+                }
+
+                Log.d("RadioPlayerService", "⏳ Calling MediaPlayer.prepareAsync()...")
                 prepareAsync()
             }
         } catch (e: Exception) {
-            Log.e("RadioPlayerService", "Failed android MediaPlayer fallback: ${e.message}", e)
+            Log.e("RadioPlayerService", "════════════════════════════════════════")
+            Log.e("RadioPlayerService", "❌ ANDROID MEDIAPLAYER SETUP FAILED")
+            Log.e("RadioPlayerService", "Error: ${e.javaClass.simpleName}")
+            Log.e("RadioPlayerService", "Message: ${e.message}")
+            Log.e("RadioPlayerService", "Stack: ${e.stackTraceToString().take(500)}")
+            Log.e("RadioPlayerService", "════════════════════════════════════════")
             lastStatus = "ERROR:${e.message}"
         }
     }

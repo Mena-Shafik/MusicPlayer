@@ -502,9 +502,22 @@ fun DisplayListPreview() {
 fun DisplayListRadioStationsPreview() {
     MaterialTheme {
         val navController = rememberNavController()
-        // Create a view model instance for preview with pre-populated default stations
-        val sampleStations = Util.getDefaultUserStations()
+        val context = LocalContext.current
+
+        // Hardcoded sample stations for preview
+        val sampleStations = listOf(
+            com.example.musicplayer.model.RadioStation(stationuuid = "cidc-z103", name = "Z103.5", url = "https://21363.live.streamtheworld.com/CIDC_FM.mp3", favicon = "https://cdn-profiles.tunein.com/s12366/images/logod.png?t=637554031500000000", country = "Canada", tags = "Top40, Euro, Pop, Hip-Hop, Reggae", bitrate = 128),
+            com.example.musicplayer.model.RadioStation(stationuuid = "virgin-999", name = "Virgin 99.9", url = "https://18153.live.streamtheworld.com/CKFMFMAAC_SC", favicon = "https://archive.org/services/img/ckfm_20230202", country = "Canada", tags = "Pop, Top40", bitrate = 128),
+            com.example.musicplayer.model.RadioStation(stationuuid = "kiss-925", name = "KISS 92.5", url = "https://21323.live.streamtheworld.com/CKIS_FM.mp3", favicon = "https://cdn-radiotime-logos.tunein.com/s31199d.png", country = "Canada", tags = "Top 40, Pop, Hip-Hop, R&B, Dance", bitrate = 0),
+            com.example.musicplayer.model.RadioStation(stationuuid = "chum-1045", name = "CHUM 104.5", url = "https://26293.live.streamtheworld.com/CHUMFMAAC_SC", favicon = "https://cdn-profiles.tunein.com/s31180/images/logod.png?t=637400097550000000", country = "Canada", tags = "Classic, Rock, Pop", bitrate = 0),
+            com.example.musicplayer.model.RadioStation(stationuuid = "chfi-981", name = "CHFI 98.1", url = "https://21253.live.streamtheworld.com/CHFIFM.mp3", favicon = "https://www.seekyoursounds.com/wp-content/uploads/2024/06/Seekr-RadioCover-CHFI-981-1-300x300.png", country = "Canada", tags = "easy listening, adult contemporary", bitrate = 0),
+            com.example.musicplayer.model.RadioStation(stationuuid = "Boom-973", name = "Boom 97.3", url = "https://21323.live.streamtheworld.com/CHBM_FM.mp3", favicon = "https://cdn-radiotime-logos.tunein.com/s31212d.png", country = "Canada", tags = "70's, 80's, 90's, Pop, Rock, Soul, R&B", bitrate = 0),
+            com.example.musicplayer.model.RadioStation(stationuuid = "Flow-987", name = "Flow 98.7", url = "https://ice64.securenetsystems.net/CKFG", favicon = "https://cdn-profiles.tunein.com/s142066/images/logod.jpg?t=637808074610000000", country = "Canada", tags = "Hip-Hop, Pop, Afrobeat, Reggae, Soul, Soca, R&B", bitrate = 0),
+            com.example.musicplayer.model.RadioStation(stationuuid = "Fresh-931", name = "Fresh 93.1", url = "https://live.leanstream.co/CHAYFM-MP3?args=tunein", favicon = "https://cdn-profiles.tunein.com/s31156/images/logod.png?t=155144", country = "Canada", tags = "classic, rock", bitrate = 0)
+        )
+
         val vm = remember { SongListViewModel(userStationsInitial = sampleStations) }
+
         Scaffold(
             topBar = {
                 MainAppBar(

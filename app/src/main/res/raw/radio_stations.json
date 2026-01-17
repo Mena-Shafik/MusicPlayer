@@ -1,0 +1,81 @@
+{
+  "stations": [
+    {
+      "stationuuid": "cidc-z103",
+      "name": "Z103.5",
+      "url": "https://buf-streamb1-ais-relay1.streamb.live/SB00222/playlist.m3u8?listeningSessionID=6922047d0079a643_3999634_eTaWePVI_YnVmLXN0cmVhbWIxLWFpcy1yZWxheTEuc3RyZWFtYi5saXZlOjgwMDA!_0000001rk4j&downloadSessionID=0&args=app_04&clientType=web&host=webapp.CA&modTime=1767836142893&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CIDC-FM&devicename=web-desktop&stationid=7757&dist=iheart&subscription_type=free",
+      "favicon": "https://cdn-profiles.tunein.com/s12366/images/logod.png?t=637554031500000000",
+      "country": "Canada",
+      "tags": "Top40, Euro, Pop, Hip-Hop, Reggae",
+      "bitrate": 128
+    },
+    {
+      "stationuuid": "virgin-999",
+      "name": "Virgin 99.9",
+      "url": "https://18153.live.streamtheworld.com/CKFMFMAAC_SC",
+      "favicon": "https://archive.org/services/img/ckfm_20230202",
+      "country": "Canada",
+      "tags": "Pop, Top40",
+      "bitrate": 128
+    },
+    {
+      "stationuuid": "kiss-925",
+      "name": "KISS 92.5",
+      "url": "https://radio-dai.rogersdigitalmedia.com/hls/chi/rogers/tor925.stream/48k/6shJwgOxffa-176783403-10031.aac",
+      "favicon": "https://cdn-radiotime-logos.tunein.com/s31199d.png",
+      "country": "Canada",
+      "tags": "Top 40, Pop, Hip-Hop, R&B, Dance",
+      "bitrate": 128
+    },
+    {
+      "stationuuid": "chum-1045",
+      "name": "CHUM 104.5",
+      "url": "https://26293.live.streamtheworld.com/CHUMFMAAC_SC",
+      "favicon": "https://cdn-profiles.tunein.com/s31180/images/logod.png?t=637400097550000000",
+      "country": "Canada",
+      "tags": "Classic, Rock, Pop",
+      "bitrate": 0
+    },
+    {
+      "stationuuid": "chfi-981",
+      "name": "CHFI 98.1",
+      "url": "https://19313.live.streamtheworld.com/CHUMFM_ADP/HLS/playlist.m3u8?clientType=web&host=webapp.CA&modTime=1767836142893&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CHUM-FM&devicename=web-desktop&stationid=6270&dist=iheart&subscription_type=free&partnertok=eyJraWQiOiJpaGVhcnQiLCJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJ0ZCIsImNvcHBhIjowLCJwcm92aWRlcklkIjo0OCwicHJvZmlsZWlkIjoiMTE4MTU5OTU4MzMiLCJpc3MiOiJpaGVhcnQiLCJ1c19wcml2YWN5IjoiMVlZTiIsImRpc3QiOiJpaGVhcnQiLCJleHAiOjE3Njc5MTk4ODcsImlhdCI6MTc2NzgzMzQ4Nywib21pZCI6MH0.XNols_EQzgf7w0jxwCTavH6zmV-BtjM-_aGmMwK5mhs&country=CA&locale=en-CA&site-url=https%3A%2F%2Fwww.iheart.com%2Flive%2Fchum-1045-6270%2F",
+      "favicon": "https://www.seekyoursounds.com/wp-content/uploads/2024/06/Seekr-RadioCover-CHFI-981-1-300x300.png",
+      "country": "Canada",
+      "tags": "easy listening, adult contemporary",
+      "bitrate": 128
+    },
+    {
+      "stationuuid": "Boom-973",
+      "name": "Boom 97.3",
+      "url": "https://stingray.leanstream.co/stingray/CHBMFM.stream/playlist.m3u8?dist=iheart&args=other_04&clientType=web&host=webapp.CA&modTime=1767837779840&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CHBM-FM&devicename=web-desktop&stationid=9824&dist=iheart&subscription_type=free",
+      "favicon": "https://cdn-radiotime-logos.tunein.com/s31212d.png",
+      "country": "Canada",
+      "tags": "70's, 80's, 90's, Pop, Rock, Soul, R&B",
+      "bitrate": 128
+    },
+    {
+      "stationuuid": "Flow-987",
+      "name": "Flow 98.7",
+      "url": "https://ice64.securenetsystems.net/CKFG",
+      "favicon": "https://cdn-profiles.tunein.com/s142066/images/logod.jpg?t=637808074610000000",
+      "country": "Canada",
+      "tags": "Hip-Hop, Pop, Afrobeat, Reggae, Soul, Soca, R&B",
+      "bitrate": 128
+    },
+    {
+      "stationuuid": "Fresh-931",
+      "name": "Fresh 93.1",
+      "url": "https://live.leanstream.co/CHAYFM-MP3?args=tunein",
+      "favicon": "https://cdn-profiles.tunein.com/s31156/images/logod.png?t=155144",
+      "country": "Canada",
+      "tags": "classic, rock",
+      "bitrate": 128
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "last_updated": "2026-01-15",
+    "description": "Toronto area radio stations with working stream URLs"
+  }
+}

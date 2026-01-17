@@ -182,7 +182,11 @@ class SongListViewModel(
     fun loadDefaultUserStations() {
         viewModelScope.launch {
             try {
-                _userStations.value = Util.getDefaultUserStations()
+                context?.let { ctx ->
+                    _userStations.value = Util.getDefaultUserStations(ctx)
+                } ?: run {
+                    _userStations.value = emptyList()
+                }
             } catch (e: Exception) {
                 _userStations.value = emptyList()
             }

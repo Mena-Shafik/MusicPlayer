@@ -78,10 +78,10 @@ fun AlbumSongList(
 
     Surface(
         modifier = modifier,
-        color = Color.Black,
+        color = Color.Transparent,
         contentColor = lightText
     ) {
-        Column(modifier = Modifier.background(Color.Black)) {
+        Column(modifier = Modifier.background(Color.Transparent)) {
             // Horizontal scrollable album cards with covers
             Row(
                 modifier = Modifier
@@ -132,7 +132,6 @@ fun AlbumSongList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.Black)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -258,7 +257,10 @@ private fun AlbumSongListPreview() {
         Song(4, "Another", "A", 100.0, "p4", album = "Beta"),
         Song(5, "Single", "D", 100.0, "p5", album = null),
     )
-    Surface { AlbumSongList(songs = demo) }
+    Surface(color = Color.Black.copy(alpha = .5f)) {
+        MainBackground()
+        AlbumSongList(songs = demo)
+    }
 }
 
 @Preview
@@ -272,5 +274,7 @@ private fun AlbumSongListPreview_MultiAlbum() {
         Song(5, "Track 5", "E", 100.0, "p5", album = "Gamma"),
         Song(6, "Track 6", "F", 100.0, "p6", album = "Gamma"),
     )
-    Surface { AlbumSongList(songs = demo) }
+    Surface(color = Color.Black.copy(alpha = .5f)) {
+        MainBackground()
+        AlbumSongList(songs = demo) }
 }
