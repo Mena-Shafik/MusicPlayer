@@ -1,4 +1,4 @@
-package com.example.musicplayer.composable
+package com.example.musicplayer.ui.components
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -11,6 +11,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -24,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -31,7 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.musicplayer.R
-import com.example.musicplayer.Util
+import com.example.musicplayer.util.Util
 import com.example.musicplayer.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,10 +47,14 @@ import kotlinx.coroutines.withContext
 fun SongCardRow(
     song: Song,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAddToPlaylist: (songId: Int) -> Unit = {},
+    onRemoveFromPlaylist: (songId: Int) -> Unit = {},
+    isInPlaylist: Boolean = false
 ) {
     val context = LocalContext.current
-    var imageBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var imageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var menuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(song.path) {
         imageBitmap = null  // reset when song changes
@@ -122,6 +133,38 @@ fun SongCardRow(
                 textAlign = TextAlign.End
             )
         }
+
+        // Menu button for Add to Playlist
+        IconButton(onClick = { menuExpanded = true }) {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = "More options",
+                tint = Color.White
+            )
+        }
+
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false }
+        ) {
+            if (isInPlaylist) {
+                DropdownMenuItem(
+                    text = { Text("Remove from Playlist") },
+                    onClick = {
+                        onRemoveFromPlaylist(song.id)
+                        menuExpanded = false
+                    }
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text("Add to Playlist") },
+                    onClick = {
+                        onAddToPlaylist(song.id)
+                        menuExpanded = false
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -133,7 +176,8 @@ fun CardPreview() {
         Surface(color = Color.Black) {
             SongCardRow(
                 song = Song(id = 1, title = "Title", artist = "Artist", duration = 260000.0, path = ""),
-                onClick = {}
+                onClick = {},
+                isInPlaylist = false
             )
         }
     }

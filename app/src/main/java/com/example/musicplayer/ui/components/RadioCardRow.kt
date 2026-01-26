@@ -1,4 +1,4 @@
-package com.example.musicplayer.composable
+package com.example.musicplayer.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.musicplayer.R
-import com.example.musicplayer.Util
+import com.example.musicplayer.util.Util
 import com.example.musicplayer.model.RadioStation
 
 @Composable

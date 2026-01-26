@@ -10,11 +10,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.runtime.collectAsState
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,8 +34,13 @@ import com.example.musicplayer.model.RadioStation
 import com.example.musicplayer.music.MusicPlayerScreen
 import com.example.musicplayer.radio.RadioPlayerScreen
 import com.example.musicplayer.songlist.ListSongsScreen
+import com.example.musicplayer.settings.SettingsScreen
 import com.example.musicplayer.ui.theme.MusicPlayerTheme
 import com.example.musicplayer.navigation.NavRoutes
+import com.example.musicplayer.playlist.PlaylistScreen
+import com.example.musicplayer.playlist.PlaylistDetailScreen
+import com.example.musicplayer.playlist.PlaylistAddSongsScreen
+import com.example.musicplayer.util.Util
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -86,6 +93,69 @@ class MainActivity : ComponentActivity() {
                     // Home route shows the songs list directly
                     composable(NavRoutes.Home.route) {
                         ListSongsScreen(navController = navController)
+                    }
+                    composable(NavRoutes.Settings.route) {
+                        SettingsScreen(navController = navController)
+                    }
+
+                    composable(NavRoutes.Playlists.route) {
+                        PlaylistScreen(navController = navController, onPlaylistSelected = { playlist ->
+                            navController.navigate(NavRoutes.PlaylistDetail.createRoute(playlist.id))
+                        })
+                    }
+
+                    composable(
+                        NavRoutes.PlaylistDetail.route,
+                        arguments = listOf(navArgument("playlistId") { type = NavType.LongType })
+                    ) { backStackEntry ->
+                        val playlistId = backStackEntry.arguments?.getLong("playlistId") ?: return@composable
+                        val context = LocalContext.current
+                        val songs: List<Song> = remember(context) { Util.getAllAudioFromDevice(context) }
+
+                        // Find the playlist from PlaylistRepository
+                        val playlistVm: com.example.musicplayer.playlist.PlaylistViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+                            factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                                    return com.example.musicplayer.playlist.PlaylistViewModel(context) as T
+                                }
+                            }
+                        )
+                        val playlists by playlistVm.playlists.collectAsState(initial = emptyList())
+                        val currentPlaylist = remember(playlistId, playlists) {
+                            playlists.find { it.id == playlistId }
+                        }
+
+                        if (currentPlaylist != null) {
+                            PlaylistDetailScreen(navController = navController, playlist = currentPlaylist, allSongs = songs)
+                        }
+                    }
+
+                    composable(
+                        NavRoutes.PlaylistAddSongs.route,
+                        arguments = listOf(navArgument("playlistId") { type = NavType.LongType })
+                    ) { backStackEntry ->
+                        val playlistId = backStackEntry.arguments?.getLong("playlistId") ?: return@composable
+                        val context = LocalContext.current
+                        val songs: List<Song> = remember(context) { Util.getAllAudioFromDevice(context) }
+
+                        // Find the playlist from PlaylistRepository
+                        val playlistVm: com.example.musicplayer.playlist.PlaylistViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+                            factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                                    return com.example.musicplayer.playlist.PlaylistViewModel(context) as T
+                                }
+                            }
+                        )
+                        val playlists by playlistVm.playlists.collectAsState(initial = emptyList())
+                        val currentPlaylist = remember(playlistId, playlists) {
+                            playlists.find { it.id == playlistId }
+                        }
+
+                        if (currentPlaylist != null) {
+                            PlaylistAddSongsScreen(navController = navController, playlistId = playlistId, allSongs = songs)
+                        }
                     }
 
                     composable(

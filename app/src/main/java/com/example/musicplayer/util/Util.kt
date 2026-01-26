@@ -1,4 +1,4 @@
-package com.example.musicplayer
+package com.example.musicplayer.util
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -13,19 +13,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.net.toUri
-import com.example.musicplayer.model.Song
+import com.example.musicplayer.R
 import com.example.musicplayer.model.RadioStation
-import java.io.File
-import java.util.ArrayList
-import java.util.Locale
+import com.example.musicplayer.model.Song
+import com.example.musicplayer.radio.RadioApiService
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import java.net.URL
-import java.net.URLEncoder
-import java.net.HttpURLConnection
-import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.net.ConnectException
+import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.URL
+import java.net.URLEncoder
+import java.util.ArrayList
+import java.util.Locale
 
 class Util {
 
@@ -112,7 +116,8 @@ class Util {
         fun formatSongTableHeader(): String {
             // %-4s = left-aligned width 4, %-30s = left-aligned width 30, etc.
             // Columns: ID, Title, Artist, Album, Path, Duration
-            return String.format(Locale.US, "%-4s %-30s %-20s %-20s %-40s %8s",
+            return String.Companion.format(
+                Locale.US, "%-4s %-30s %-20s %-20s %-40s %8s",
                 "ID", "Title", "Artist", "Album", "Path", "Duration")
         }
 
@@ -124,7 +129,7 @@ class Util {
             val album = padOrTruncate(song.album?.trim(), 40)
             val duration = padOrTruncate(song.duration.toString(), 10)
             val path = padOrTruncate(song.path, 70)
-            return String.format(Locale.US, "%-4s %-25s %-15s %-40s %-40s %8s", id, title, artist, album, path, duration)
+            return String.Companion.format(Locale.US, "%-4s %-25s %-15s %-40s %-40s %8s", id, title, artist, album, path, duration)
         }
 
         fun converter(time: Double): String {
@@ -282,6 +287,7 @@ class Util {
                                     val location = getHeaderField("Location")
                                     result.appendLine("Redirect to: $location")
                                 }
+
                                 403 -> result.appendLine("❌ FORBIDDEN - Server denies access")
                                 404 -> result.appendLine("❌ NOT FOUND - Stream doesn't exist")
                                 500, 502, 503 -> result.appendLine("❌ SERVER ERROR - Server is down/misconfigured")
@@ -305,7 +311,8 @@ class Util {
                             when {
                                 ct.contains("audio/") -> result.appendLine("✓ Valid audio stream")
                                 ct.contains("application/vnd.apple.mpegurl") ||
-                                ct.contains("application/x-mpegurl") -> result.appendLine("✓ HLS playlist (M3U8)")
+                                        ct.contains("application/x-mpegurl") -> result.appendLine("✓ HLS playlist (M3U8)")
+
                                 ct.contains("text/html") -> {
                                     result.appendLine("❌ PROBLEM: Server returned HTML instead of audio")
                                     result.appendLine("   This usually means:")
@@ -313,6 +320,7 @@ class Util {
                                     result.appendLine("   • Session-based URL has expired")
                                     result.appendLine("   • URL points to a webpage, not a stream")
                                 }
+
                                 ct.contains("text/") -> result.appendLine("⚠ WARNING: Returned text content, not audio")
                                 else -> result.appendLine("⚠ Unknown content type - may not be playable")
                             }
@@ -320,16 +328,17 @@ class Util {
                             // Check for session-based URLs
                             if (url.contains("listeningSessionID", ignoreCase = true) ||
                                 url.contains("sessionId", ignoreCase = true) ||
-                                url.contains("token", ignoreCase = true)) {
+                                url.contains("token", ignoreCase = true)
+                            ) {
                                 result.appendLine("⚠ WARNING: URL appears to be session-based")
                                 result.appendLine("   Session-based URLs expire and need to be refreshed")
                             }
 
-                        } catch (e: java.net.ConnectException) {
+                        } catch (e: ConnectException) {
                             result.appendLine("❌ CONNECTION FAILED")
                             result.appendLine("Error: ${e.message}")
                             result.appendLine("Server may be offline or blocking connections")
-                        } catch (e: java.net.SocketTimeoutException) {
+                        } catch (e: SocketTimeoutException) {
                             result.appendLine("❌ TIMEOUT")
                             result.appendLine("Server took too long to respond")
                         } catch (e: Exception) {
@@ -456,8 +465,8 @@ class Util {
             return builder.toString()
         }
 
-        fun dim(clicked: Boolean): Color{
-            return if (clicked) Color.White else Color.White.copy(alpha = 0.4f)
+        fun dim(clicked: Boolean): Color {
+            return if (clicked) Color.Companion.White else Color.Companion.White.copy(alpha = 0.4f)
         }
 
 
@@ -503,7 +512,7 @@ class Util {
                 try {
                     Log.i(TAG, "fetchRadioStations: name='${query}' limit=${limit} country=${country ?: "<any>"} state=${state ?: "<any>"}")
                 } catch (_: Throwable) {}
-                val api = com.example.musicplayer.radio.RadioApiService.create()
+                val api = RadioApiService.create()
                 api.searchStations(query, limit, country, state)
             } catch (e: Exception) {
                 //Log.w(TAG, "fetchRadioStations failed for query='$query' limit=$limit country=$country state=$state", e)
@@ -515,7 +524,7 @@ class Util {
         suspend fun fetchRadioStationsNearby(lat: Double, lng: Double, limit: Int = 50, distanceKm: Int? = null): List<RadioStation> {
             return try {
                 try { Log.d(TAG, "fetchRadioStationsNearby: lat=$lat lng=$lng limit=$limit distanceKm=${distanceKm ?: "<any>"}") } catch (_: Throwable) {}
-                val api = com.example.musicplayer.radio.RadioApiService.create()
+                val api = RadioApiService.create()
                 api.searchStationsNearby(lat, lng, limit, distanceKm)
             } catch (_: Exception) {
                 //Log.w(TAG, "fetchRadioStationsNearby failed for lat=$lat lng=$lng limit=$limit distanceKm=$distanceKm", e)
@@ -571,7 +580,7 @@ class Util {
             // Fallback: use host's favicon via Google's s2 helper when we can derive a host
             val src = st.url ?: st.favicon
             val host = try {
-                if (src.isNullOrBlank()) null else java.net.URL(if (src.contains("://")) src else "https://$src").host?.lowercase()?.removePrefix("www.")
+                if (src.isNullOrBlank()) null else URL(if (src.contains("://")) src else "https://$src").host?.lowercase()?.removePrefix("www.")
             } catch (_: Exception) { null }
             if (!host.isNullOrBlank()) return "https://www.google.com/s2/favicons?sz=256&domain_url=$host"
 
@@ -609,7 +618,7 @@ class Util {
                 val inputStream = context.resources.openRawResource(R.raw.radio_stations)
                 val jsonString = inputStream.bufferedReader().use { it.readText() }
 
-                val jsonObject = org.json.JSONObject(jsonString)
+                val jsonObject = JSONObject(jsonString)
                 val stationsArray = jsonObject.getJSONArray("stations")
 
                 val stations = mutableListOf<RadioStation>()
@@ -661,7 +670,19 @@ class Util {
                     bitrate = 0
                 )
             )
+            }
         }
-    }
-}
 
+        // Simple artist image lookup; in a real app, you’d query an API.
+        private val artistImageMap: Map<String, String> = mapOf(
+            "Artist One" to "https://upload.wikimedia.org/wikipedia/commons/4/4f/Blank_profile.png",
+            "Artist Two" to "https://upload.wikimedia.org/wikipedia/commons/4/4f/Blank_profile.png",
+            "Artist Three" to "https://upload.wikimedia.org/wikipedia/commons/4/4f/Blank_profile.png"
+        )
+
+        fun getArtistImageUrl(name: String): String? {
+            val key = name.trim()
+            return artistImageMap[key]
+        }
+
+}

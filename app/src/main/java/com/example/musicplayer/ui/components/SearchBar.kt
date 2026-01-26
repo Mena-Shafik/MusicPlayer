@@ -1,4 +1,4 @@
-package com.example.musicplayer.composable
+package com.example.musicplayer.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -7,24 +7,18 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,7 +51,8 @@ fun MainAppBar(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearchedClicked: (String) -> Unit,
-    onToggleAlbumView: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenPlaylists: () -> Unit = {}
 ) {
     val menuExpanded = remember { mutableStateOf(false) }
 
@@ -120,6 +115,13 @@ fun MainAppBar(
                             tint = Color.White
                         )
                     }
+                    IconButton(onClick = onOpenPlaylists) {
+                        Icon(
+                            imageVector = Icons.Filled.QueueMusic,
+                            contentDescription = "Open Playlists",
+                            tint = Color.White
+                        )
+                    }
                     IconButton(onClick = onToggleRadio) {
                         Icon(
                             imageVector = if(isRadio){Icons.Filled.LibraryMusic} else{Icons.Filled.Radio},
@@ -127,23 +129,11 @@ fun MainAppBar(
                             tint = Color.White
                         )
                     }
-                    IconButton(onClick = { menuExpanded.value = true }) {
+                    IconButton(onClick = onOpenSettings) {
                         Icon(
-                            imageVector = Icons.Filled.MoreVert,
-                            contentDescription = "More options",
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Open settings",
                             tint = Color.White
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = menuExpanded.value,
-                        onDismissRequest = { menuExpanded.value = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Album View") },
-                            onClick = {
-                                onToggleAlbumView()
-                                menuExpanded.value = false
-                            }
                         )
                     }
                 },
@@ -244,7 +234,8 @@ fun MainAppBarSongPreview() {
             query = "",
             onQueryChange = {},
             onSearchedClicked = {},
-            onToggleAlbumView = {}
+            onOpenSettings = {},
+            onOpenPlaylists = {}
         )
     }
 }
@@ -261,7 +252,8 @@ fun MainAppBarRadioPreview() {
             query = "",
             onQueryChange = {},
             onSearchedClicked = {},
-            onToggleAlbumView = {}
+            onOpenSettings = {},
+            onOpenPlaylists = {}
         )
     }
 }
@@ -279,7 +271,8 @@ fun MainAppBarSearchPreview() {
             query = "Search text",
             onQueryChange = {},
             onSearchedClicked = {},
-            onToggleAlbumView = {}
+            onOpenSettings = {},
+            onOpenPlaylists = {}
         )
     }
 }

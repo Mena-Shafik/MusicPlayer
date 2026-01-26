@@ -45,6 +45,16 @@ sealed class NavRoutes(val route: String) {
     object Artist : NavRoutes("artist/{artistId}") {
         fun createRoute(artistId: String) = "artist/$artistId"
     }
+
+    object Playlists : NavRoutes("playlists")
+
+    object PlaylistDetail : NavRoutes("playlist_detail/{playlistId}") {
+        fun createRoute(playlistId: Long) = "playlist_detail/$playlistId"
+    }
+
+    object PlaylistAddSongs : NavRoutes("playlist_add_songs/{playlistId}") {
+        fun createRoute(playlistId: Long) = "playlist_add_songs/$playlistId"
+    }
 }
 
 /**

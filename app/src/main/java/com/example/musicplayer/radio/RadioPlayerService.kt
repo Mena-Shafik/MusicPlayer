@@ -23,7 +23,7 @@ import com.example.musicplayer.MainActivity
 import android.app.Service
 import androidx.media3.common.util.UnstableApi
 import android.media.MediaPlayer
-import com.example.musicplayer.Util
+import com.example.musicplayer.util.Util
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

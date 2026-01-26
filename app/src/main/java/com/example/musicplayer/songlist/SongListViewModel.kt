@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.example.musicplayer.Util
+import com.example.musicplayer.util.Util
 
 class SongListViewModel(
     initialSongs: List<Song> = emptyList(),
@@ -198,6 +198,7 @@ class SongListViewModel(
     val isAlbumView: StateFlow<Boolean> = _isAlbumView
 
     fun setAlbumView(enabled: Boolean) {
+        if (enabled) _isArtistView.value = false
         _isAlbumView.value = enabled
         context?.let {
             viewModelScope.launch {
@@ -208,10 +209,36 @@ class SongListViewModel(
 
     fun toggleAlbumView() {
         val newValue = !_isAlbumView.value
+        if (newValue) _isArtistView.value = false
         _isAlbumView.value = newValue
         context?.let {
             viewModelScope.launch {
                 PreferencesManager.setAlbumView(it, newValue)
+            }
+        }
+    }
+
+    // NEW: artist view state
+    private val _isArtistView = MutableStateFlow(false)
+    val isArtistView: StateFlow<Boolean> = _isArtistView
+
+    fun setArtistView(enabled: Boolean) {
+        if (enabled) _isAlbumView.value = false
+        _isArtistView.value = enabled
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setArtistView(it, enabled)
+            }
+        }
+    }
+
+    fun toggleArtistView() {
+        val newValue = !_isArtistView.value
+        if (newValue) _isAlbumView.value = false
+        _isArtistView.value = newValue
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setArtistView(it, newValue)
             }
         }
     }
@@ -245,6 +272,13 @@ class SongListViewModel(
             viewModelScope.launch {
                 PreferencesManager.getAlbumViewFlow(it).collect { savedAlbumView ->
                     _isAlbumView.value = savedAlbumView
+                    if (savedAlbumView) _isArtistView.value = false
+                }
+            }
+            viewModelScope.launch {
+                PreferencesManager.getArtistViewFlow(it).collect { savedArtistView ->
+                    _isArtistView.value = savedArtistView
+                    if (savedArtistView) _isAlbumView.value = false
                 }
             }
             viewModelScope.launch {

@@ -1,7 +1,6 @@
 package com.example.musicplayer.songlist
 
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -38,13 +37,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import com.example.musicplayer.Util
-import com.example.musicplayer.composable.AlbumSongList
-import com.example.musicplayer.composable.MainAppBar
-import com.example.musicplayer.composable.MainBackground
-import com.example.musicplayer.composable.MiniPlayer
-import com.example.musicplayer.composable.RadioCardRow
-import com.example.musicplayer.composable.SongCardRow
+import com.example.musicplayer.util.Util
+import com.example.musicplayer.ui.components.AlbumSongList
+import com.example.musicplayer.ui.components.ArtistSongList
+import com.example.musicplayer.ui.components.MainAppBar
+import com.example.musicplayer.ui.components.MainBackground
+import com.example.musicplayer.ui.components.MiniPlayer
+import com.example.musicplayer.ui.components.RadioCardRow
+import com.example.musicplayer.ui.components.SongCardRow
+import com.example.musicplayer.ui.components.AddToPlaylistDialog
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.music.MusicPlayerViewModel
 import com.example.musicplayer.navigation.NavRoutes
@@ -94,7 +95,7 @@ fun ListSongsScreen(
     val isRadioSelected by viewModel.isRadioSelected.collectAsState()
     val toggleRadio: () -> Unit = { viewModel.toggleRadioSelected() }
     val isAlbumView by viewModel.isAlbumView.collectAsState()
-    val toggleAlbumView: () -> Unit = { viewModel.toggleAlbumView() }
+    val isArtistView by viewModel.isArtistView.collectAsState()
 
     // removed local showSearch state; parent may control it via the new params
 
@@ -160,6 +161,10 @@ fun ListSongsScreen(
         }
     })
 
+    // Add to Playlist dialog state
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    var selectedSongIdForPlaylist by remember { mutableStateOf<Int?>(null) }
+
     Scaffold(
         topBar = {
             if (showTopBar) {
@@ -171,7 +176,8 @@ fun ListSongsScreen(
                     query = query,
                     onQueryChange = { onQueryChange(it) },
                     onSearchedClicked = { onSearchedClicked(it) },
-                    onToggleAlbumView = { toggleAlbumView() }
+                    onOpenSettings = { navController.navigate(NavRoutes.Settings.route) },
+                    onOpenPlaylists = { navController.navigate(NavRoutes.Playlists.route) }
                 )
             }
         }
@@ -199,37 +205,60 @@ fun ListSongsScreen(
                         // When radio is selected, show the radio stations list UI
                         DisplayListRadioStations(navController = navController, viewModel = viewModel)
                     } else {
-                        if (isAlbumView) {
-                            // Album view: horizontal album cards + song list
-                            AlbumSongList(
-                                songs = songs,
-                                modifier = Modifier.fillMaxSize(),
-                                onSongClick = { song ->
-                                    // Find index for playback selection
-                                    val index = songs.indexOfFirst { it.id == song.id }
-                                    if (index >= 0) {
-                                        playerVm.setPlaylist(context, songs, index)
-                                        PlayerRepository.setCurrentIndex(index)
-                                        playerVm.play(context)
-                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                        when {
+                            isAlbumView -> {
+                                // Sort by album: horizontal album cards + song list
+                                AlbumSongList(
+                                    songs = songs,
+                                    modifier = Modifier.fillMaxSize(),
+                                    onSongClick = { song ->
+                                        // Find index for playback selection
+                                        val index = songs.indexOfFirst { it.id == song.id }
+                                        if (index >= 0) {
+                                            playerVm.setPlaylist(context, songs, index)
+                                            PlayerRepository.setCurrentIndex(index)
+                                            playerVm.play(context)
+                                            navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                                        }
                                     }
-                                }
-                            )
-                        } else {
-                            DisplayListSongs(
-                                songs = songs,
-                                modifier = Modifier.fillMaxSize(),
-                                onSongClicked = { index ->
-                                    val selected = songs.getOrNull(index)
-                                    if (selected != null) {
-                                        playerVm.setPlaylist(context, songs, index)
-                                        PlayerRepository.setCurrentIndex(index)
-                                        playerVm.play(context)
-                                        val songId = selected.id.toString()
-                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
+                                )
+                            }
+                            isArtistView -> {
+                                // Sort by artist: grouped list by artist name
+                                ArtistSongList(
+                                    songs = songs,
+                                    modifier = Modifier.fillMaxSize(),
+                                    onSongClick = { song ->
+                                        // Find index for playback selection
+                                        val index = songs.indexOfFirst { it.id == song.id }
+                                        if (index >= 0) {
+                                            playerVm.setPlaylist(context, songs, index)
+                                            PlayerRepository.setCurrentIndex(index)
+                                            playerVm.play(context)
+                                            navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
+                            else -> {
+                                DisplayListSongs(
+                                    songs = songs,
+                                    modifier = Modifier.fillMaxSize(),
+                                    onSongClicked = { index ->
+                                        val selected = songs.getOrNull(index)
+                                        if (selected != null) {
+                                            playerVm.setPlaylist(context, songs, index)
+                                            PlayerRepository.setCurrentIndex(index)
+                                            playerVm.play(context)
+                                            navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
+                                        }
+                                    },
+                                    onAddToPlaylist = { songId ->
+                                        selectedSongIdForPlaylist = songId
+                                        showAddToPlaylistDialog = true
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -254,6 +283,26 @@ fun ListSongsScreen(
             )
 
         }
+    }
+
+    // Show Add to Playlist dialog when triggered
+    if (showAddToPlaylistDialog && selectedSongIdForPlaylist != null) {
+        AddToPlaylistDialog(
+            songId = selectedSongIdForPlaylist!!,
+            onDismiss = {
+                @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+                showAddToPlaylistDialog = false
+                @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+                selectedSongIdForPlaylist = null
+            },
+            onConfirm = { _ ->
+                // Dialog confirmed, clearing state
+                @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+                showAddToPlaylistDialog = false
+                @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+                selectedSongIdForPlaylist = null
+            }
+        )
     }
 }
 
@@ -335,7 +384,8 @@ fun MainAppBar(
 fun DisplayListSongs(
     songs: List<Song>,
     modifier: Modifier = Modifier,
-    onSongClicked: (Int) -> Unit = {}
+    onSongClicked: (Int) -> Unit = {},
+    onAddToPlaylist: (Int) -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -346,7 +396,8 @@ fun DisplayListSongs(
             itemsIndexed(songs) { index, song ->
                 SongCardRow(
                     song = song,
-                    onClick = { onSongClicked(index) }
+                    onClick = { onSongClicked(index) },
+                    onAddToPlaylist = onAddToPlaylist
                 )
             }
         }
@@ -460,7 +511,8 @@ fun DisplayListPreview() {
                     query = "",
                     onQueryChange = {},
                     onSearchedClicked = {},
-                    onToggleAlbumView = {}
+                    onOpenSettings = {},
+                    onOpenPlaylists = {}
                 )
             }
         ) { innerPadding ->
@@ -502,7 +554,6 @@ fun DisplayListPreview() {
 fun DisplayListRadioStationsPreview() {
     MaterialTheme {
         val navController = rememberNavController()
-        val context = LocalContext.current
 
         // Hardcoded sample stations for preview
         val sampleStations = listOf(
@@ -528,7 +579,8 @@ fun DisplayListRadioStationsPreview() {
                     query = "",
                     onQueryChange = {},
                     onSearchedClicked = {},
-                    onToggleAlbumView = {}
+                    onOpenSettings = {},
+                    onOpenPlaylists = {}
                 )
             }
         ) { innerPadding ->

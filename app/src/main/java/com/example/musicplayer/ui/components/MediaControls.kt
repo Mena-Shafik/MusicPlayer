@@ -1,4 +1,4 @@
-package com.example.musicplayer.composable
+package com.example.musicplayer.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -35,7 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.example.musicplayer.Util
+import com.example.musicplayer.util.Util
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable

@@ -12,6 +12,7 @@ private val Context.dataStore by preferencesDataStore(name = "app_preferences")
 object PreferencesManager {
     private val ALBUM_VIEW_KEY = booleanPreferencesKey("album_view_enabled")
     private val RADIO_SELECTED_KEY = booleanPreferencesKey("radio_selected")
+    private val ARTIST_VIEW_KEY = booleanPreferencesKey("artist_view_enabled")
 
     fun getAlbumViewFlow(context: Context): Flow<Boolean> =
         context.dataStore.data.map { preferences ->
@@ -21,6 +22,17 @@ object PreferencesManager {
     suspend fun setAlbumView(context: Context, isAlbumView: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[ALBUM_VIEW_KEY] = isAlbumView
+        }
+    }
+
+    fun getArtistViewFlow(context: Context): Flow<Boolean> =
+        context.dataStore.data.map { preferences ->
+            preferences[ARTIST_VIEW_KEY] ?: false
+        }
+
+    suspend fun setArtistView(context: Context, isArtistView: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[ARTIST_VIEW_KEY] = isArtistView
         }
     }
 
@@ -35,4 +47,3 @@ object PreferencesManager {
         }
     }
 }
-

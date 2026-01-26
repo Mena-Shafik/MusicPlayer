@@ -18,7 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import android.graphics.Bitmap
-import com.example.musicplayer.Util
+import com.example.musicplayer.util.Util
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
 import android.widget.Toast

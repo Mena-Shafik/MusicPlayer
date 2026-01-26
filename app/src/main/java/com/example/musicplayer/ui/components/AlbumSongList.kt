@@ -1,6 +1,7 @@
-package com.example.musicplayer.composable
+package com.example.musicplayer.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,13 +32,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import com.example.musicplayer.model.Song
-import com.example.musicplayer.Util
+import com.example.musicplayer.util.Util
 
 /**
  * Displays songs organized by album. Horizontal scrollable album cards on top,
@@ -176,7 +179,7 @@ private fun AlbumCardItem(
     accentColor: Color,
     lightText: Color,
     faintText: Color,
-    albumArtBitmap: androidx.compose.ui.graphics.ImageBitmap?,
+    albumArtBitmap: ImageBitmap?,
     onSelect: () -> Unit,
 ) {
     Box(
@@ -197,7 +200,7 @@ private fun AlbumCardItem(
         ) {
             // Album cover image
             if (albumArtBitmap != null) {
-                androidx.compose.foundation.Image(
+                Image(
                     bitmap = albumArtBitmap,
                     contentDescription = albumName,
                     modifier = Modifier
@@ -233,7 +236,7 @@ private fun AlbumCardItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .basicMarquee(),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(4.dp))

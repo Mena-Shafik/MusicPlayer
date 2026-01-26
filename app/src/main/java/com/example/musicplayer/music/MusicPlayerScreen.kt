@@ -7,8 +7,6 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
@@ -43,18 +41,9 @@ import androidx.compose.material.BottomSheetScaffold
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PauseCircleFilled
-import androidx.compose.material.icons.filled.PlayCircleFilled
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -93,9 +82,9 @@ import androidx.navigation.NavController
 import androidx.palette.graphics.Palette
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.R
-import com.example.musicplayer.Util
+import com.example.musicplayer.util.Util
 import com.example.musicplayer.service.PlayerRepository
-import com.example.musicplayer.composable.AudioVisualizer
+import com.example.musicplayer.ui.components.AudioVisualizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -105,8 +94,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.TabRow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.unit.Dp
-import com.example.musicplayer.composable.MusicControls
-import com.example.musicplayer.composable.SongCardRow
+import com.example.musicplayer.ui.components.MusicControls
+import com.example.musicplayer.ui.components.SongCardRow
 
 
 // Lyrics are now cached on the Song instance (fields: lyrics, lyricsFetched). No global cache needed.
@@ -123,10 +112,16 @@ fun MusicPlayerScreen(
     // ensure viewModel has the playlist / start index (tell the service via ViewModel)
     val ctx = LocalContext.current
     LaunchedEffect(songs, songId) {
-        // Map incoming songId (an identifier) to an index inside the provided `songs` list.
-        val requestedIndex = songs.indexOfFirst { it.id == songId }.takeIf { it >= 0 } ?: 0
-        // Ensure the view model knows about the playlist and requested start index.
-        viewModel.setPlaylist(ctx, songs, requestedIndex)
+        // If a playlist is already active and contains this song (e.g., launched from a playlist),
+        // keep that playlist and just sync the current index instead of replacing it with the full library.
+        val repo = viewModel.playlist.value
+        val repoIdx = repo.indexOfFirst { it.id == songId }
+        if (repo.isNotEmpty() && repoIdx >= 0) {
+            PlayerRepository.setCurrentIndex(repoIdx)
+        } else {
+            val requestedIndex = songs.indexOfFirst { it.id == songId }.takeIf { it >= 0 } ?: 0
+            viewModel.setPlaylist(ctx, songs, requestedIndex)
+        }
     }
 
     //val playlist by viewModel.playlist.collectAsState()
@@ -179,7 +174,8 @@ fun MusicPlayerScreen(
     // reflects the actual playback state. Fall back to the provided `songs` parameter
     // if the repository playlist is empty or doesn't contain the expected index.
     val repoPlaylist by viewModel.playlist.collectAsState()
-    val song = repoPlaylist.getOrNull(currentIndex) ?: songs.getOrNull(currentIndex) ?: songs.firstOrNull()
+    val activeSongs = if (repoPlaylist.isNotEmpty()) repoPlaylist else songs
+    val song = activeSongs.getOrNull(currentIndex) ?: songs.getOrNull(currentIndex) ?: songs.firstOrNull()
 
     // slider local state for user seeking
     var sliderPosition by remember { mutableStateOf(positionMs.toFloat()) }
@@ -226,12 +222,12 @@ fun MusicPlayerScreen(
             backgroundColor = Color.Transparent,
             sheetContent = {
                 SongsSheetContent(
-                    songs = songs,
+                    songs = activeSongs,
                     currentIndex = currentIndex,
                     backgroundColor = backgroundColor,
                     onSelect = { idx ->
                         // set playlist and start playing
-                        viewModel.setPlaylist(ctx, songs, idx)
+                        viewModel.setPlaylist(ctx, activeSongs, idx)
                         viewModel.play(ctx)
                         bsScope.launch { bottomSheetScaffoldState.bottomSheetState.collapse() }
                     },
@@ -268,7 +264,7 @@ fun MusicPlayerScreen(
                             },
                             label = "Song transition"
                         ) { songId ->
-                            val currentSong = songs.find { it.id == songId }
+                            val currentSong = activeSongs.find { it.id == songId } ?: songs.find { it.id == songId }
                             if (currentSong != null) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     AlbumImage(song = currentSong, onDominantColor = { c: Color -> targetBackgroundColor = c })

@@ -1,12 +1,8 @@
-package com.example.musicplayer.composable
+package com.example.musicplayer.ui.components
 
-import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -28,9 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.tooling.preview.Preview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlin.rem
-import kotlin.text.toLong
-import kotlin.times
 
 
 @Composable
