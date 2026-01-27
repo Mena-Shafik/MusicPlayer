@@ -33,7 +33,7 @@ This project demonstrates real-world Android development practices, including **
 ---
 
 ## 📁 Project Structure
-
+```
 com.example.musicplayer
 │
 ├── composable/ # Reusable Jetpack Compose UI components
@@ -60,7 +60,7 @@ com.example.musicplayer
 ├── MainViewModel.kt # Shared app-level state
 └── Util.kt # Utility helpers
 
----
+```
 
 ## 🧠 Architecture Overview
 
