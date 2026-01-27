@@ -358,32 +358,93 @@ class Util {
             }
         }
 
+
         /**
-         * Return a list of related songs that share the same album as the song at [currentIndex].
-         * The result is a list of Pair(index, Song). Fast-path uses Song.album when available
-         * and falls back to extracting album metadata from the file/uri when needed.
+         * Extract all artist names from a collaboration string.
+         * Splits on: ",", "feat.", "featuring", "ft.", "&", "+", "and", "with", "x"
+         * Normalizes each artist (removes "The" prefix, trims, lowercases).
+         * Examples:
+         * - "Black Eyed Peas, Shakira + David Guetta" -> ["black eyed peas", "shakira", "david guetta"]
+         * - "Black Eyed Peas feat. Shakira" -> ["black eyed peas", "shakira"]
+         * - "Shakira + David Guetta" -> ["shakira", "david guetta"]
+         * - "The Beatles & Paul McCartney" -> ["beatles", "paul mccartney"]
+         * - "David Guetta x Sia x Diplo" -> ["david guetta", "sia", "diplo"]
+         */
+        private fun extractAllArtists(artist: String?): List<String> {
+            if (artist.isNullOrBlank()) return emptyList()
+
+            // Split by collaboration separators (including comma and +)
+            val collaborationRegex = Regex(
+                "[,\\s]+(feat\\.?|featuring|ft\\.?|and|&|\\+|with|x)[,\\s]*|[,]",
+                RegexOption.IGNORE_CASE
+            )
+            val artistNames = collaborationRegex.split(artist)
+
+            // Normalize each extracted artist name
+            val result = artistNames
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .map { name ->
+                    name.removePrefix("The ")
+                        .removePrefix("the ")
+                        .trim()
+                        .lowercase(Locale.getDefault())
+                }
+                .filter { it.isNotBlank() }
+                .distinct() // remove duplicates
+
+
+            return result
+        }
+
+        /**
+         * Return a list of related songs that share the same album or artist as the song at [currentIndex].
+         * Shows songs from the same album first, then songs from the same artist or any collaborating artist.
+         * Artist names are normalized and all collaborators are extracted.
+         * Examples:
+         * - "Black Eyed Peas feat. Shakira" finds songs by both artists
+         * - "The Beatles & Paul McCartney" finds songs by both
          * This is a suspend function and should be called from a coroutine (it runs IO work).
          */
         suspend fun getRelatedSongs(songs: List<Song>, currentIndex: Int): List<Pair<Int, Song>> {
             return withContext(Dispatchers.IO) {
                 if (currentIndex < 0 || currentIndex >= songs.size) return@withContext emptyList()
                 val current = songs[currentIndex]
-                val currentAlbum = if (!current.album.isNullOrBlank()) current.album else null
-                if (currentAlbum.isNullOrBlank()) return@withContext emptyList()
+                val currentAlbum = current.album
 
-                // Treat plain "Single"/"Singles" albums as not eligible for related songs.
-                val currentNorm = currentAlbum.trim().lowercase(Locale.getDefault())
-                if (currentNorm == "single" || currentNorm == "singles") return@withContext emptyList()
+                // Extract all artists from current song (including collaborators)
+                val currentArtists = extractAllArtists(current.artist)
 
-                val related = ArrayList<Pair<Int, Song>>()
-                for ((idx, s) in songs.withIndex()) {
-                    if (idx == currentIndex) continue
-                    val album = if (!s.album.isNullOrBlank()) s.album else null
-                    if (!album.isNullOrBlank() && album.trim() == currentAlbum.trim()) {
-                        related.add(Pair(idx, s))
+                val sameAlbumSongs = mutableListOf<Pair<Int, Song>>()
+                val sameArtistSongs = mutableListOf<Pair<Int, Song>>()
+
+                songs.forEachIndexed { idx, s ->
+                    if (idx == currentIndex) return@forEachIndexed // skip current song
+
+                    val isSameAlbum = !currentAlbum.isNullOrBlank() && s.album == currentAlbum
+
+                    // Extract all artists from the song being compared
+                    val songArtists = extractAllArtists(s.artist)
+
+                    // Check if any artist matches bidirectionally:
+                    // - Any of current song's artists appear in the other song's artists
+                    // - OR any of the other song's artists appear in current song's artists
+                    val isSameArtist = currentArtists.isNotEmpty() && songArtists.isNotEmpty() &&
+                        (songArtists.any { it in currentArtists } ||
+                         currentArtists.any { it in songArtists })
+
+                    when {
+                        isSameAlbum -> {
+                            sameAlbumSongs.add(Pair(idx, s))
+                        }
+                        isSameArtist -> {
+                            sameArtistSongs.add(Pair(idx, s))
+                        }
                     }
                 }
-                related
+
+                // Combine: same album first, then same artist
+                (sameAlbumSongs + sameArtistSongs).toList()
             }
         }
 

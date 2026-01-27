@@ -13,12 +13,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,8 +29,6 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -46,18 +43,17 @@ import androidx.compose.ui.unit.dp
 fun MainAppBar(
     showSearch: Boolean,
     onToggleSearch: () -> Unit,
-    isRadio: Boolean,
-    onToggleRadio: () -> Unit,
     query: String,
     onQueryChange: (String) -> Unit,
     onSearchedClicked: (String) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenPlaylists: () -> Unit = {}
+    onOpenPlaylists: () -> Unit = {},
+    title: String = "Songs",
+    searchEnabled: Boolean = true,
+    onAddPlaylist: (() -> Unit)? = null
 ) {
-    val menuExpanded = remember { mutableStateOf(false) }
-
     AnimatedContent(
-        targetState = showSearch,
+        targetState = showSearch && searchEnabled,
         transitionSpec = {
             if (targetState) {
                 // Entering search mode: fade in + scale in
@@ -102,32 +98,29 @@ fun MainAppBar(
             TopAppBar(
                 title = {
                     Text(
-                        text = if (isRadio) "Radio" else "Songs",
+                        text = title,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 },
                 actions = {
-                    IconButton(onClick = onToggleSearch) {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = "Search Icon",
-                            tint = Color.White
-                        )
+                    if (onAddPlaylist != null) {
+                        IconButton(onClick = onAddPlaylist) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = "Add Playlist",
+                                tint = Color.White
+                            )
+                        }
                     }
-                    IconButton(onClick = onOpenPlaylists) {
-                        Icon(
-                            imageVector = Icons.Filled.QueueMusic,
-                            contentDescription = "Open Playlists",
-                            tint = Color.White
-                        )
-                    }
-                    IconButton(onClick = onToggleRadio) {
-                        Icon(
-                            imageVector = if(isRadio){Icons.Filled.LibraryMusic} else{Icons.Filled.Radio},
-                            contentDescription = "Toggle Song/Radio List",
-                            tint = Color.White
-                        )
+                    if (searchEnabled) {
+                        IconButton(onClick = onToggleSearch) {
+                            Icon(
+                                imageVector = Icons.Filled.Search,
+                                contentDescription = "Search Icon",
+                                tint = Color.White
+                            )
+                        }
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(
@@ -222,57 +215,53 @@ fun SearchBar(
     }
 }
 
-@Preview( name = "MainAppBar - Songs On", backgroundColor = 0xFF000000)
+@Preview(name = "MainAppBar - Songs On", backgroundColor = 0xFF000000)
 @Composable
 fun MainAppBarSongPreview() {
     MaterialTheme {
         MainAppBar(
             showSearch = false,
             onToggleSearch = {},
-            isRadio = false,
-            onToggleRadio = {},
             query = "",
             onQueryChange = {},
             onSearchedClicked = {},
             onOpenSettings = {},
-            onOpenPlaylists = {}
+            onOpenPlaylists = {},
+            title = "Songs"
         )
     }
 }
 
-@Preview( name = "MainAppBar - Radio On", backgroundColor = 0xFF000000)
+@Preview(name = "MainAppBar - Radio On", backgroundColor = 0xFF000000)
 @Composable
 fun MainAppBarRadioPreview() {
     MaterialTheme {
         MainAppBar(
             showSearch = false,
             onToggleSearch = {},
-            isRadio = true,
-            onToggleRadio = {},
             query = "",
             onQueryChange = {},
             onSearchedClicked = {},
             onOpenSettings = {},
-            onOpenPlaylists = {}
+            onOpenPlaylists = {},
+            title = "Radio"
         )
     }
 }
 
-//@RequiresApi(Build.VERSION_CODES.M) //keep
-@Preview( name = "MainAppBar - Search", backgroundColor = 0xFF000000)
+@Preview(name = "MainAppBar - Search", backgroundColor = 0xFF000000)
 @Composable
 fun MainAppBarSearchPreview() {
     MaterialTheme {
         MainAppBar(
             showSearch = true,
             onToggleSearch = {},
-            isRadio = false,
-            onToggleRadio = {},
             query = "Search text",
             onQueryChange = {},
             onSearchedClicked = {},
             onOpenSettings = {},
-            onOpenPlaylists = {}
+            onOpenPlaylists = {},
+            title = "Songs"
         )
     }
 }

@@ -104,6 +104,10 @@ class MainActivity : ComponentActivity() {
                         })
                     }
 
+                    composable(NavRoutes.Radio.route) {
+                        com.example.musicplayer.songlist.RadioScreen(navController = navController)
+                    }
+
                     composable(
                         NavRoutes.PlaylistDetail.route,
                         arguments = listOf(navArgument("playlistId") { type = NavType.LongType })

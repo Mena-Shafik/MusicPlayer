@@ -19,6 +19,7 @@ sealed class NavRoutes(val route: String) {
     object Library : NavRoutes("library")
     object Search : NavRoutes("search")
     object Settings : NavRoutes("settings")
+    object Radio : NavRoutes("radio")
 
     object MusicPlayer : NavRoutes("musicScreen/{songId}") {
         fun createRoute(songId: Int) = "musicScreen/$songId"

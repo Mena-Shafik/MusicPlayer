@@ -36,7 +36,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.rememberNavController
 import com.example.musicplayer.util.Util
 import com.example.musicplayer.ui.components.AlbumSongList
 import com.example.musicplayer.ui.components.ArtistSongList
@@ -58,6 +57,7 @@ import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import kotlin.collections.getOrNull
+import com.example.musicplayer.ui.components.BottomNav
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -96,8 +96,6 @@ fun ListSongsScreen(
     val toggleRadio: () -> Unit = { viewModel.toggleRadioSelected() }
     val isAlbumView by viewModel.isAlbumView.collectAsState()
     val isArtistView by viewModel.isArtistView.collectAsState()
-
-    // removed local showSearch state; parent may control it via the new params
 
     // load and filter songs
     /*val view = LocalView.current
@@ -168,18 +166,30 @@ fun ListSongsScreen(
     Scaffold(
         topBar = {
             if (showTopBar) {
-                MainAppBar(
-                    showSearch = searchVisible,
-                    onToggleSearch = toggleSearch,
-                    isRadio = isRadioSelected,
-                    onToggleRadio = toggleRadio,
-                    query = query,
-                    onQueryChange = { onQueryChange(it) },
-                    onSearchedClicked = { onSearchedClicked(it) },
-                    onOpenSettings = { navController.navigate(NavRoutes.Settings.route) },
-                    onOpenPlaylists = { navController.navigate(NavRoutes.Playlists.route) }
-                )
+                Column {
+                    MainAppBar(
+                        showSearch = searchVisible,
+                        onToggleSearch = toggleSearch,
+                        query = query,
+                        onQueryChange = { onQueryChange(it) },
+                        onSearchedClicked = { onSearchedClicked(it) },
+                        onOpenSettings = { navController.navigate(NavRoutes.Settings.route) },
+                        onOpenPlaylists = { navController.navigate(NavRoutes.Playlists.route) }
+                    )
+                }
             }
+        },
+        bottomBar = {
+            BottomNav(
+                selectedIndex = 0,
+                onSelected = { idx ->
+                    when (idx) {
+                        0 -> { /* already here */ }
+                        1 -> navController.navigate(NavRoutes.Radio.route) { launchSingleTop = true }
+                        2 -> navController.navigate(NavRoutes.Playlists.route) { launchSingleTop = true }
+                    }
+                },
+            )
         }
     ) { innerPadding ->
         Box(
@@ -197,68 +207,64 @@ fun ListSongsScreen(
                 // Use a dedicated MusicPlayerViewModel to start playback so setPlaylist + startPlay are atomic
                 val playerVm: MusicPlayerViewModel = viewModel()
 
-                // Song/Radio list takes remaining space above mini player
+                // Song list takes remaining space above mini player
                 Box(modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()) {
-                    if (isRadioSelected) {
-                        // When radio is selected, show the radio stations list UI
-                        DisplayListRadioStations(navController = navController, viewModel = viewModel)
-                    } else {
-                        when {
-                            isAlbumView -> {
-                                // Sort by album: horizontal album cards + song list
-                                AlbumSongList(
-                                    songs = songs,
-                                    modifier = Modifier.fillMaxSize(),
-                                    onSongClick = { song ->
-                                        // Find index for playback selection
-                                        val index = songs.indexOfFirst { it.id == song.id }
-                                        if (index >= 0) {
-                                            playerVm.setPlaylist(context, songs, index)
-                                            PlayerRepository.setCurrentIndex(index)
-                                            playerVm.play(context)
-                                            navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
-                                        }
+                    // Songs content (album/artist/default)
+                    when {
+                        isAlbumView -> {
+                            // Sort by album: horizontal album cards + song list
+                            AlbumSongList(
+                                songs = songs,
+                                modifier = Modifier.fillMaxSize(),
+                                onSongClick = { song ->
+                                    // Find index for playback selection
+                                    val index = songs.indexOfFirst { it.id == song.id }
+                                    if (index >= 0) {
+                                        playerVm.setPlaylist(context, songs, index)
+                                        PlayerRepository.setCurrentIndex(index)
+                                        playerVm.play(context)
+                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
                                     }
-                                )
-                            }
-                            isArtistView -> {
-                                // Sort by artist: grouped list by artist name
-                                ArtistSongList(
-                                    songs = songs,
-                                    modifier = Modifier.fillMaxSize(),
-                                    onSongClick = { song ->
-                                        // Find index for playback selection
-                                        val index = songs.indexOfFirst { it.id == song.id }
-                                        if (index >= 0) {
-                                            playerVm.setPlaylist(context, songs, index)
-                                            PlayerRepository.setCurrentIndex(index)
-                                            playerVm.play(context)
-                                            navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
-                                        }
+                                }
+                            )
+                        }
+                        isArtistView -> {
+                            // Sort by artist: grouped list by artist name
+                            ArtistSongList(
+                                songs = songs,
+                                modifier = Modifier.fillMaxSize(),
+                                onSongClick = { song ->
+                                    // Find index for playback selection
+                                    val index = songs.indexOfFirst { it.id == song.id }
+                                    if (index >= 0) {
+                                        playerVm.setPlaylist(context, songs, index)
+                                        PlayerRepository.setCurrentIndex(index)
+                                        playerVm.play(context)
+                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
                                     }
-                                )
-                            }
-                            else -> {
-                                DisplayListSongs(
-                                    songs = songs,
-                                    modifier = Modifier.fillMaxSize(),
-                                    onSongClicked = { index ->
-                                        val selected = songs.getOrNull(index)
-                                        if (selected != null) {
-                                            playerVm.setPlaylist(context, songs, index)
-                                            PlayerRepository.setCurrentIndex(index)
-                                            playerVm.play(context)
-                                            navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
-                                        }
-                                    },
-                                    onAddToPlaylist = { songId ->
-                                        selectedSongIdForPlaylist = songId
-                                        showAddToPlaylistDialog = true
+                                }
+                            )
+                        }
+                        else -> {
+                            SongList(
+                                songs = songs,
+                                modifier = Modifier.fillMaxSize(),
+                                onSongClicked = { index ->
+                                    val selected = songs.getOrNull(index)
+                                    if (selected != null) {
+                                        playerVm.setPlaylist(context, songs, index)
+                                        PlayerRepository.setCurrentIndex(index)
+                                        playerVm.play(context)
+                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
                                     }
-                                )
-                            }
+                                },
+                                onAddToPlaylist = { songId ->
+                                    selectedSongIdForPlaylist = songId
+                                    showAddToPlaylistDialog = true
+                                }
+                            )
                         }
                     }
                 }
@@ -290,16 +296,12 @@ fun ListSongsScreen(
         AddToPlaylistDialog(
             songId = selectedSongIdForPlaylist!!,
             onDismiss = {
-                @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
                 showAddToPlaylistDialog = false
-                @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
                 selectedSongIdForPlaylist = null
             },
             onConfirm = { _ ->
                 // Dialog confirmed, clearing state
-                @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
                 showAddToPlaylistDialog = false
-                @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
                 selectedSongIdForPlaylist = null
             }
         )
@@ -381,7 +383,7 @@ fun MainAppBar(
 }*/
 
 @Composable
-fun DisplayListSongs(
+fun SongList(
     songs: List<Song>,
     modifier: Modifier = Modifier,
     onSongClicked: (Int) -> Unit = {},
@@ -493,7 +495,7 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
 
 @Preview(showSystemUi = true, name = "DisplayList Preview", backgroundColor = 0xFF000000, showBackground = true)
 @Composable
-fun DisplayListPreview() {
+fun SongListPreview() {
     MaterialTheme {
         val sampleSongs = listOf(
             Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = ""),
@@ -503,31 +505,35 @@ fun DisplayListPreview() {
         )
         Scaffold(
             topBar = {
-                MainAppBar(
-                    showSearch = false,
-                    onToggleSearch = {},
-                    isRadio = false,
-                    onToggleRadio = {},
-                    query = "",
-                    onQueryChange = {},
-                    onSearchedClicked = {},
-                    onOpenSettings = {},
-                    onOpenPlaylists = {}
-                )
+                Column {
+                    MainAppBar(
+                        showSearch = false,
+                        onToggleSearch = {},
+                        query = "",
+                        onQueryChange = {},
+                        onSearchedClicked = {},
+                        onOpenSettings = {},
+                        onOpenPlaylists = {}
+                    )
+                }
+            },
+            bottomBar = {
+                BottomNav(selectedIndex = 0, onSelected = { /* no-op in preview */ })
             }
         ) { innerPadding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black)
-            )
-            {
+            ) {
                 MainBackground()
 
-                Column(modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)) {
-                    DisplayListSongs(
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    SongList(
                         songs = sampleSongs,
                         onSongClicked = {},
                         modifier = Modifier.fillMaxSize(),
@@ -537,9 +543,11 @@ fun DisplayListPreview() {
                         PlayerRepository.setPlaylist(sampleSongs, 0)
                         PlayerRepository.setIsPlaying(false)
                     }
-                    Box(modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.Black)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.Black)
+                    ) {
                         MiniPlayer(modifier = Modifier.align(Alignment.Center))
                     }
                 }
@@ -548,60 +556,4 @@ fun DisplayListPreview() {
     }
 }
 
-// Add DisplayListRadioStations preview
-@Preview(showBackground = true, name = "DisplayListRadioStations Preview", backgroundColor = 0xFF000000, showSystemUi = true)
-@Composable
-fun DisplayListRadioStationsPreview() {
-    MaterialTheme {
-        val navController = rememberNavController()
 
-        // Hardcoded sample stations for preview
-        val sampleStations = listOf(
-            com.example.musicplayer.model.RadioStation(stationuuid = "cidc-z103", name = "Z103.5", url = "https://21363.live.streamtheworld.com/CIDC_FM.mp3", favicon = "https://cdn-profiles.tunein.com/s12366/images/logod.png?t=637554031500000000", country = "Canada", tags = "Top40, Euro, Pop, Hip-Hop, Reggae", bitrate = 128),
-            com.example.musicplayer.model.RadioStation(stationuuid = "virgin-999", name = "Virgin 99.9", url = "https://18153.live.streamtheworld.com/CKFMFMAAC_SC", favicon = "https://archive.org/services/img/ckfm_20230202", country = "Canada", tags = "Pop, Top40", bitrate = 128),
-            com.example.musicplayer.model.RadioStation(stationuuid = "kiss-925", name = "KISS 92.5", url = "https://21323.live.streamtheworld.com/CKIS_FM.mp3", favicon = "https://cdn-radiotime-logos.tunein.com/s31199d.png", country = "Canada", tags = "Top 40, Pop, Hip-Hop, R&B, Dance", bitrate = 0),
-            com.example.musicplayer.model.RadioStation(stationuuid = "chum-1045", name = "CHUM 104.5", url = "https://26293.live.streamtheworld.com/CHUMFMAAC_SC", favicon = "https://cdn-profiles.tunein.com/s31180/images/logod.png?t=637400097550000000", country = "Canada", tags = "Classic, Rock, Pop", bitrate = 0),
-            com.example.musicplayer.model.RadioStation(stationuuid = "chfi-981", name = "CHFI 98.1", url = "https://21253.live.streamtheworld.com/CHFIFM.mp3", favicon = "https://www.seekyoursounds.com/wp-content/uploads/2024/06/Seekr-RadioCover-CHFI-981-1-300x300.png", country = "Canada", tags = "easy listening, adult contemporary", bitrate = 0),
-            com.example.musicplayer.model.RadioStation(stationuuid = "Boom-973", name = "Boom 97.3", url = "https://21323.live.streamtheworld.com/CHBM_FM.mp3", favicon = "https://cdn-radiotime-logos.tunein.com/s31212d.png", country = "Canada", tags = "70's, 80's, 90's, Pop, Rock, Soul, R&B", bitrate = 0),
-            com.example.musicplayer.model.RadioStation(stationuuid = "Flow-987", name = "Flow 98.7", url = "https://ice64.securenetsystems.net/CKFG", favicon = "https://cdn-profiles.tunein.com/s142066/images/logod.jpg?t=637808074610000000", country = "Canada", tags = "Hip-Hop, Pop, Afrobeat, Reggae, Soul, Soca, R&B", bitrate = 0),
-            com.example.musicplayer.model.RadioStation(stationuuid = "Fresh-931", name = "Fresh 93.1", url = "https://live.leanstream.co/CHAYFM-MP3?args=tunein", favicon = "https://cdn-profiles.tunein.com/s31156/images/logod.png?t=155144", country = "Canada", tags = "classic, rock", bitrate = 0)
-        )
-
-        val vm = remember { SongListViewModel(userStationsInitial = sampleStations) }
-
-        Scaffold(
-            topBar = {
-                MainAppBar(
-                    showSearch = false,
-                    onToggleSearch = {},
-                    isRadio = true,
-                    onToggleRadio = {},
-                    query = "",
-                    onQueryChange = {},
-                    onSearchedClicked = {},
-                    onOpenSettings = {},
-                    onOpenPlaylists = {}
-                )
-            }
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-            ) {
-                MainBackground()
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                ) {
-                    DisplayListRadioStations(
-                        navController = navController,
-                        viewModel = vm,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-        }
-    }
-}

@@ -59,7 +59,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.foundation.MarqueeSpacing
 import androidx.compose.foundation.basicMarquee
-import androidx.compose.ui.Alignment
+//import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -93,6 +93,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.TabRow
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
 import com.example.musicplayer.ui.components.MusicControls
 import com.example.musicplayer.ui.components.SongCardRow
@@ -280,14 +281,36 @@ fun MusicPlayerScreen(
                                             maxLines = 1,
                                             modifier = Modifier
                                                 .width(340.dp)
-                                                .padding(10.dp)
+                                                .padding(8.dp)
                                                 .basicMarquee(
                                                     iterations = Int.MAX_VALUE,
                                                     initialDelayMillis = 2000,
                                                     spacing = MarqueeSpacing(50.dp)
                                                 )
                                         )
-                                        Text(text = currentSong.artist, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.padding(10.dp).width(340.dp))
+                                        val artistLineCount = currentSong.artist.split("\n").size
+                                        Text(
+                                            text = currentSong.artist,
+                                            color = Color.White,
+                                            textAlign = TextAlign.Center,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = if (artistLineCount > 3) Int.MAX_VALUE else 3,
+                                            modifier = Modifier
+                                                .padding(10.dp)
+                                                .width(340.dp)
+                                                .then(
+                                                    if (artistLineCount > 3) {
+                                                        Modifier.basicMarquee(
+                                                            iterations = Int.MAX_VALUE,
+                                                            initialDelayMillis = 2000,
+                                                            spacing = MarqueeSpacing(50.dp)
+                                                        )
+                                                    } else {
+                                                        Modifier
+                                                    }
+                                                )
+                                        )
                                     }
                                 }
                             }
@@ -295,11 +318,39 @@ fun MusicPlayerScreen(
 
 
                         val effectiveDuration = if (durationMs > 0L) durationMs.toFloat() else song.duration.toFloat()
-                        Slider(value = sliderPosition.coerceIn(0f, effectiveDuration), colors = SliderDefaults.colors(thumbColor = Color(0xFFFFA500), activeTrackColor = Color(0xFFFFA500), inactiveTrackColor = Color(0xFFFFDAB9)), onValueChange = { isUserSeeking = true; sliderPosition = it }, onValueChangeFinished = { isUserSeeking = false; viewModel.seekTo(ctx, sliderPosition.toInt()) }, valueRange = 0f..effectiveDuration, modifier = Modifier.width(300.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Slider(
+                                value = sliderPosition.coerceIn(0f, effectiveDuration),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color(0xFFFFA500),
+                                    activeTrackColor = Color(0xFFFFA500),
+                                    inactiveTrackColor = Color(0xFFFFDAB9)
+                                ),
+                                onValueChange = { isUserSeeking = true; sliderPosition = it },
+                                onValueChangeFinished = {
+                                    isUserSeeking = false; viewModel.seekTo(
+                                    ctx,
+                                    sliderPosition.toInt()
+                                )
+                                },
+                                valueRange = 0f..effectiveDuration,
+                                modifier = Modifier.width(300.dp)
+                            )
 
-                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 50.dp)) {
-                            Text(text = Util.converter(sliderPosition.toDouble()), color = Color.White, textAlign = TextAlign.Start, modifier = Modifier.weight(1f))
-                            Text(text = Util.converter(effectiveDuration.toDouble()), color = Color.White, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+                            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 50.dp)) {
+                                Text(
+                                    text = Util.converter(sliderPosition.toDouble()),
+                                    color = Color.White,
+                                    textAlign = TextAlign.Start,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = Util.converter(effectiveDuration.toDouble()),
+                                    color = Color.White,
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
 
                         MusicControls(isPlaying = isPlaying, replayEnabled = replayEnabled, shuffleEnabled = shuffleEnabled, onPlayPause = { viewModel.togglePlayPause(ctx) }, onNext = { viewModel.next(ctx) }, onPrev = { viewModel.previous(ctx) }, onReplayToggle = { viewModel.toggleReplay() }, onShuffleToggle = { enabled -> viewModel.toggleShuffle(enabled) })
@@ -594,12 +645,27 @@ fun SongsModalBottomSheet(
         if (selectedTab == 2) {
             related = withContext(Dispatchers.IO) {
                 val current = songs.getOrNull(currentIndex)
-                val currentAlbum = songs.get(currentIndex).album
-                if (currentAlbum.isNullOrBlank()) return@withContext emptyList<Pair<Int, Song>>()
-                songs.mapIndexedNotNull { idx, s -> if (idx == currentIndex) null else {
-                    val album = s.album
-                    if (!album.isNullOrBlank() && album == currentAlbum) Pair(idx, s) else null
-                }}
+                if (current == null) return@withContext emptyList<Pair<Int, Song>>()
+
+                val currentAlbum = current.album
+                val currentArtist = current.artist
+                val sameAlbumSongs = mutableListOf<Pair<Int, Song>>()
+                val sameArtistSongs = mutableListOf<Pair<Int, Song>>()
+
+                songs.forEachIndexed { idx, s ->
+                    if (idx == currentIndex) return@forEachIndexed // skip current song
+
+                    val isSameAlbum = !currentAlbum.isNullOrBlank() && s.album == currentAlbum
+                    val isSameArtist = !currentArtist.isNullOrBlank() && s.artist == currentArtist
+
+                    when {
+                        isSameAlbum -> sameAlbumSongs.add(Pair(idx, s))
+                        isSameArtist -> sameArtistSongs.add(Pair(idx, s))
+                    }
+                }
+
+                // Combine: same album first, then same artist
+                (sameAlbumSongs + sameArtistSongs).toList()
             } //DO NOT REMOVE THIS LINE
         } else {
             related = emptyList()
