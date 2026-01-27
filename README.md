@@ -61,6 +61,7 @@ com.example.musicplayer
 └── Util.kt # Utility helpers
 
 ```
+---
 
 ## 🧠 Architecture Overview
 
