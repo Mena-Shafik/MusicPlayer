@@ -37,19 +37,19 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavHostController
 import com.example.musicplayer.util.Util
-import com.example.musicplayer.ui.components.AlbumSongList
-import com.example.musicplayer.ui.components.ArtistSongList
-import com.example.musicplayer.ui.components.MainAppBar
-import com.example.musicplayer.ui.components.MainBackground
-import com.example.musicplayer.ui.components.MiniPlayer
-import com.example.musicplayer.ui.components.RadioCardRow
-import com.example.musicplayer.ui.components.SongCardRow
-import com.example.musicplayer.ui.components.AddToPlaylistDialog
+import com.example.musicplayer.ui.components.song.AlbumSongList
+import com.example.musicplayer.ui.components.song.ArtistSongList
+import com.example.musicplayer.ui.components.common.MainAppBar
+import com.example.musicplayer.ui.components.common.MainBackground
+import com.example.musicplayer.ui.components.song.MiniPlayer
+import com.example.musicplayer.ui.components.radio.RadioCardRow
+import com.example.musicplayer.ui.components.song.SongCardRow
+import com.example.musicplayer.ui.components.playlist.AddToPlaylistDialog
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.music.MusicPlayerViewModel
 import com.example.musicplayer.navigation.NavRoutes
 import com.example.musicplayer.radio.RadioPlayerService
-import com.example.musicplayer.service.PlayerRepository
+import com.example.musicplayer.service.PlayerStateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,7 +57,7 @@ import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import kotlin.collections.getOrNull
-import com.example.musicplayer.ui.components.BottomNav
+import com.example.musicplayer.ui.components.common.BottomNav
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -132,8 +132,8 @@ fun ListSongsScreen(
     }
 
     // playback state used to decide whether to show the mini player
-    val isPlaying by PlayerRepository.isPlaying.collectAsState()
-    val positionMs by PlayerRepository.positionMs.collectAsState()
+    val isPlaying by PlayerStateManager.isPlaying.collectAsState()
+    val positionMs by PlayerStateManager.positionMs.collectAsState()
     // show mini when we have a playlist and playback has actually started (either playing, or paused with a non-zero position)
     val showMini = (isPlaying || positionMs > 0L)
 
@@ -223,7 +223,7 @@ fun ListSongsScreen(
                                     val index = songs.indexOfFirst { it.id == song.id }
                                     if (index >= 0) {
                                         playerVm.setPlaylist(context, songs, index)
-                                        PlayerRepository.setCurrentIndex(index)
+                                        PlayerStateManager.setCurrentIndex(index)
                                         playerVm.play(context)
                                         navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
                                     }
@@ -240,7 +240,7 @@ fun ListSongsScreen(
                                     val index = songs.indexOfFirst { it.id == song.id }
                                     if (index >= 0) {
                                         playerVm.setPlaylist(context, songs, index)
-                                        PlayerRepository.setCurrentIndex(index)
+                                        PlayerStateManager.setCurrentIndex(index)
                                         playerVm.play(context)
                                         navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
                                     }
@@ -255,7 +255,7 @@ fun ListSongsScreen(
                                     val selected = songs.getOrNull(index)
                                     if (selected != null) {
                                         playerVm.setPlaylist(context, songs, index)
-                                        PlayerRepository.setCurrentIndex(index)
+                                        PlayerStateManager.setCurrentIndex(index)
                                         playerVm.play(context)
                                         navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
                                     }
@@ -540,8 +540,8 @@ fun SongListPreview() {
                     )
                     // populate PlayerRepository with sample data for preview
                     LaunchedEffect(Unit) {
-                        PlayerRepository.setPlaylist(sampleSongs, 0)
-                        PlayerRepository.setIsPlaying(false)
+                        PlayerStateManager.setPlaylist(sampleSongs, 0)
+                        PlayerStateManager.setIsPlaying(false)
                     }
                     Box(
                         modifier = Modifier

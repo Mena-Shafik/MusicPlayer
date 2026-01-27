@@ -1,4 +1,4 @@
-package com.example.musicplayer.ui.components
+package com.example.musicplayer.ui.components.playlist
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +30,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.musicplayer.model.Playlist
 import com.example.musicplayer.playlist.PlaylistViewModel
@@ -42,9 +44,9 @@ fun AddToPlaylistDialog(
 ) {
     val context = LocalContext.current
     val viewModel: PlaylistViewModel = viewModel(
-        factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+        factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return PlaylistViewModel(context) as T
             }
         }

@@ -1,4 +1,4 @@
-package com.example.musicplayer.ui.components
+package com.example.musicplayer.ui.components.song
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import com.example.musicplayer.model.Song
+import com.example.musicplayer.ui.components.common.MainBackground
 import com.example.musicplayer.util.Util
 
 /**

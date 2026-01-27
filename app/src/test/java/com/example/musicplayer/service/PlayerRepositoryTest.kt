@@ -10,14 +10,14 @@ class PlayerRepositoryTest {
     @Before
     fun reset() {
         // reset shared singleton state before each test
-        PlayerRepository.clearPrepared()
-        PlayerRepository.setPlaylist(emptyList(), 0)
-        PlayerRepository.setIsPlaying(false)
-        PlayerRepository.setPositionMs(0)
-        PlayerRepository.setDurationMs(0)
-        PlayerRepository.toggleShuffle(false)
+        PlayerStateManager.clearPrepared()
+        PlayerStateManager.setPlaylist(emptyList(), 0)
+        PlayerStateManager.setIsPlaying(false)
+        PlayerStateManager.setPositionMs(0)
+        PlayerStateManager.setDurationMs(0)
+        PlayerStateManager.toggleShuffle(false)
         // disable replay if it was enabled
-        if (PlayerRepository.replayEnabled.value) PlayerRepository.toggleReplay()
+        if (PlayerStateManager.replayEnabled.value) PlayerStateManager.toggleReplay()
     }
 
     private fun sampleSongs(): List<Song> = listOf(
@@ -30,68 +30,68 @@ class PlayerRepositoryTest {
     fun setPlaylist_returnsTrue_whenPlaylistDiffers() {
         val songs = sampleSongs()
         // ensure repository starts empty
-        PlayerRepository.setPlaylist(listOf(), 0)
+        PlayerStateManager.setPlaylist(listOf(), 0)
 
-        val changed = PlayerRepository.setPlaylist(songs, 1)
+        val changed = PlayerStateManager.setPlaylist(songs, 1)
         assertTrue("setPlaylist should return true when changing playlist", changed)
-        assertEquals(3, PlayerRepository.playlist.value.size)
-        assertEquals(1, PlayerRepository.currentIndex.value)
+        assertEquals(3, PlayerStateManager.playlist.value.size)
+        assertEquals(1, PlayerStateManager.currentIndex.value)
     }
 
     @Test
     fun setPlaylist_returnsFalse_whenSamePlaylistAndIndex() {
         val songs = sampleSongs()
         // set playlist first time
-        val first = PlayerRepository.setPlaylist(songs, 0)
+        val first = PlayerStateManager.setPlaylist(songs, 0)
         assertTrue(first)
 
         // calling again with identical playlist and index should return false
-        val second = PlayerRepository.setPlaylist(songs, 0)
+        val second = PlayerStateManager.setPlaylist(songs, 0)
         assertFalse("setPlaylist should return false when playlist and index are identical", second)
     }
 
     @Test
     fun markPrepared_setsFlagsAndDuration() {
-        PlayerRepository.markPrepared(1234L)
-        assertTrue(PlayerRepository.isPrepared.value)
-        assertEquals(1234L, PlayerRepository.durationMs.value)
-        PlayerRepository.clearPrepared()
-        assertFalse(PlayerRepository.isPrepared.value)
-        assertEquals(0L, PlayerRepository.durationMs.value)
+        PlayerStateManager.markPrepared(1234L)
+        assertTrue(PlayerStateManager.isPrepared.value)
+        assertEquals(1234L, PlayerStateManager.durationMs.value)
+        PlayerStateManager.clearPrepared()
+        assertFalse(PlayerStateManager.isPrepared.value)
+        assertEquals(0L, PlayerStateManager.durationMs.value)
     }
 
     @Test
     fun setPlaylist_clearsPreparedFlag() {
-        PlayerRepository.markPrepared(999L)
-        val changed = PlayerRepository.setPlaylist(sampleSongs(), 0)
+        PlayerStateManager.markPrepared(999L)
+        val changed = PlayerStateManager.setPlaylist(sampleSongs(), 0)
         assertTrue(changed)
-        assertFalse("setPlaylist should clear prepared flag", PlayerRepository.isPrepared.value)
+        assertFalse("setPlaylist should clear prepared flag", PlayerStateManager.isPrepared.value)
     }
 
     @Test
     fun nextIndex_respectsShuffleAndReplay() {
         val songs = sampleSongs()
-        PlayerRepository.setPlaylist(songs, 0)
+        PlayerStateManager.setPlaylist(songs, 0)
 
-        PlayerRepository.toggleShuffle(true)
-        val shuffledNext = PlayerRepository.nextIndex()
+        PlayerStateManager.toggleShuffle(true)
+        val shuffledNext = PlayerStateManager.nextIndex()
         assertTrue(shuffledNext in 1 until songs.size)
 
         // enabling replay should hold current index
-        PlayerRepository.toggleShuffle(false)
-        PlayerRepository.toggleReplay()
-        val replayNext = PlayerRepository.nextIndex()
-        assertEquals(PlayerRepository.currentIndex.value, replayNext)
+        PlayerStateManager.toggleShuffle(false)
+        PlayerStateManager.toggleReplay()
+        val replayNext = PlayerStateManager.nextIndex()
+        assertEquals(PlayerStateManager.currentIndex.value, replayNext)
     }
 
     @Test
     fun prevIndex_usesHistoryWhenShuffled() {
         val songs = sampleSongs()
-        PlayerRepository.setPlaylist(songs, 0)
-        PlayerRepository.toggleShuffle(true)
-        val firstNext = PlayerRepository.nextIndex()
-        PlayerRepository.setCurrentIndex(firstNext)
-        val prev = PlayerRepository.prevIndex()
+        PlayerStateManager.setPlaylist(songs, 0)
+        PlayerStateManager.toggleShuffle(true)
+        val firstNext = PlayerStateManager.nextIndex()
+        PlayerStateManager.setCurrentIndex(firstNext)
+        val prev = PlayerStateManager.prevIndex()
         assertEquals(0, prev)
     }
 }

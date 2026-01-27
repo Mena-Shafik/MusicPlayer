@@ -1,4 +1,4 @@
-package com.example.musicplayer.ui.components
+package com.example.musicplayer.ui.components.common
 
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height

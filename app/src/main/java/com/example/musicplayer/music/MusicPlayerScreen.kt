@@ -83,8 +83,8 @@ import androidx.palette.graphics.Palette
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.R
 import com.example.musicplayer.util.Util
-import com.example.musicplayer.service.PlayerRepository
-import com.example.musicplayer.ui.components.AudioVisualizer
+import com.example.musicplayer.service.PlayerStateManager
+import com.example.musicplayer.ui.components.common.AudioVisualizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -95,8 +95,8 @@ import androidx.compose.material.TabRow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
-import com.example.musicplayer.ui.components.MusicControls
-import com.example.musicplayer.ui.components.SongCardRow
+import com.example.musicplayer.ui.components.common.MusicControls
+import com.example.musicplayer.ui.components.song.SongCardRow
 
 
 // Lyrics are now cached on the Song instance (fields: lyrics, lyricsFetched). No global cache needed.
@@ -118,7 +118,7 @@ fun MusicPlayerScreen(
         val repo = viewModel.playlist.value
         val repoIdx = repo.indexOfFirst { it.id == songId }
         if (repo.isNotEmpty() && repoIdx >= 0) {
-            PlayerRepository.setCurrentIndex(repoIdx)
+            PlayerStateManager.setCurrentIndex(repoIdx)
         } else {
             val requestedIndex = songs.indexOfFirst { it.id == songId }.takeIf { it >= 0 } ?: 0
             viewModel.setPlaylist(ctx, songs, requestedIndex)
@@ -382,7 +382,7 @@ fun SongsSheetContent(
     val subtle = contentOnBg.copy(alpha = 0.06f)
     val handleColor = contentOnBg.copy(alpha = 0.12f)
 
-    val isPlayingSheet by PlayerRepository.isPlaying.collectAsState()
+    val isPlayingSheet by PlayerStateManager.isPlaying.collectAsState()
     val startIndex = currentIndex.coerceAtLeast(0)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
 

@@ -28,9 +28,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.example.musicplayer.navigation.NavRoutes
-import com.example.musicplayer.ui.components.BottomNav
-import com.example.musicplayer.ui.components.MainAppBar
-import com.example.musicplayer.ui.components.MainBackground
+import com.example.musicplayer.ui.components.common.BottomNav
+import com.example.musicplayer.ui.components.common.MainAppBar
+import com.example.musicplayer.ui.components.common.MainBackground
 import com.example.musicplayer.util.Util
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

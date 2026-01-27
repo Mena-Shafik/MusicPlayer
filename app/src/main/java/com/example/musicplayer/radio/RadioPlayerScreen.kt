@@ -48,11 +48,11 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import com.example.musicplayer.R
 import com.example.musicplayer.util.Util
-import com.example.musicplayer.ui.components.RadioTagChips
+import com.example.musicplayer.ui.components.radio.RadioTagChips
 import com.example.musicplayer.model.RadioStation
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.example.musicplayer.ui.components.RadioControls
+import com.example.musicplayer.ui.components.common.RadioControls
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @SuppressLint("ContextCastToActivity")

@@ -5,25 +5,25 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.service.PlayerIntentBuilder
-import com.example.musicplayer.service.PlayerRepository
+import com.example.musicplayer.service.PlayerStateManager
 import kotlinx.coroutines.flow.StateFlow
 
 class MusicPlayerViewModel : ViewModel() {
     private val TAG = "MusicPlayerVM"
     // Expose flows from repository
-    val playlist: StateFlow<List<Song>> = PlayerRepository.playlist
-    val currentIndex: StateFlow<Int> = PlayerRepository.currentIndex
-    val isPlaying: StateFlow<Boolean> = PlayerRepository.isPlaying
-    val positionMs: StateFlow<Long> = PlayerRepository.positionMs
-    val durationMs: StateFlow<Long> = PlayerRepository.durationMs
-    val replayEnabled: StateFlow<Boolean> = PlayerRepository.replayEnabled
-    val shuffleEnabled: StateFlow<Boolean> = PlayerRepository.shuffleEnabled
+    val playlist: StateFlow<List<Song>> = PlayerStateManager.playlist
+    val currentIndex: StateFlow<Int> = PlayerStateManager.currentIndex
+    val isPlaying: StateFlow<Boolean> = PlayerStateManager.isPlaying
+    val positionMs: StateFlow<Long> = PlayerStateManager.positionMs
+    val durationMs: StateFlow<Long> = PlayerStateManager.durationMs
+    val replayEnabled: StateFlow<Boolean> = PlayerStateManager.replayEnabled
+    val shuffleEnabled: StateFlow<Boolean> = PlayerStateManager.shuffleEnabled
 
     fun setPlaylist(context: Context, songs: List<Song>, startIndex: Int = 0) {
         Log.d(TAG, "setPlaylist startIndex=$startIndex size=${songs.size}")
         // Always update repository's current index immediately so UI reflects selection
-        try { PlayerRepository.setCurrentIndex(startIndex) } catch (_: Throwable) {}
-        val changed = PlayerRepository.setPlaylist(songs, startIndex)
+        try { PlayerStateManager.setCurrentIndex(startIndex) } catch (_: Throwable) {}
+        val changed = PlayerStateManager.setPlaylist(songs, startIndex)
         // ask service to prepare and start — always request play so selection reliably starts playback.
         val appCtx = context.applicationContext
         Log.d(TAG, "setPlaylist: requesting startPlay using appCtx=$appCtx (changed=$changed)")
@@ -57,8 +57,8 @@ class MusicPlayerViewModel : ViewModel() {
         PlayerIntentBuilder.startSeek(appCtx, ms.toLong())
     }
 
-    fun toggleReplay() { PlayerRepository.toggleReplay() }
-    fun toggleShuffle(enabled: Boolean) { PlayerRepository.toggleShuffle(enabled) }
+    fun toggleReplay() { PlayerStateManager.toggleReplay() }
+    fun toggleShuffle(enabled: Boolean) { PlayerStateManager.toggleShuffle(enabled) }
 
     fun next(context: Context) {
         val appCtx = context.applicationContext

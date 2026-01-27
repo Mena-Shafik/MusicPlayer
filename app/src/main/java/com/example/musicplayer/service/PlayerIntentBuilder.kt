@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
-import com.example.musicplayer.service.PlayerRepository
 
 object PlayerIntentBuilder {
     private const val TAG = "PlayerIntentBuilder"
@@ -43,7 +42,7 @@ object PlayerIntentBuilder {
         // Attach the current index as an extra so the service can reliably prepare the requested item
         val i = intent(context, PlayerActions.ACTION_PLAY)
         try {
-            i.putExtra(PlayerActions.EXTRA_CURRENT_INDEX, PlayerRepository.currentIndex.value)
+            i.putExtra(PlayerActions.EXTRA_CURRENT_INDEX, PlayerStateManager.currentIndex.value)
         } catch (_: Throwable) {}
         // Play may need the service to run in foreground, so request foreground start on O+
         startServiceCompat(context, i, foreground = true)

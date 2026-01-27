@@ -109,7 +109,7 @@ class PlayerForegroundService : Service() {
                 // Reset preparing flag so future prepare attempts can succeed
                 isPreparing = false
                 try {
-                    PlayerRepository.clearPrepared()
+                    PlayerStateManager.clearPrepared()
                     Toast.makeText(this@PlayerForegroundService, "Playback error. Retrying...", Toast.LENGTH_SHORT).show()
                 } catch (_: Throwable) {}
 
@@ -121,7 +121,7 @@ class PlayerForegroundService : Service() {
                         Log.d(TAG, "MediaPlayer error: retrying idx=$failedIndex")
                         try {
                             // Ensure the repository index matches what we're retrying
-                            PlayerRepository.setCurrentIndex(failedIndex)
+                            PlayerStateManager.setCurrentIndex(failedIndex)
                             // Retry with startPlaying=true since user intended to play this song
                             prepareCurrent(startPlaying = true)
                         } catch (e: Throwable) {
@@ -138,20 +138,20 @@ class PlayerForegroundService : Service() {
             setOnPreparedListener { mp ->
                 try {
                     val d = try { mp.duration.toLong() } catch (_: Throwable) { 0L }
-                    Log.d(TAG, "onPrepared: mp duration=$d currentPreparedIndex=$currentPreparedIndex currentPreparedPath=$currentPreparedPath repositoryIndex=${PlayerRepository.currentIndex.value}")
+                    Log.d(TAG, "onPrepared: mp duration=$d currentPreparedIndex=$currentPreparedIndex currentPreparedPath=$currentPreparedPath repositoryIndex=${PlayerStateManager.currentIndex.value}")
                     // Mark repository prepared with a safe duration so callers don't call
                     // MediaPlayer.getDuration() directly (which can throw if player state is wrong).
-                    PlayerRepository.markPrepared(d)
+                    PlayerStateManager.markPrepared(d)
                     // Check that the prepared path is still the desired one in the repository.
-                    val desiredPath = PlayerRepository.playlist.value.getOrNull(PlayerRepository.currentIndex.value)?.path
+                    val desiredPath = PlayerStateManager.playlist.value.getOrNull(PlayerStateManager.currentIndex.value)?.path
                     Log.d(TAG, "onPrepared: desiredPath=$desiredPath preparedPath=$currentPreparedPath")
                     if (currentPreparedPath != null && currentPreparedPath == desiredPath) {
                         // Still the desired item -> start playback
                         isPreparing = false
                         // Update repository current index now that the prepared item is actually starting
-                        try { PlayerRepository.setCurrentIndex(currentPreparedIndex) } catch (_: Throwable) {}
+                        try { PlayerStateManager.setCurrentIndex(currentPreparedIndex) } catch (_: Throwable) {}
                         mp.start()
-                        PlayerRepository.setIsPlaying(true)
+                        PlayerStateManager.setIsPlaying(true)
                         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
                         startForegroundNotification()
                         Log.d(TAG, "onPrepared: started playback for idx=$currentPreparedIndex path=$currentPreparedPath")
@@ -203,7 +203,7 @@ class PlayerForegroundService : Service() {
         }
         val i = intent ?: return START_STICKY
         val action = i.action
-        Log.d(TAG, "onStartCommand action=$action | currentIndex=${PlayerRepository.currentIndex.value} preparedIndex=$currentPreparedIndex isPlaying=${PlayerRepository.isPlaying.value}")
+        Log.d(TAG, "onStartCommand action=$action | currentIndex=${PlayerStateManager.currentIndex.value} preparedIndex=$currentPreparedIndex isPlaying=${PlayerStateManager.isPlaying.value}")
 
         // If this service was started with startForegroundService(), we must call startForeground() quickly.
         // Call a lightweight notification immediately on play/prepare/update so the system won't kill the service.
@@ -228,7 +228,7 @@ class PlayerForegroundService : Service() {
                 // from the UI will cause the requested index to play even if intents are coalesced.
                 val requestedIdx = try { i.getIntExtra(PlayerActions.EXTRA_CURRENT_INDEX, Int.MIN_VALUE) } catch (_: Throwable) { Int.MIN_VALUE }
                 if (requestedIdx != Int.MIN_VALUE) {
-                    try { PlayerRepository.setCurrentIndex(requestedIdx) } catch (_: Throwable) {}
+                    try { PlayerStateManager.setCurrentIndex(requestedIdx) } catch (_: Throwable) {}
                     // Prepare and start the requested index
                     prepareCurrent(startPlaying = true)
                 } else {
@@ -251,7 +251,7 @@ class PlayerForegroundService : Service() {
                 val requestedIdx = try { i.getIntExtra(PlayerActions.EXTRA_CURRENT_INDEX, Int.MIN_VALUE) } catch (_: Throwable) { Int.MIN_VALUE }
                 val shouldStart = try { i.getBooleanExtra(PlayerActions.EXTRA_IS_PLAYING, false) } catch (_: Throwable) { false }
                 if (requestedIdx != Int.MIN_VALUE) {
-                    try { PlayerRepository.setCurrentIndex(requestedIdx) } catch (_: Throwable) {}
+                    try { PlayerStateManager.setCurrentIndex(requestedIdx) } catch (_: Throwable) {}
                     prepareCurrent(startPlaying = shouldStart)
                 } else {
                     // default behavior: prepare current playlist index without auto-start
@@ -267,13 +267,13 @@ class PlayerForegroundService : Service() {
             }
             PlayerActions.ACTION_SEEK_FORWARD -> {
                 // advance by SEEK_STEP_MS
-                val cur = PlayerRepository.positionMs.value
-                val dur = PlayerRepository.durationMs.value
+                val cur = PlayerStateManager.positionMs.value
+                val dur = PlayerStateManager.durationMs.value
                 val target = (cur + PlayerActions.SEEK_STEP_MS).coerceAtMost(if (dur > 0L) dur else Long.MAX_VALUE)
                 seekInternal(target)
             }
             PlayerActions.ACTION_SEEK_BACK -> {
-                val cur = PlayerRepository.positionMs.value
+                val cur = PlayerStateManager.positionMs.value
                 val target = (cur - PlayerActions.SEEK_STEP_MS).coerceAtLeast(0L)
                 seekInternal(target)
             }
@@ -287,12 +287,12 @@ class PlayerForegroundService : Service() {
     }
 
     private fun prepareCurrent(startPlaying: Boolean = true) {
-        val songs = PlayerRepository.playlist.value
+        val songs = PlayerStateManager.playlist.value
         if (songs.isEmpty()) {
             Log.d(TAG, "prepareCurrent: no songs in repository playlist, aborting")
             return
         }
-        val idx = PlayerRepository.currentIndex.value.coerceIn(0, songs.size - 1)
+        val idx = PlayerStateManager.currentIndex.value.coerceIn(0, songs.size - 1)
         val song = songs.getOrNull(idx) ?: return
         Log.d(TAG, "prepareCurrent requested idx=$idx startPlaying=$startPlaying")
         // If the requested index is already prepared (or currently preparing), avoid resetting the MediaPlayer
@@ -305,13 +305,13 @@ class PlayerForegroundService : Service() {
             }
             // if prepared path matches and duration is known, we are prepared. Start if requested.
             val preparedPath = currentPreparedPath
-            if (preparedPath != null && preparedPath == song.path && PlayerRepository.durationMs.value > 0L) {
+            if (preparedPath != null && preparedPath == song.path && PlayerStateManager.durationMs.value > 0L) {
                 Log.d(TAG, "prepareCurrent: idx=$idx already prepared path=$preparedPath -> startPlaying=$startPlaying")
                 if (startPlaying) {
                     try {
                         if (mediaPlayer?.isPlaying != true) {
                             mediaPlayer?.start()
-                            PlayerRepository.setIsPlaying(true)
+                            PlayerStateManager.setIsPlaying(true)
                             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
                             startForegroundNotification()
                             Log.d(TAG, "prepareCurrent: resumed playback for idx=$idx")
@@ -385,10 +385,10 @@ class PlayerForegroundService : Service() {
                 // Add a timeout watchdog to reset isPreparing if preparation hangs
                 scope.launch {
                     delay(5000) // 10 second timeout
-                    if (isPreparing && PlayerRepository.durationMs.value == 0L) {
+                    if (isPreparing && PlayerStateManager.durationMs.value == 0L) {
                         Log.w(TAG, "prepareCurrent: preparation timeout for idx=$idx, resetting isPreparing flag")
                         isPreparing = false
-                        PlayerRepository.clearPrepared()
+                        PlayerStateManager.clearPrepared()
                         try {
                             Toast.makeText(this@PlayerForegroundService, "Playback preparation timed out", Toast.LENGTH_SHORT).show()
                         } catch (_: Throwable) {}
@@ -404,7 +404,7 @@ class PlayerForegroundService : Service() {
                 scope.launch {
                     // wait until prepared (duration > 0) or timeout
                     var waited = 0
-                    while (PlayerRepository.durationMs.value == 0L && waited < 5000) {
+                    while (PlayerStateManager.durationMs.value == 0L && waited < 5000) {
                         delay(100)
                         waited += 100
                     }
@@ -421,7 +421,7 @@ class PlayerForegroundService : Service() {
                 Toast.makeText(this@PlayerForegroundService, "Failed to load media. Retrying...", Toast.LENGTH_SHORT).show()
             } catch (_: Throwable) {}
             // Clear repo prepared state and local flags so next prepare can succeed
-            try { PlayerRepository.clearPrepared() } catch (_: Throwable) {}
+            try { PlayerStateManager.clearPrepared() } catch (_: Throwable) {}
             isPreparing = false
             // Attempt a single retry with a short delay
             scope.launch(Dispatchers.Main) {
@@ -454,10 +454,10 @@ class PlayerForegroundService : Service() {
                     // Add timeout watchdog for retry as well
                     scope.launch {
                         delay(3000)
-                        if (isPreparing && PlayerRepository.durationMs.value == 0L) {
+                        if (isPreparing && PlayerStateManager.durationMs.value == 0L) {
                             Log.w(TAG, "prepareCurrent(retry): preparation timeout for idx=$idx")
                             isPreparing = false
-                            PlayerRepository.clearPrepared()
+                            PlayerStateManager.clearPrepared()
                             Toast.makeText(this@PlayerForegroundService, "Retry timed out", Toast.LENGTH_SHORT).show()
                         }
                     }
@@ -473,8 +473,8 @@ class PlayerForegroundService : Service() {
 
     private fun playInternal() {
         try {
-            val desiredIdx = PlayerRepository.currentIndex.value
-            val desiredPath = PlayerRepository.playlist.value.getOrNull(desiredIdx)?.path
+            val desiredIdx = PlayerStateManager.currentIndex.value
+            val desiredPath = PlayerStateManager.playlist.value.getOrNull(desiredIdx)?.path
             Log.d(TAG, "playInternal called desiredIdx=$desiredIdx desiredPath=$desiredPath currentPreparedIndex=$currentPreparedIndex currentPreparedPath=$currentPreparedPath mediaPlaying=${mediaPlayer?.isPlaying}")
             if (mediaPlayer?.isPlaying == true) {
                 // if already playing the requested path, nothing to do
@@ -486,11 +486,11 @@ class PlayerForegroundService : Service() {
                 Log.d(TAG, "playInternal: preparedPath ($currentPreparedPath) != desiredPath ($desiredPath), reloading")
             }
             // if not prepared or different index, prepareCurrent will load the desired track
-            if (PlayerRepository.durationMs.value <= 0L || currentPreparedIndex != desiredIdx) {
+            if (PlayerStateManager.durationMs.value <= 0L || currentPreparedIndex != desiredIdx) {
                 prepareCurrent(startPlaying = true)
             } else {
                 mediaPlayer?.start()
-                PlayerRepository.setIsPlaying(true)
+                PlayerStateManager.setIsPlaying(true)
                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
                 startForegroundNotification()
                 Log.d(TAG, "playInternal: started playback idx=$desiredIdx")
@@ -504,7 +504,7 @@ class PlayerForegroundService : Service() {
         try {
             if (mediaPlayer?.isPlaying == true) {
                 mediaPlayer?.pause()
-                PlayerRepository.setIsPlaying(false)
+                PlayerStateManager.setIsPlaying(false)
                 updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
             }
             if (suppressNotification) {
@@ -522,29 +522,29 @@ class PlayerForegroundService : Service() {
     }
 
     private fun nextInternal() {
-        val songs = PlayerRepository.playlist.value
+        val songs = PlayerStateManager.playlist.value
         if (songs.isEmpty()) return
-        val nextIdx = PlayerRepository.nextIndex()
-        PlayerRepository.setCurrentIndex(nextIdx)
+        val nextIdx = PlayerStateManager.nextIndex()
+        PlayerStateManager.setCurrentIndex(nextIdx)
         prepareCurrent(startPlaying = true)
     }
 
     private fun prevInternal() {
-        val songs = PlayerRepository.playlist.value
+        val songs = PlayerStateManager.playlist.value
         if (songs.isEmpty()) return
-        val prevIdx = PlayerRepository.prevIndex()
-        PlayerRepository.setCurrentIndex(prevIdx)
+        val prevIdx = PlayerStateManager.prevIndex()
+        PlayerStateManager.setCurrentIndex(prevIdx)
         prepareCurrent(startPlaying = true)
     }
 
     private fun seekInternal(position: Long) {
         try {
             mediaPlayer?.seekTo(position.toInt())
-            PlayerRepository.setPositionMs(position)
+            PlayerStateManager.setPositionMs(position)
         } catch (_: Throwable) { }
     }
 
-    private fun updatePlaybackState(state: Int, position: Long = PlayerRepository.positionMs.value) {
+    private fun updatePlaybackState(state: Int, position: Long = PlayerStateManager.positionMs.value) {
         val playbackState = PlaybackStateCompat.Builder()
             .setActions(
                 PlaybackStateCompat.ACTION_PLAY or
@@ -578,10 +578,10 @@ class PlayerForegroundService : Service() {
                     // IllegalStateException when MediaPlayer isn't prepared. updatePositionFromPlayerSafe
                     // wraps currentPosition access in try/catch. Duration is sourced from the repo's
                     // last-known prepared duration (set in onPrepared via markPrepared).
-                    PlayerRepository.updatePositionFromPlayerSafe(mediaPlayer)
-                    val dur = PlayerRepository.getSafeDuration()
+                    PlayerStateManager.updatePositionFromPlayerSafe(mediaPlayer)
+                    val dur = PlayerStateManager.getSafeDuration()
                     // reflect into the repo flows (position already updated). Keep duration if known.
-                    if (dur > 0L) PlayerRepository.setDurationMs(dur)
+                    if (dur > 0L) PlayerStateManager.setDurationMs(dur)
                     // Throttle notification updates to ~500ms to keep progress timely without spamming
                     val now = System.currentTimeMillis()
                     if (now - lastNotificationUpdateTime >= 500L) {
@@ -599,8 +599,8 @@ class PlayerForegroundService : Service() {
         val artist = mediaSession?.controller?.metadata?.getString(MediaMetadataCompat.METADATA_KEY_ARTIST) ?: ""
         val isPlaying = mediaSession?.controller?.playbackState?.state == PlaybackStateCompat.STATE_PLAYING
         val token = mediaSession?.sessionToken
-        val prog = PlayerRepository.positionMs.value
-        val max = PlayerRepository.durationMs.value
+        val prog = PlayerStateManager.positionMs.value
+        val max = PlayerStateManager.durationMs.value
         val notification = PlayerNotificationManager.buildNotification(
             this,
             title,
@@ -621,8 +621,8 @@ class PlayerForegroundService : Service() {
         val artist = mediaSession?.controller?.metadata?.getString(MediaMetadataCompat.METADATA_KEY_ARTIST) ?: ""
         val isPlaying = mediaSession?.controller?.playbackState?.state == PlaybackStateCompat.STATE_PLAYING
         val token = mediaSession?.sessionToken
-        val prog = PlayerRepository.positionMs.value
-        val max = PlayerRepository.durationMs.value
+        val prog = PlayerStateManager.positionMs.value
+        val max = PlayerStateManager.durationMs.value
         val notification = PlayerNotificationManager.buildNotification(
             this,
             title,
@@ -643,7 +643,7 @@ class PlayerForegroundService : Service() {
         pollJob?.cancel()
         try { mediaPlayer?.release() } catch (_: Throwable) {}
         // clear prepared-state in repo since the player is released
-        PlayerRepository.clearPrepared()
+        PlayerStateManager.clearPrepared()
         try { currentArtwork?.recycle() } catch (_: Throwable) {}
         mediaSession?.release()
         PlayerNotificationManager.cancel(this)
@@ -660,8 +660,8 @@ class PlayerForegroundService : Service() {
             try { mediaPlayer?.stop() } catch (_: Throwable) {}
             try { mediaPlayer?.release() } catch (_: Throwable) {}
             // clear prepared-state in repo since the player is released
-            PlayerRepository.clearPrepared()
-            PlayerRepository.setIsPlaying(false)
+            PlayerStateManager.clearPrepared()
+            PlayerStateManager.setIsPlaying(false)
             stopSelf()
         } catch (_: Throwable) {
             // best-effort cleanup

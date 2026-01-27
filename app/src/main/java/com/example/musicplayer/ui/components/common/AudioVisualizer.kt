@@ -1,4 +1,4 @@
-package com.example.musicplayer.ui.components
+package com.example.musicplayer.ui.components.common
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing

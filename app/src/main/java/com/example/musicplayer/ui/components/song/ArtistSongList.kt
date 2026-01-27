@@ -1,4 +1,4 @@
-package com.example.musicplayer.ui.components
+package com.example.musicplayer.ui.components.song
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween

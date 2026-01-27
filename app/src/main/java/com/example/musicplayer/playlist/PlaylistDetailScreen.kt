@@ -1,6 +1,5 @@
 package com.example.musicplayer.playlist
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -47,9 +45,9 @@ import com.example.musicplayer.model.Playlist
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.music.MusicPlayerViewModel
 import com.example.musicplayer.navigation.NavRoutes
-import com.example.musicplayer.service.PlayerRepository
-import com.example.musicplayer.ui.components.MainBackground
-import com.example.musicplayer.ui.components.SongCardRow
+import com.example.musicplayer.service.PlayerStateManager
+import com.example.musicplayer.ui.components.common.MainBackground
+import com.example.musicplayer.ui.components.song.SongCardRow
 import com.example.musicplayer.util.Util
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -181,7 +179,7 @@ fun PlaylistDetailScreen(
                                 onClick = {
                                     // Play the song from this playlist
                                     playerVm.setPlaylist(context, playlistSongs, index)
-                                    PlayerRepository.setCurrentIndex(index)
+                                    PlayerStateManager.setCurrentIndex(index)
                                     playerVm.play(context)
                                     navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
                                 },

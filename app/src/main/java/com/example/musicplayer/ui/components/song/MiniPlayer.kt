@@ -1,4 +1,4 @@
-package com.example.musicplayer.ui.components
+package com.example.musicplayer.ui.components.song
 
 import android.util.Log
 import androidx.compose.foundation.Image
@@ -42,18 +42,18 @@ import com.example.musicplayer.R
 import com.example.musicplayer.util.Util
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.service.PlayerIntentBuilder
-import com.example.musicplayer.service.PlayerRepository
+import com.example.musicplayer.service.PlayerStateManager
 
 @Composable
 fun MiniPlayer(
     modifier: Modifier = Modifier,
     onOpenPlayer: (Song?) -> Unit = {}
 ) {
-    val playlist by PlayerRepository.playlist.collectAsState()
-    val currentIndex by PlayerRepository.currentIndex.collectAsState()
-    val isPlaying by PlayerRepository.isPlaying.collectAsState()
-    val positionMs by PlayerRepository.positionMs.collectAsState()
-    val durationMs by PlayerRepository.durationMs.collectAsState()
+    val playlist by PlayerStateManager.playlist.collectAsState()
+    val currentIndex by PlayerStateManager.currentIndex.collectAsState()
+    val isPlaying by PlayerStateManager.isPlaying.collectAsState()
+    val positionMs by PlayerStateManager.positionMs.collectAsState()
+    val durationMs by PlayerStateManager.durationMs.collectAsState()
     val current = playlist.getOrNull(currentIndex)
     val context = LocalContext.current
     // read preview mode inside a composable context
@@ -121,10 +121,10 @@ fun MiniPlayer(
                 Log.d("MiniPlayer", "play/pause clicked isPlaying=$isPlaying appCtx=$appCtx")
                 if (isPreviewMode) {
                     // in preview toggle repository state only
-                    PlayerRepository.setIsPlaying(!PlayerRepository.isPlaying.value)
+                    PlayerStateManager.setIsPlaying(!PlayerStateManager.isPlaying.value)
                 } else {
                     // Optimistically update UI state so the button feels responsive, then send intent to service.
-                    PlayerRepository.setIsPlaying(!isPlaying)
+                    PlayerStateManager.setIsPlaying(!isPlaying)
                     if (isPlaying) PlayerIntentBuilder.startPause(appCtx) else PlayerIntentBuilder.startPlay(appCtx)
                 }
             }) {
@@ -173,8 +173,8 @@ private fun MiniPlayerPreview() {
 
     // populate PlayerRepository with sample data for preview
     LaunchedEffect(Unit) {
-        PlayerRepository.setPlaylist(sampleSongs, 0)
-        PlayerRepository.setIsPlaying(false)
+        PlayerStateManager.setPlaylist(sampleSongs, 0)
+        PlayerStateManager.setIsPlaying(false)
     }
 
     MaterialTheme {
