@@ -3,8 +3,10 @@ package com.example.musicplayer.ui.components.song
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -48,28 +51,54 @@ import com.example.musicplayer.model.Song
 private fun splitArtists(raw: String): List<String> {
     val base = raw.ifBlank { "Unknown Artist" }
 
+    Log.d("splitArtists", "════ PROCESSING: '$base' ════")
+
     // Exception list: band names that should NOT be split even if they contain separators
     val bandExceptions = setOf(
         "crosby, stills & nash",
         "crosby, stills, nash & young",
         "csn",
-        "csny"
+        "csny",
+        "king & queen"
     )
 
-    val baseLower = base.lowercase()
-    if (bandExceptions.any { baseLower.contains(it) }) {
-        return listOf(base.trim())
+    val baseLower = base.lowercase().trim()
+
+    // Check band exceptions FIRST - if matched, return as-is without splitting
+    for (exception in bandExceptions) {
+        if (baseLower == exception) {
+            Log.d("splitArtists", "✓ BAND EXCEPTION: '$base' -> keeping as single artist")
+            return listOf(base.trim())
+        }
     }
 
-    // Common separators: comma, ampersand, slash, "feat." or "ft." and "with"
-    val parts = base
-        .replace("feat.", ",", ignoreCase = true)
-        .replace("ft.", ",", ignoreCase = true)
-        .replace(" with ", ",", ignoreCase = true)
-        .split(',', '&', '/', '+')
+    // Normalize ampersands, plus signs, slashes, and 'x' to commas for consistency
+    val normalized = base
+        .replace(" & ", ", ")
+        .replace("&", ",")
+        .replace(" + ", ", ")
+        .replace("+", ",")
+        .replace(" / ", ", ")
+        .replace("/", ",")
+        .replace(Regex("\\s+x\\s+"), ", ")  // Handle "artist x artist" format (case-insensitive)
+
+    Log.d("splitArtists", "  → After normalization: '$normalized'")
+
+    // First, remove any featuring/feat/ft artists (everything after feat/featuring/ft)
+    val withoutFeaturing = normalized
+        .split(Regex("\\s+(feat|featuring|ft)(?:\\.)?\\s+", RegexOption.IGNORE_CASE), limit = 2)[0]
+        .trim()
+
+    Log.d("splitArtists", "  → After removing featuring: '$withoutFeaturing'")
+
+    // Then split on commas to get individual artists
+    val artists = withoutFeaturing
+        .split(",")
         .map { it.trim() }
         .filter { it.isNotEmpty() }
-    return if (parts.isEmpty()) listOf("Unknown Artist") else parts
+
+    Log.d("splitArtists", "  → RESULT: $artists")
+    return if (artists.isNotEmpty()) artists else listOf("Unknown Artist")
 }
 
 private fun normalizeArtistKey(name: String): String {
@@ -109,18 +138,17 @@ fun ArtistSongList(
             }
         }
 
-        // Update song counts
+        // Update song counts - always update regardless of count
         map.forEach { (key, artist) ->
             val count = songsByArtist[key]?.size ?: 0
-            if (count > 0) {
-                map[key] = artist.withSongCount(count)
-            }
+            map[key] = artist.withSongCount(count)
+            Log.d("ArtistSongList", "ARTIST: '${artist.name}' | KEY: '$key' | SONGS: $count")
         }
 
         Pair(map, songsByArtist.mapValues { it.value.toList() })
     }
 
-    val artists = remember(artistMap) { artistMap.first.values.toList() }
+    val artists = remember(artistMap) { artistMap.first.values.toList().sortedBy { it.name } }
     val songsByArtistKey = remember(artistMap) { artistMap.second }
 
     var selectedArtistKey by remember(artists) {
@@ -185,86 +213,144 @@ private fun ArtistCard(
     selected: Boolean = false,
     onClick: () -> Unit = {}
 ) {
+    // Fetch image asynchronously with Coil
+    var imageUrl by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(artist.name) {
+        Log.i("ArtistCard", "━━━ FETCHING IMAGE FOR: '${artist.name}' ━━━")
+        try {
+            // artist.name is already the primary artist (extracted by splitArtists)
+            // No need to extract again
+            imageUrl = ArtistUtil.getArtistImageUrl(artist.name)
+            if (imageUrl != null) {
+                Log.d("ArtistCard", "✓ IMAGE FOUND: ${imageUrl!!.take(60)}...")
+            } else {
+                Log.e("ArtistCard", "✗ NO IMAGE FOUND for '${artist.name}'")
+            }
+        } catch (e: Exception) {
+            Log.e("ArtistCard", "✗ ERROR: ${e.message}")
+            imageUrl = null
+        }
+    }
+
+    // Debug logging for song count
+    LaunchedEffect(artist.name, artist.songCount) {
+        Log.d("ArtistCard", "DISPLAY: '${artist.name}' | SONGS: ${artist.songCount}")
+    }
+
     Card(
         modifier = modifier
-            .size(120.dp)
+            .size(width = 120.dp, height = 150.dp)
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFF2A2A2A) else Color(0xFF1E1E1E)),
-        shape = RoundedCornerShape(8.dp)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(8.dp)
+        Box(
+            modifier = Modifier.fillMaxSize()
         ) {
-            // Fetch image asynchronously with Coil
-            var imageUrl by remember { mutableStateOf<String?>(null) }
-            var isLoading by remember { mutableStateOf(true) }
-
-            LaunchedEffect(artist.name) {
-                Log.d("ArtistCard", "LaunchedEffect triggered for artist: ${artist.name}")
-                isLoading = true
-                try {
-                    imageUrl = ArtistUtil.getArtistImageUrl(artist.name)
-                    Log.d("ArtistCard", "Image URL for ${artist.name}: ${imageUrl?.take(80) ?: "NULL"}")
-                } catch (e: Exception) {
-                    Log.e("ArtistCard", "Error fetching image for ${artist.name}: ${e.message}")
-                    imageUrl = null
-                } finally {
-                    isLoading = false
-                }
-            }
-
+            // Background image or gradient
             if (!imageUrl.isNullOrBlank()) {
-                Log.d("ArtistCard", "Rendering AsyncImage for ${artist.name}")
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(imageUrl)
                         .crossfade(300)
-                        .transformations(CircleCropTransformation())
                         .build(),
                     contentDescription = artist.name,
                     modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(40.dp)),
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.Crop,
-                    onLoading = { Log.d("ArtistCard", "Loading image for ${artist.name}") },
-                    onSuccess = { Log.d("ArtistCard", "Successfully loaded image for ${artist.name}") },
-                    onError = { Log.e("ArtistCard", "Failed to load image URL for ${artist.name}: $imageUrl") }
+                    onLoading = { Log.d("AsyncImage", "⏳ LOADING: '${artist.name}'") },
+                    onSuccess = { Log.d("AsyncImage", "✓ LOADED: '${artist.name}'") },
+                    onError = { Log.e("AsyncImage", "✗ FAILED: '${artist.name}' | URL: $imageUrl") }
                 )
             } else {
-                if (!isLoading) {
-                    Log.d("ArtistCard", "No image URL for ${artist.name}, showing initials")
-                }
-                // Fallback: initials circle
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
+                // Fallback gradient background
+                Box(
                     modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(40.dp))
-                        .background(Color(0xFF2A2A2A))
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF2A2A2A),
+                                    Color(0xFF1A1A1A)
+                                )
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        )
                 ) {
+                    // Initials in center for no-image fallback
                     val initials = remember(artist.name) {
-                        artist.name.split(" ", limit = 2).map { it.firstOrNull()?.uppercase() ?: "" }.joinToString("")
+                        artist.name.split(" ", limit = 2)
+                            .map { it.firstOrNull()?.uppercase() ?: "" }
+                            .joinToString("")
                     }
                     Text(
                         text = initials,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.displayMedium,
+                        color = Color.White.copy(alpha = 0.3f),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Center)
                     )
                 }
             }
 
-            Text(
-                text = artist.name,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (selected) Color.White else Color.White.copy(alpha = 0.85f),
-                maxLines = 1
+            // Gradient overlay at bottom
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(100.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.8f)
+                            )
+                        )
+                    )
             )
+
+            // Text content at bottom
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = artist.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 2,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    text = "${artist.songCount} ${if (artist.songCount == 1) "song" else "songs"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (selected) Color(0xFFFFA500) else Color.White.copy(alpha = 0.7f),
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Selected indicator border
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Transparent)
+                        .border(
+                            width = 3.dp,
+                            color = Color(0xFFFFA500),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                )
+            }
         }
     }
 }

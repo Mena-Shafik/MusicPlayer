@@ -47,6 +47,7 @@ class Util {
             Environment.getExternalStorageDirectory().toString() + "/Music/*"
             // what data to grab
             val projection = arrayOf(
+                MediaStore.Audio.Media._ID, // Use stable MediaStore ID
                 MediaStore.Audio.AudioColumns.DATA,
                 MediaStore.Audio.AudioColumns.TITLE,
                 MediaStore.Audio.ArtistColumns.ARTIST,
@@ -56,20 +57,19 @@ class Util {
             // check if it is a song
             val where = MediaStore.Audio.Media.IS_MUSIC + "=1"
             val c = context.contentResolver.query(uri, projection, where, null, "title")
-            var count = 0
             if (c != null) {
                 while (c.moveToNext()) {
-                    val tempPath = c.getString(0)
+                    val mediaStoreId = c.getInt(0) // Get MediaStore ID (stable across scans)
+                    val tempPath = c.getString(1)
                     val path = tempPath.toUri()
                     // Skip entries without a valid path to avoid passing empty strings to MediaMetadataRetriever
                     if (path.toString().isBlank()) continue
-                    val title = c.getString(1) ?: "Unknown"
-                    val artist = c.getString(2) ?: "Unknown"
-                    val album = c.getString(3) ?: "Unknown"
-                    val duration = c.getDouble(4)
-                    val song = Song(count, title, artist, duration, path.toString(), album)
+                    val title = c.getString(2) ?: "Unknown"
+                    val artist = c.getString(3) ?: "Unknown"
+                    val album = c.getString(4) ?: "Unknown"
+                    val duration = c.getDouble(5)
+                    val song = Song(mediaStoreId, title, artist, duration, path.toString(), album)
                     tempAudioList.add(song)
-                    count++
 
                     val msg =
                         "Album id: ${song.id} | Title: ${song.title} | Artist: ${song.artist} | Path: ${song.path} | Duration: ${
@@ -117,7 +117,7 @@ class Util {
             // %-4s = left-aligned width 4, %-30s = left-aligned width 30, etc.
             // Columns: ID, Title, Artist, Album, Path, Duration
             return String.Companion.format(
-                Locale.US, "%-4s %-30s %-20s %-20s %-40s %8s",
+                Locale.US, "%-10s %-30s %-20s %-20s %-40s %8s",
                 "ID", "Title", "Artist", "Album", "Path", "Duration")
         }
 
@@ -129,7 +129,7 @@ class Util {
             val album = padOrTruncate(song.album?.trim(), 40)
             val duration = padOrTruncate(song.duration.toString(), 10)
             val path = padOrTruncate(song.path, 70)
-            return String.Companion.format(Locale.US, "%-4s %-25s %-15s %-40s %-40s %8s", id, title, artist, album, path, duration)
+            return String.Companion.format(Locale.US, "%-10s %-25s %-15s %-40s %-40s %8s", id, title, artist, album, path, duration)
         }
 
         fun converter(time: Double): String {
@@ -373,6 +373,18 @@ class Util {
         private fun extractAllArtists(artist: String?): List<String> {
             if (artist.isNullOrBlank()) return emptyList()
 
+            val bandExceptions = setOf(
+                "crosby, stills & nash",
+                "crosby, stills, nash & young",
+                "csn",
+                "csny",
+                "king & queen"
+            )
+            val artistLower = artist.lowercase(Locale.getDefault())
+            if (bandExceptions.any { artistLower.contains(it) }) {
+                return listOf(artist.trim().lowercase(Locale.getDefault()))
+            }
+
             // Split by collaboration separators (including comma and +)
             val collaborationRegex = Regex(
                 "[,\\s]+(feat\\.?|featuring|ft\\.?|and|&|\\+|with|x)[,\\s]*|[,]",
@@ -392,8 +404,9 @@ class Util {
                 }
                 .filter { it.isNotBlank() }
                 .distinct() // remove duplicates
+                .take(1) // Only keep the primary artist (ignore any "featuring" artists)
 
-
+            Log.d(TAG, "extractAllArtists input: '$artist' -> output: $result")
             return result
         }
 
@@ -594,9 +607,55 @@ class Util {
         }
 
         /**
+         * Filter to identify real FM/AM broadcast radio stations.
+         * Excludes internet-only streaming services.
+         * Real stations typically have:
+         * - Call letters (e.g., CHUM, KISS, CIDC)
+         * - FM/AM frequency in name (e.g., "104.5", "92.5")
+         * - Known broadcast networks
+         */
+        private fun isRealBroadcastStation(station: RadioStation): Boolean {
+            val name = station.name?.uppercase() ?: return false
+            val tags = station.tags?.uppercase() ?: ""
+
+            // Exclude known internet-only services (STRICT exclusion)
+            val excludedPatterns = listOf(
+                "TUNEIN", "IHEARTRADIO", "SPOTIFY", "APPLE MUSIC",
+                "YOUTUBE", "SOUNDCLOUD", "TIDAL", "AMAZON MUSIC",
+                "INTERNET ONLY", "WEB ONLY", "PANDORA", "SLACKER",
+                "JANGO", "LAST.FM", "SHOUTCAST", "WEBRADIO", "INTERNET RADIO"
+            )
+
+            // If it's explicitly an excluded service, reject it
+            if (excludedPatterns.any { pattern -> name.contains(pattern) || tags.contains(pattern) }) {
+                Log.d(TAG, "Excluded station: $name (streaming service)")
+                return false
+            }
+
+            // Real broadcast stations have FM/AM designation OR frequencies
+            val hasFMorAM = name.contains("FM") || name.contains("AM") ||
+                           tags.contains("FM") || tags.contains("AM")
+
+            val hasFrequency = name.contains(Regex("\\d+\\.\\d+")) // 104.5 format
+
+            // Has call letters (2-4 letter combination)
+            val hasCallLetters = name.contains(Regex("[A-Z]{2,4}")) &&
+                                !name.contains(Regex("[A-Z]{5,}")) // avoid all-caps phrases
+
+            val isReal = hasFMorAM || hasFrequency || hasCallLetters
+
+            if (isReal) {
+                Log.d(TAG, "Accepted station: $name (FM=$hasFMorAM, Freq=$hasFrequency, Letters=$hasCallLetters)")
+            }
+
+            return isReal
+        }
+
+        /**
          * Convenience helper: fetch stations near the Greater Toronto Area (GTA).
          * Focus on music stations and preferentially return well-known music stations
          * such as CHUM 104.5, KISS 92.5, VIRGIN 99.9 and Z103.5.
+         * Filters to real FM/AM broadcast stations only.
          */
         suspend fun fetchStationsNearGTA(limit: Int = 50): List<RadioStation> {
             // Simplified version: prefer geo-nearby endpoint and fall back to a general search.
@@ -604,11 +663,26 @@ class Util {
             val GTA_LAT = 43.6532
             val GTA_LON = -79.3832
             return try {
-                val nearby = fetchRadioStationsNearby(GTA_LAT, GTA_LON, limit)
-                if (nearby.isNotEmpty()) return nearby.take(limit)
+                Log.d(TAG, "fetchStationsNearGTA: Fetching stations near GTA (lat=$GTA_LAT, lng=$GTA_LON)")
+                val nearby = fetchRadioStationsNearby(GTA_LAT, GTA_LON, limit * 3) // fetch more to account for filtering
+                    .also { Log.d(TAG, "fetchStationsNearGTA: Got ${it.size} stations from nearby, filtering...") }
+                    .filter { isRealBroadcastStation(it) }
+                    .also { Log.d(TAG, "fetchStationsNearGTA: After filtering, ${it.size} real broadcast stations") }
+                    .take(limit)
+                if (nearby.isNotEmpty()) {
+                    Log.d(TAG, "fetchStationsNearGTA: Returning ${nearby.size} nearby stations")
+                    return nearby
+                }
+
                 // fallback to a province-wide / simple search
-                val province = fetchRadioStations(query = "", limit = limit, country = "Canada", state = "Ontario")
-                province.take(limit)
+                Log.d(TAG, "fetchStationsNearGTA: No nearby stations, trying province-wide search")
+                val province = fetchRadioStations(query = "", limit = limit * 3, country = "Canada", state = "Ontario")
+                    .also { Log.d(TAG, "fetchStationsNearGTA: Got ${it.size} stations from province search") }
+                    .filter { isRealBroadcastStation(it) }
+                    .also { Log.d(TAG, "fetchStationsNearGTA: After filtering, ${it.size} real broadcast stations") }
+                    .take(limit)
+                Log.d(TAG, "fetchStationsNearGTA: Returning ${province.size} province stations")
+                province
             } catch (e: Exception) {
                 try { Log.w(TAG, "fetchStationsNearGTA simplified failed", e) } catch (_: Throwable) {}
                 emptyList()
@@ -747,3 +821,4 @@ class Util {
         }
 
 }
+

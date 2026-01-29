@@ -1,6 +1,7 @@
 package com.example.musicplayer.ui.components.radio
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,10 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +41,7 @@ fun RadioCardRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clickable(onClick = onPlay)
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -78,18 +76,6 @@ fun RadioCardRow(
                 modifier = Modifier.padding(top = 4.dp),
                 chipBackground = Color.White.copy(alpha = 0.2f),
                 chipContentColor = Color.White
-            )
-        }
-
-        IconButton(
-            modifier = Modifier.size(60.dp),
-            onClick = onPlay
-        ) {
-            Icon(
-                imageVector = Icons.Filled.PlayCircle,
-                contentDescription = "Play",
-                modifier = Modifier.size(50.dp),
-                tint = Color.White
             )
         }
     }

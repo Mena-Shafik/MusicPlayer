@@ -25,13 +25,11 @@ sealed class NavRoutes(val route: String) {
         fun createRoute(songId: Int) = "musicScreen/$songId"
     }
 
-    object RadioPlayer : NavRoutes("radioPlayer/{name}/{url}/{favicon}/{tags}") {
-        fun createRoute(name: String, url: String, favicon: String, tags: String): String {
+    object RadioPlayer : NavRoutes("radioPlayer/{name}/{url}") {
+        fun createRoute(name: String, url: String): String {
             val encodedName = java.net.URLEncoder.encode(name, "UTF-8")
             val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
-            val encodedFavicon = java.net.URLEncoder.encode(favicon, "UTF-8")
-            val encodedTags = java.net.URLEncoder.encode(tags, "UTF-8")
-            return "radioPlayer/$encodedName/$encodedUrl/$encodedFavicon/$encodedTags"
+            return "radioPlayer/$encodedName/$encodedUrl"
         }
     }
 

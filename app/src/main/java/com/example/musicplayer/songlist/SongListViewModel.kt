@@ -266,6 +266,33 @@ class SongListViewModel(
         }
     }
 
+    // --- Use default radio list preference ---
+    private val _useDefaultRadioList = MutableStateFlow(true)
+    val useDefaultRadioList: StateFlow<Boolean> = _useDefaultRadioList
+
+    fun setUseDefaultRadioList(useDefault: Boolean) {
+        _useDefaultRadioList.value = useDefault
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setUseDefaultRadioList(it, useDefault)
+            }
+        }
+    }
+
+    /**
+     * Get radio stations based on the useDefaultRadioList preference.
+     * If true, returns JSON default stations.
+     * If false, fetches from Radio Browser API.
+     */
+    fun loadRadioStations() {
+        val useDefault = _useDefaultRadioList.value
+        if (useDefault) {
+            loadDefaultUserStations()
+        } else {
+            fetchRadioStationsIfNeeded()
+        }
+    }
+
     // Load persisted preferences when ViewModel is initialized
     init {
         context?.let {
@@ -284,6 +311,11 @@ class SongListViewModel(
             viewModelScope.launch {
                 PreferencesManager.getRadioSelectedFlow(it).collect { savedRadioSelected ->
                     _isRadioSelected.value = savedRadioSelected
+                }
+            }
+            viewModelScope.launch {
+                PreferencesManager.getUseDefaultRadioListFlow(it).collect { savedUseDefault ->
+                    _useDefaultRadioList.value = savedUseDefault
                 }
             }
         }

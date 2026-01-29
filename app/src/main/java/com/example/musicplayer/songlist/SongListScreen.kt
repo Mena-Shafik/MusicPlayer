@@ -411,14 +411,18 @@ fun SongList(
 fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHostController, viewModel: SongListViewModel = viewModel()) {
     val context = LocalContext.current
 
-    // Use built-in default stations provided by the ViewModel
-    val stations by viewModel.userStations.collectAsState()
-    // Keep the radio loading/error flows for compatibility, but UI shows defaults
+    // Collect both station sources
+    val defaultStations by viewModel.userStations.collectAsState()
+    val apiStations by viewModel.radioStations.collectAsState()
     val loading by viewModel.radioLoading.collectAsState()
     val error by viewModel.radioError.collectAsState()
+    val useDefault by viewModel.useDefaultRadioList.collectAsState()
 
-    // Load the default (hard-coded) stations when this composable enters composition
-    LaunchedEffect(Unit) { viewModel.loadDefaultUserStations() }
+    // Load radio stations based on the useDefaultRadioList preference
+    LaunchedEffect(Unit) { viewModel.loadRadioStations() }
+
+    // Choose which stations to display based on preference
+    val stations = if (useDefault) defaultStations else apiStations
 
     Column(modifier = modifier.fillMaxWidth()) {
         when {
@@ -468,10 +472,7 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                 }
 
                                 try { viewModel.setRadioSelected(true) } catch (_: Throwable) {}
-                                val favicon = station.favicon ?: ""
-                                val tagsRaw = station.tags ?: ""
-                                try { Log.d("DisplayListRadioStations", "Navigating to player: name=$displayName url=$url favicon=$favicon tags=$tagsRaw") } catch (_: Throwable) {}
-                                navController.navigate(NavRoutes.RadioPlayer.createRoute(displayName, url, favicon, tagsRaw))
+                                navController.navigate(NavRoutes.RadioPlayer.createRoute(displayName, url))
                             }
                         )
                     }

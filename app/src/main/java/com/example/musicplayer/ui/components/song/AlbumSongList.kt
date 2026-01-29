@@ -185,18 +185,18 @@ private fun AlbumCardItem(
 ) {
     Box(
         modifier = Modifier
-            .width(160.dp)
+            .width(140.dp)
             .background(
                 color = if (isSelected) Color(0xFF1A1A1A) else Color(0xFF0F0F0F),
                 shape = RoundedCornerShape(8.dp)
             )
             .clickable { onSelect() }
-            .padding(8.dp),
+            .padding(12.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             // Album cover image
@@ -205,7 +205,7 @@ private fun AlbumCardItem(
                     bitmap = albumArtBitmap,
                     contentDescription = albumName,
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(100.dp)
                         .clip(RoundedCornerShape(4.dp)),
                     contentScale = ContentScale.Crop
                 )
@@ -213,7 +213,7 @@ private fun AlbumCardItem(
                 // Placeholder when no cover art
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(100.dp)
                         .background(Color(0xFF2A2A2A), shape = RoundedCornerShape(4.dp)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -224,8 +224,6 @@ private fun AlbumCardItem(
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
 
             // Album name and song count
             Text(
@@ -240,7 +238,6 @@ private fun AlbumCardItem(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = "$songCount song${if (songCount == 1) "" else "s"}",

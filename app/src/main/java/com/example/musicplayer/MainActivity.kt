@@ -193,26 +193,20 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Backwards-compatible route: encoded name/url/fav/tags path (used in many places in the app)
+                    // Backwards-compatible route: encoded name/url path (simplified to avoid URL length issues)
                     composable(
                         NavRoutes.RadioPlayer.route,
                         arguments = listOf(
                             navArgument("name") { type = NavType.StringType },
-                            navArgument("url") { type = NavType.StringType },
-                            navArgument("favicon") { type = NavType.StringType },
-                            navArgument("tags") { type = NavType.StringType }
+                            navArgument("url") { type = NavType.StringType }
                         )
                     ) { backStackEntry ->
                         val nameEnc = backStackEntry.arguments?.getString("name")
                         val urlEnc = backStackEntry.arguments?.getString("url")
-                        val favEnc = backStackEntry.arguments?.getString("favicon")
-                        val tagsEnc = backStackEntry.arguments?.getString("tags")
                         val decodedName = try { if (nameEnc != null) java.net.URLDecoder.decode(nameEnc, "UTF-8") else "Unknown" } catch (_: Exception) { nameEnc ?: "Unknown" }
                         val decodedUrl = try { if (urlEnc != null) java.net.URLDecoder.decode(urlEnc, "UTF-8") else null } catch (_: Exception) { urlEnc }
-                        val decodedFav = try { if (favEnc != null) java.net.URLDecoder.decode(favEnc, "UTF-8") else null } catch (_: Exception) { favEnc }
-                        val decodedTags = try { if (tagsEnc != null) java.net.URLDecoder.decode(tagsEnc, "UTF-8") else null } catch (_: Exception) { tagsEnc }
-                        try { Log.d("MainActivity", "Decoded radio args: name=$decodedName url=$decodedUrl favicon=$decodedFav tags=$decodedTags") } catch (_: Throwable) {}
-                        val stationFromPath = RadioStation(stationuuid = null, name = decodedName, url = decodedUrl, favicon = decodedFav, tags = decodedTags)
+                        try { Log.d("MainActivity", "Decoded radio args: name=$decodedName url=$decodedUrl") } catch (_: Throwable) {}
+                        val stationFromPath = RadioStation(stationuuid = null, name = decodedName, url = decodedUrl)
                         RadioPlayerScreen(radioStation = stationFromPath, navController = navController)
                     }
                 }
