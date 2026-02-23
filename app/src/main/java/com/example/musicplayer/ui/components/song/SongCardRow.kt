@@ -35,11 +35,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import android.util.Log
 import com.example.musicplayer.R
-import com.example.musicplayer.util.Util
 import com.example.musicplayer.model.Song
+import com.example.musicplayer.util.Util
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -61,7 +64,21 @@ fun SongCardRow(
         if (song.path.isNotBlank()) {
             imageBitmap = withContext(Dispatchers.IO) {
                 try {
-                    Util.getAlbumArt(context, song.path)
+                    // First try to get embedded album art
+                    var bitmap = Util.getAlbumArt(context, song.path)
+
+                    // If no embedded art, try to fetch from web
+                    if (bitmap == null) {
+                        Log.d("SongCardRow", "No embedded artwork for '${song.title}', fetching from web...")
+                        val webUrl = Util.getAlbumArtWebUrl(song)
+                        if (webUrl != null) {
+                            bitmap = Util.loadBitmapFromUrl(webUrl)
+                            if (bitmap != null) {
+                                Log.d("SongCardRow", "✓ Loaded web album art for '${song.title}'")
+                            }
+                        }
+                    }
+                    bitmap
                 } catch (_: Throwable) {
                     null
                 }
@@ -175,7 +192,7 @@ fun CardPreview() {
     MaterialTheme {
         Surface(color = Color.Black) {
             SongCardRow(
-                song = Song(id = 1, title = "Title", artist = "Artist", duration = 260000.0, path = ""),
+                song = Song(id = 1, title = "Title", artist = "Artist", duration = 260000.0, path = "",album = null,2000),
                 onClick = {},
                 isInPlaylist = false
             )

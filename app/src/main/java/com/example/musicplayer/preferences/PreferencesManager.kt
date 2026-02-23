@@ -14,11 +14,23 @@ object PreferencesManager {
     private val RADIO_SELECTED_KEY = booleanPreferencesKey("radio_selected")
     private val ARTIST_VIEW_KEY = booleanPreferencesKey("artist_view_enabled")
     private val USE_DEFAULT_RADIO_LIST_KEY = booleanPreferencesKey("use_default_radio_list")
+    private val ERA_VIEW_KEY = booleanPreferencesKey("era_view_enabled")
 
     fun getAlbumViewFlow(context: Context): Flow<Boolean> =
         context.dataStore.data.map { preferences ->
             preferences[ALBUM_VIEW_KEY] ?: false
         }
+
+    fun getEraViewFlow(context: Context): Flow<Boolean> =
+        context.dataStore.data.map { preferences ->
+            preferences[ERA_VIEW_KEY] ?: false
+        }
+
+    suspend fun setEraView(context: Context, isEraView: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[ERA_VIEW_KEY] = isEraView
+        }
+    }
 
     suspend fun setAlbumView(context: Context, isAlbumView: Boolean) {
         context.dataStore.edit { preferences ->

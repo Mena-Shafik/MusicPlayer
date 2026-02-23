@@ -10,6 +10,7 @@ class Song {
     var path: String = "-"
     var album: String? = "-"
     var duration: Double = 00.00
+    var year: Int? = null
     var cover: ByteArray? = null
     var lyrics: String? = null
     var lyricsFetched: Boolean = false
@@ -22,15 +23,17 @@ class Song {
         val duration: Double = 00.00,
         val path: String?,
         val album: String? = null,
+        val year: Int? = null,
     ) : Parcelable
 
-    constructor(id: Int, title: String, artist: String, duration: Double, path: String?, album: String? = null) {
+    constructor(id: Int, title: String, artist: String, duration: Double, path: String?, album: String? = null, year: Int) {
         this.id = id
         this.title = title
         this.artist = artist
         this.duration = duration
         this.path = path?: "-"
         this.album = album
+        this.year = year
 
     }
 

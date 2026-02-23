@@ -4,6 +4,7 @@ package com.example.musicplayer.music
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
@@ -59,11 +60,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.foundation.MarqueeSpacing
 import androidx.compose.foundation.basicMarquee
-//import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
@@ -78,6 +79,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.navigation.NavController
 import androidx.palette.graphics.Palette
 import com.example.musicplayer.model.Song
@@ -85,18 +88,21 @@ import com.example.musicplayer.R
 import com.example.musicplayer.util.Util
 import com.example.musicplayer.service.PlayerStateManager
 import com.example.musicplayer.ui.components.common.AudioVisualizer
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.material.Icon
 import androidx.compose.material.TabRow
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
 import com.example.musicplayer.ui.components.common.MusicControls
 import com.example.musicplayer.ui.components.song.SongCardRow
+import com.example.musicplayer.ui.components.playlist.AddToPlaylistDialog
 
 
 // Lyrics are now cached on the Song instance (fields: lyrics, lyricsFetched). No global cache needed.
@@ -178,6 +184,10 @@ fun MusicPlayerScreen(
     val activeSongs = if (repoPlaylist.isNotEmpty()) repoPlaylist else songs
     val song = activeSongs.getOrNull(currentIndex) ?: songs.getOrNull(currentIndex) ?: songs.firstOrNull()
 
+    // Add-to-playlist dialog state
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    var selectedSongIdForPlaylist by remember { mutableStateOf<Int?>(null) }
+
     // slider local state for user seeking
     var sliderPosition by remember { mutableStateOf(positionMs.toFloat()) }
     var isUserSeeking by remember { mutableStateOf(false) }
@@ -203,6 +213,26 @@ fun MusicPlayerScreen(
                 title = { Text(text = "", color = Color.White) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 modifier = Modifier.statusBarsPadding(),
+                actions = {
+                    IconButton(onClick = {
+                        try {
+                            val currentId = song?.id
+                            if (currentId != null) {
+                                selectedSongIdForPlaylist = currentId
+                                showAddToPlaylistDialog = true
+                                Log.d("MusicPlayerScreen", "Opening AddToPlaylistDialog for songId=$currentId")
+                            } else {
+                                Toast.makeText(ctx, "No song available to add", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (_: Throwable) {}
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Add to playlist",
+                            tint = Color.White
+                        )
+                    }
+                }
             )
         },
         containerColor = backgroundColor
@@ -359,6 +389,23 @@ fun MusicPlayerScreen(
                     // small tappable area to expand the sheet
                     //Box(modifier = Modifier.fillMaxWidth().height(32.dp).clickable { bsScope.launch { bottomSheetScaffoldState.bottomSheetState.expand() } })
                 }
+            }
+        )
+    }
+
+    // Render AddToPlaylistDialog when requested
+    if (showAddToPlaylistDialog && selectedSongIdForPlaylist != null) {
+        AddToPlaylistDialog(
+            songId = selectedSongIdForPlaylist!!,
+            onDismiss = {
+                showAddToPlaylistDialog = false
+                selectedSongIdForPlaylist = null
+            },
+            onConfirm = { playlistId ->
+                // user selected a playlist and the dialog added the song via PlaylistViewModel
+                Toast.makeText(ctx, "Added to playlist", Toast.LENGTH_SHORT).show()
+                showAddToPlaylistDialog = false
+                selectedSongIdForPlaylist = null
             }
         )
     }
@@ -561,14 +608,41 @@ fun AlbumImage(
     onAccentColor: (Color) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val albumBitmap = Util.getAlbumArt(context, song.path)
+    var displayBitmap by remember(song.path) { mutableStateOf<ImageBitmap?>(null) }
+
+    LaunchedEffect(song.path) {
+        displayBitmap = null
+        if (song.path.isNotBlank()) {
+            displayBitmap = withContext(Dispatchers.IO) {
+                try {
+                    // First try embedded album art
+                    var bitmap = Util.getAlbumArt(context, song.path)
+
+                    // If no embedded art, fetch from web
+                    if (bitmap == null) {
+                        Log.d("AlbumImage", "No embedded artwork for '${song.title}', fetching from web...")
+                        val webUrl = Util.getAlbumArtWebUrl(song)
+                        if (webUrl != null) {
+                            bitmap = Util.loadBitmapFromUrl(webUrl)
+                            if (bitmap != null) {
+                                Log.d("AlbumImage", "✓ Loaded web album art for '${song.title}'")
+                            }
+                        }
+                    }
+                    bitmap
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+        }
+    }
 
     val imageModifier = modifier
         .width(340.dp)
         .height(340.dp)
         .clip(RoundedCornerShape(5.dp))
 
-    Crossfade(targetState = albumBitmap, animationSpec = tween(500), label = "Album art crossfade") { bitmap ->
+    Crossfade(targetState = displayBitmap, animationSpec = tween(500), label = "Album art crossfade") { bitmap ->
         if (bitmap != null) {
             Image(
                 bitmap = bitmap,
@@ -915,9 +989,9 @@ fun MusicPlayerScreenFullPreview() {
         val navController = remember { androidx.navigation.NavController(context) }
         // create a sample playlist
         val sampleSongs = listOf(
-            Song(0, "First Song", "Artist A", 180000.0, ""),
-            Song(1, "Second Song", "Artist B", 210000.0, ""),
-            Song(2, "Third Song", "Artist C", 240000.0, "")
+            Song(0, "First Song", "Artist A", 180000.0, "", null, 2000),
+            Song(1, "Second Song", "Artist B", 210000.0, "", null, 2001),
+            Song(2, "Third Song", "Artist C", 240000.0, "", null, 2002)
         )
         // create a plain VM instance for preview; methods may no-op but it's okay for preview
         val vm = remember { MusicPlayerViewModel() }
@@ -932,8 +1006,8 @@ fun MusicPlayerScreenFullPreview() {
 @Composable
 fun SongsModalBottomSheetPreview_Collapsed() {
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3"),
-        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3"),
+        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3", null, 1990),
+        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3", null, 1991),
     )
 
     MaterialTheme {
@@ -954,9 +1028,9 @@ fun SongsModalBottomSheetPreview_Collapsed() {
 @Composable
 fun SongsModalBottomSheetPreview_Expanded() {
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3"),
-        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3"),
-        Song(2, "Third Song", "Artist C", 240.0, "/storage/emulated/0/Music/third.mp3")
+        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3", null, 1990),
+        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3", null, 1991),
+        Song(2, "Third Song", "Artist C", 240.0, "/storage/emulated/0/Music/third.mp3", null, 1992)
     )
 
     MaterialTheme {
@@ -977,9 +1051,9 @@ fun SongsModalBottomSheetPreview_Expanded() {
 @Composable
 fun SongsModalBottomSheetPreview_LyricsSelected() {
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3"),
-        Song(1, "Second Song", "Artist B", 200000.0, "/storage/emulated/0/Music/second.mp3"),
-        Song(2, "Third Song", "Artist C", 240000.0, "/storage/emulated/0/Music/third.mp3")
+        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3", null, 1990),
+        Song(1, "Second Song", "Artist B", 200000.0, "/storage/emulated/0/Music/second.mp3", null, 1991),
+        Song(2, "Third Song", "Artist C", 240000.0, "/storage/emulated/0/Music/third.mp3", null, 1992)
     )
 
     // Provide fake cached lyrics for the preview so LyricsTab shows content without network access
@@ -1008,11 +1082,11 @@ fun SongsModalBottomSheetPreview_LyricsSelected() {
 fun SongsModalBottomSheetPreview_RelatedSelected() {
     // Create songs with the same album so related songs will be shown
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3", "Greatest Hits"),
-        Song(1, "Second Song", "Artist A", 200000.0, "/storage/emulated/0/Music/second.mp3", "Greatest Hits"),
-        Song(2, "Third Song", "Artist A", 240000.0, "/storage/emulated/0/Music/third.mp3", "Greatest Hits"),
-        Song(3, "Fourth Song", "Artist A", 220000.0, "/storage/emulated/0/Music/fourth.mp3", "Greatest Hits"),
-        Song(4, "Fifth Song", "Artist B", 190000.0, "/storage/emulated/0/Music/fifth.mp3", "Different Album")
+        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3", "Greatest Hits", 1995),
+        Song(1, "Second Song", "Artist A", 200000.0, "/storage/emulated/0/Music/second.mp3", "Greatest Hits", 1995),
+        Song(2, "Third Song", "Artist A", 240000.0, "/storage/emulated/0/Music/third.mp3", "Greatest Hits", 1995),
+        Song(3, "Fourth Song", "Artist A", 220000.0, "/storage/emulated/0/Music/fourth.mp3", "Greatest Hits", 1995),
+        Song(4, "Fifth Song", "Artist B", 190000.0, "/storage/emulated/0/Music/fifth.mp3", "Different Album", 2001)
     )
 
     MaterialTheme {
@@ -1028,5 +1102,7 @@ fun SongsModalBottomSheetPreview_RelatedSelected() {
         )
     }
 }
+
+
 
 

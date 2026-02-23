@@ -58,6 +58,7 @@ import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import kotlin.collections.getOrNull
 import com.example.musicplayer.ui.components.common.BottomNav
+import com.example.musicplayer.ui.components.song.EraSongList
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -96,6 +97,7 @@ fun ListSongsScreen(
     val toggleRadio: () -> Unit = { viewModel.toggleRadioSelected() }
     val isAlbumView by viewModel.isAlbumView.collectAsState()
     val isArtistView by viewModel.isArtistView.collectAsState()
+    val isEraView by viewModel.isEraView.collectAsState()
 
     // load and filter songs
     /*val view = LocalView.current
@@ -213,6 +215,25 @@ fun ListSongsScreen(
                     .fillMaxWidth()) {
                     // Songs content (album/artist/default)
                     when {
+                        isEraView -> {
+                            EraSongList(
+                                songs = songs,
+                                modifier = Modifier.fillMaxSize(),
+                                onSongClick = { song ->
+                                    val index = songs.indexOfFirst { it.id == song.id }
+                                    if (index >= 0) {
+                                        playerVm.setPlaylist(context, songs, index)
+                                        PlayerStateManager.setCurrentIndex(index)
+                                        playerVm.play(context)
+                                        navController.navigate(
+                                            NavRoutes.MusicPlayer.createRoute(
+                                                song.id
+                                            )
+                                        )
+                                    }
+                                }
+                            )
+                        }
                         isAlbumView -> {
                             // Sort by album: horizontal album cards + song list
                             AlbumSongList(
@@ -454,6 +475,12 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                     return@RadioCardRow
                                 }
 
+                                // ensure any current music playback is stopped before starting radio
+                                try {
+                                    com.example.musicplayer.service.PlayerIntentBuilder.startStop(context)
+                                    Log.d("DisplayListRadioStations", "Requested PlayerForegroundService STOP before starting radio")
+                                } catch (_: Throwable) {}
+
                                 try {
                                     val svcIntent = Intent().apply {
                                         action = RadioPlayerService.ACTION_PLAY_STATION
@@ -499,10 +526,10 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
 fun SongListPreview() {
     MaterialTheme {
         val sampleSongs = listOf(
-            Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = ""),
-            Song(id = 2, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = ""),
-            Song(id = 3, title = "Another Track", artist = "Artist Three", duration = 200000.0, path = ""),
-            Song(id = 4, title = "Another Track", artist = "Artist Four", duration = 200000.0, path = "")
+            Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = "", album = null, year = 2000),
+            Song(id = 2, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "", album = null, year = 1999),
+            Song(id = 3, title = "Another Track", artist = "Artist Three", duration = 200000.0, path = "", album = null, year = 2010),
+            Song(id = 4, title = "Another Track", artist = "Artist Four", duration = 200000.0, path = "", album = null, year = 1985)
         )
         Scaffold(
             topBar = {
@@ -556,5 +583,3 @@ fun SongListPreview() {
         }
     }
 }
-
-

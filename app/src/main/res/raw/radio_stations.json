@@ -21,7 +21,7 @@
     {
       "stationuuid": "kiss-925",
       "name": "KISS 92.5",
-      "url": "https://radio-dai.rogersdigitalmedia.com/hls/chi/rogers/tor925.stream/48k/6shJwgOxffa-176783403-10031.aac",
+      "url": "https://rogers-hls.leanstream.co/rogers/tor925.stream/icy?environment=tunein&args=tunein_01",
       "favicon": "https://cdn-radiotime-logos.tunein.com/s31199d.png",
       "country": "Canada",
       "tags": "Top 40, Pop, Hip-Hop, R&B, Dance",

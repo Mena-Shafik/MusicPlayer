@@ -26,8 +26,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,9 +42,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import android.util.Log
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.ui.components.common.MainBackground
 import com.example.musicplayer.util.Util
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Displays songs organized by album. Horizontal scrollable album cards on top,
@@ -60,6 +66,15 @@ fun AlbumSongList(
     val accentColor = Color(0xFF1DB954) // Spotify green for selected album
     val context = LocalContext.current
 
+    // Albums that are compilations/not real albums
+    val compilationAlbums = setOf(
+        "Greatest Hits",
+        "Compilation",
+        "Various Artists",
+        "Miscellaneous",
+        "Unknown Album"
+    )
+
     // Group songs by album
     val grouped = remember(songs) {
         songs.groupBy { (it.album?.takeIf { a -> a.isNotBlank() } ?: "Unknown Album") }
@@ -67,8 +82,13 @@ fun AlbumSongList(
     }
 
     // Partition into albums and singles
-    val albumsMulti = grouped.filter { (_, list) -> list.size >= 2 }
-    val singlesList = grouped.filter { (album, list) -> list.size == 1 || album == "Unknown Album" }
+    // Exclude compilation albums from the main album view
+    val albumsMulti = grouped.filter { (albumName, list) ->
+        list.size >= 2 && !compilationAlbums.contains(albumName)
+    }
+    val singlesList = grouped.filter { (album, list) ->
+        list.size == 1 || album == "Unknown Album" || compilationAlbums.contains(album)
+    }
         .flatMap { it.value }
 
     // Track selected album
@@ -96,7 +116,17 @@ fun AlbumSongList(
             ) {
                 albumsMulti.keys.forEach { albumName ->
                     val firstSongInAlbum = albumsMulti[albumName]?.firstOrNull()
-                    val albumArtBitmap = firstSongInAlbum?.let { Util.getAlbumArt(context, it.path) }
+                    val albumArtBitmap = firstSongInAlbum?.let {
+                        remember(it.path) {
+                            var bitmap = Util.getAlbumArt(context, it.path)
+                            // Fallback to web search if no embedded art
+                            if (bitmap == null) {
+                                bitmap
+                            } else {
+                                bitmap
+                            }
+                        }
+                    }
                     AlbumCardItem(
                         albumName = albumName,
                         songCount = albumsMulti[albumName]?.size ?: 0,
@@ -105,6 +135,7 @@ fun AlbumSongList(
                         lightText = lightText,
                         faintText = faintText,
                         albumArtBitmap = albumArtBitmap,
+                        song = firstSongInAlbum,
                         onSelect = { setSelectedAlbum(albumName) }
                     )
                 }
@@ -181,8 +212,37 @@ private fun AlbumCardItem(
     lightText: Color,
     faintText: Color,
     albumArtBitmap: ImageBitmap?,
+    song: Song? = null,
     onSelect: () -> Unit,
 ) {
+    val bitmapState = remember { mutableStateOf<ImageBitmap?>(albumArtBitmap) }
+
+    // Try to fetch web album art if embedded art is missing
+    LaunchedEffect(song?.path, albumArtBitmap) {
+        if (bitmapState.value == null && song != null) {
+            bitmapState.value = withContext(Dispatchers.IO) {
+                try {
+                    val webUrl = Util.getAlbumArtWebUrl(song)
+                    if (webUrl != null) {
+                        Log.d("AlbumCardItem", "Fetching web album art for: $albumName")
+                        val bitmap = Util.loadBitmapFromUrl(webUrl)
+                        if (bitmap != null) {
+                            Log.d("AlbumCardItem", "✓ Loaded web album art for: $albumName")
+                        }
+                        bitmap
+                    } else {
+                        null
+                    }
+                } catch (e: Exception) {
+                    Log.w("AlbumCardItem", "Failed to fetch web album art for $albumName: ${e.message}")
+                    null
+                }
+            }
+        } else if (albumArtBitmap != null) {
+            bitmapState.value = albumArtBitmap
+        }
+    }
+
     Box(
         modifier = Modifier
             .width(140.dp)
@@ -200,9 +260,9 @@ private fun AlbumCardItem(
             modifier = Modifier.fillMaxWidth()
         ) {
             // Album cover image
-            if (albumArtBitmap != null) {
+            if (bitmapState.value != null) {
                 Image(
-                    bitmap = albumArtBitmap,
+                    bitmap = bitmapState.value!!,
                     contentDescription = albumName,
                     modifier = Modifier
                         .size(100.dp)
@@ -252,11 +312,11 @@ private fun AlbumCardItem(
 @Composable
 private fun AlbumSongListPreview() {
     val demo = listOf(
-        Song(1, "Hello", "A", 100.0, "p1", album = "Alpha"),
-        Song(2, "World", "B", 100.0, "p2", album = "Alpha"),
-        Song(3, "Other", "C", 100.0, "p3", album = "Beta"),
-        Song(4, "Another", "A", 100.0, "p4", album = "Beta"),
-        Song(5, "Single", "D", 100.0, "p5", album = null),
+        Song(1, "Hello", "A", 100.0, "p1", album = "Alpha",2000),
+        Song(2, "World", "B", 100.0, "p2", album = "Alpha",2000),
+        Song(3, "Other", "C", 100.0, "p3", album = "Beta",2000),
+        Song(4, "Another", "A", 100.0, "p4", album = "Beta",2000),
+        Song(5, "Single", "D", 100.0, "p5", album = null,2000),
     )
     Surface(color = Color.Black.copy(alpha = .5f)) {
         MainBackground()
@@ -268,12 +328,12 @@ private fun AlbumSongListPreview() {
 @Composable
 private fun AlbumSongListPreview_MultiAlbum() {
     val demo = listOf(
-        Song(1, "Track 1", "A", 100.0, "p1", album = "Alpha"),
-        Song(2, "Track 2", "B", 100.0, "p2", album = "Alpha"),
-        Song(3, "Track 3", "C", 100.0, "p3", album = "Beta"),
-        Song(4, "Track 4", "D", 100.0, "p4", album = "Beta"),
-        Song(5, "Track 5", "E", 100.0, "p5", album = "Gamma"),
-        Song(6, "Track 6", "F", 100.0, "p6", album = "Gamma"),
+        Song(1, "Track 1", "A", 100.0, "p1", album = "Alpha",2000),
+        Song(2, "Track 2", "B", 100.0, "p2", album = "Alpha",2000),
+        Song(3, "Track 3", "C", 100.0, "p3", album = "Beta",2000),
+        Song(4, "Track 4", "D", 100.0, "p4", album = "Beta",2000),
+        Song(5, "Track 5", "E", 100.0, "p5", album = "Gamma",2000),
+        Song(6, "Track 6", "F", 100.0, "p6", album = "Gamma",2000),
     )
     Surface(color = Color.Black.copy(alpha = .5f)) {
         MainBackground()

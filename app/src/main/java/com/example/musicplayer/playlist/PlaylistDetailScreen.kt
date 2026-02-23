@@ -358,9 +358,9 @@ fun PlaylistDetailScreenPreview() {
     )
 
     val testSongs = listOf(
-        Song(id = 1, title = "Song One", artist = "Artist A", duration = 240000.0, path = ""),
-        Song(id = 2, title = "Song Two", artist = "Artist B", duration = 180000.0, path = ""),
-        Song(id = 3, title = "Song Three", artist = "Artist C", duration = 200000.0, path = "")
+        Song(id = 1, title = "Song One", artist = "Artist A", duration = 240000.0, path = "", album = null, year = 2000),
+        Song(id = 2, title = "Song Two", artist = "Artist B", duration = 180000.0, path = "", album = null, year = 2001),
+        Song(id = 3, title = "Song Three", artist = "Artist C", duration = 200000.0, path = "", album = null, year = 2002)
     )
 
     MaterialTheme {
@@ -405,11 +405,11 @@ fun PlaylistAddSongsScreenPreview() {
     )
 
     val testSongs = listOf(
-        Song(id = 1, title = "Song One", artist = "Artist A", duration = 240000.0, path = ""),
-        Song(id = 2, title = "Song Two", artist = "Artist B", duration = 180000.0, path = ""),
-        Song(id = 3, title = "Song Three", artist = "Artist C", duration = 200000.0, path = ""),
-        Song(id = 4, title = "Song Four", artist = "Artist D", duration = 210000.0, path = ""),
-        Song(id = 5, title = "Song Five", artist = "Artist E", duration = 190000.0, path = "")
+        Song(id = 1, title = "Song One", artist = "Artist A", duration = 240000.0, path = "", album = null, year = 2000),
+        Song(id = 2, title = "Song Two", artist = "Artist B", duration = 180000.0, path = "", album = null, year = 2001),
+        Song(id = 3, title = "Song Three", artist = "Artist C", duration = 200000.0, path = "", album = null, year = 2002),
+        Song(id = 4, title = "Song Four", artist = "Artist D", duration = 210000.0, path = "", album = null, year = 2003),
+        Song(id = 5, title = "Song Five", artist = "Artist E", duration = 190000.0, path = "", album = null, year = 2004)
     )
 
     MaterialTheme {

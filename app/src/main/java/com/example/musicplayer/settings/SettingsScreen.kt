@@ -1,7 +1,6 @@
 package com.example.musicplayer.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,8 +21,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,7 +38,6 @@ import androidx.lifecycle.ViewModelProvider
 import com.example.musicplayer.songlist.SongListViewModel
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.example.musicplayer.ui.components.common.MainBackground
@@ -59,9 +55,11 @@ fun SettingsScreen(navController: NavHostController) {
         }
     )
 
-    val isAlbumView by viewModel.isAlbumView.collectAsState()
-    val isArtistView by viewModel.isArtistView.collectAsState()
-    val useDefaultRadioList by viewModel.useDefaultRadioList.collectAsState()
+    val isAlbumView by viewModel.isAlbumView.collectAsState(initial = false)
+    val isArtistView by viewModel.isArtistView.collectAsState(initial = false)
+    // Era view switch (show eras like 80s/90s/2000s)
+    val isEraView by viewModel.isEraView.collectAsState(initial = false)
+    val useDefaultRadioList by viewModel.useDefaultRadioList.collectAsState(initial = true)
 
     Scaffold(
         topBar = {
@@ -78,69 +76,81 @@ fun SettingsScreen(navController: NavHostController) {
             )
         }
     ) { innerPadding ->
-        MainBackground()
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Transparent)
-                .padding(innerPadding)
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .background(Color.Black)
         ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                shape = RoundedCornerShape(12.dp)
+            MainBackground()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Transparent)
+                    .padding(innerPadding)
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(
-                        text = "Songs",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    SwitchCardRow(
-                        title = "Sort by album",
-                        checked = isAlbumView,
-                        onCheckedChange = { enabled -> viewModel.setAlbumView(enabled) }
-                    )
-                    SwitchCardRow(
-                        title = "Sort by artist",
-                        checked = isArtistView,
-                        onCheckedChange = { enabled -> viewModel.setArtistView(enabled) }
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Songs",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        SwitchCardRow(
+                            title = "Sort by album",
+                            checked = isAlbumView,
+                            onCheckedChange = { enabled -> viewModel.setAlbumView(enabled) }
+                        )
+                        SwitchCardRow(
+                            title = "Sort by artist",
+                            checked = isArtistView,
+                            onCheckedChange = { enabled -> viewModel.setArtistView(enabled) }
+                        )
+                        // Show eras switch
+                        SwitchCardRow(
+                            title = "Show by eras",
+                            checked = isEraView,
+                            onCheckedChange = { enabled -> viewModel.setEraView(enabled) }
+                        )
+                    }
                 }
-            }
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(
-                        text = "Radio",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    SwitchCardRow(
-                        title = "Default radio list",
-                        checked = useDefaultRadioList,
-                        onCheckedChange = { viewModel.setUseDefaultRadioList(it) }
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Radio",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        SwitchCardRow(
+                            title = "Default radio list",
+                            checked = useDefaultRadioList,
+                            onCheckedChange = { viewModel.setUseDefaultRadioList(it) }
+                        )
+                    }
                 }
             }
         }
@@ -186,94 +196,6 @@ private fun SwitchCardRow(
 @Composable
 private fun SettingsScreenPreview() {
     val navController = rememberNavController()
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(text = "Settings", color = Color.White, fontWeight = FontWeight.Bold)
-                },
-                navigationIcon = {
-                    IconButton(onClick = { }) {
-                        Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        ) {
-            MainBackground()
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Transparent)
-                    .padding(innerPadding)
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "Songs",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        SwitchCardRow(
-                            title = "Sort by album",
-                            checked = true,
-                            onCheckedChange = { }
-                        )
-                        SwitchCardRow(
-                            title = "Sort by artist",
-                            checked = false,
-                            onCheckedChange = { }
-                        )
-                    }
-                }
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "Radio",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        SwitchCardRow(
-                            title = "Default radio list",
-                            checked = true,
-                            onCheckedChange = { }
-                        )
-                    }
-                }
-            }
-        }
-    }
+    // Use the real composable so the preview stays in sync with implementation
+    SettingsScreen(navController = navController)
 }

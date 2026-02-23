@@ -26,11 +26,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -43,6 +46,8 @@ import com.example.musicplayer.util.Util
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.service.PlayerIntentBuilder
 import com.example.musicplayer.service.PlayerStateManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun MiniPlayer(
@@ -72,8 +77,33 @@ fun MiniPlayer(
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             // album art (left) - tappable to open full player
-            val art = remember(current?.path) {
-                try { current?.path?.let { Util.getAlbumArt(context, it) } } catch (_: Throwable) { null }
+            var displayArt by remember(current?.path) { mutableStateOf<ImageBitmap?>(null) }
+
+            LaunchedEffect(current?.path) {
+                displayArt = null
+                if (current?.path?.isNotBlank() == true) {
+                    displayArt = withContext(Dispatchers.IO) {
+                        try {
+                            // First try embedded album art
+                            var bitmap = Util.getAlbumArt(context, current.path)
+
+                            // If no embedded art, fetch from web
+                            if (bitmap == null) {
+                                Log.d("MiniPlayer", "No embedded artwork for '${current.title}', fetching from web...")
+                                val webUrl = Util.getAlbumArtWebUrl(current)
+                                if (webUrl != null) {
+                                    bitmap = Util.loadBitmapFromUrl(webUrl)
+                                    if (bitmap != null) {
+                                        Log.d("MiniPlayer", "✓ Loaded web album art for '${current.title}'")
+                                    }
+                                }
+                            }
+                            bitmap
+                        } catch (_: Throwable) {
+                            null
+                        }
+                    }
+                }
             }
 
             val imageModifier = Modifier
@@ -81,9 +111,9 @@ fun MiniPlayer(
                 .height(56.dp)
                 .clip(RoundedCornerShape(6.dp))
 
-            if (art != null) {
+            if (displayArt != null) {
                 Image(
-                    bitmap = art,
+                    bitmap = displayArt!!,
                     contentDescription = "Album art",
                     modifier = imageModifier.clickable { onOpenPlayer(current) },
                     contentScale = ContentScale.Crop
@@ -167,8 +197,8 @@ fun MiniPlayer(
 private fun MiniPlayerPreview() {
     // Prepare a small sample playlist with empty paths so placeholder art is used in preview
     val sampleSongs = listOf(
-        Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = ""),
-        Song(id = 2, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "")
+        Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = "",album = null,2000),
+        Song(id = 2, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "",album = null,2000)
     )
 
     // populate PlayerRepository with sample data for preview

@@ -17,6 +17,7 @@ object ArtistUtil {
     private const val TIMEOUT_MS = 15000
 
     private val imageCache = mutableMapOf<String, String?>()
+    private var isAppActive = true
 
     // Artist name aliases for better matching
     private val artistAliases = mapOf(
@@ -287,27 +288,34 @@ object ArtistUtil {
      * Get artist image URL with caching.
      * Checks cache first, then fetches from MusicBrainz + TheAudioDB.
      * Falls back to aliases if original name doesn't return images.
-     * Note: Only successful fetches are cached; failures are retried on next call.
+     * Note: Only successful fetches are cached when app is active; failures are retried on next call.
      */
     suspend fun getArtistImageUrl(artistName: String): String? {
         val normalizedName = normalizeArtistName(artistName)
+        val cacheKey = normalizedName  // Use normalized name as cache key for consistency
 
-        // Check cache first (only successful fetches are cached)
-        if (imageCache.containsKey(artistName)) {
-            val cached = imageCache[artistName]
+        // Check cache first (always check, regardless of app state)
+        if (imageCache.containsKey(cacheKey)) {
+            val cached = imageCache[cacheKey]
             if (cached != null) {
-                Log.d(TAG, "✓ CACHE HIT: '$artistName'")
+                Log.d(TAG, "✓ CACHE HIT: '$artistName' (normalized: '$cacheKey') (app active: $isAppActive)")
                 return cached
             }
         }
 
-        Log.d(TAG, "━━━ FETCHING: '$artistName' (normalized: '$normalizedName') ━━━")
+        Log.d(TAG, "━━━ FETCHING: '$artistName' (normalized: '$normalizedName') (app active: $isAppActive) ━━━")
 
         // Try the original name first
         var url = fetchArtistImage(artistName)
         if (url != null) {
             Log.d(TAG, "✓ SUCCESS: Found image for '$artistName'")
-            imageCache[artistName] = url
+            // Only cache when app is active
+            if (isAppActive) {
+                imageCache[cacheKey] = url
+                Log.d(TAG, "💾 CACHED: '$artistName' (key: '$cacheKey') (app is active)")
+            } else {
+                Log.d(TAG, "⊘ NOT CACHED: '$artistName' (app is in background)")
+            }
             return url
         }
 
@@ -318,7 +326,13 @@ object ArtistUtil {
             url = fetchArtistImage(alias)
             if (url != null) {
                 Log.d(TAG, "✓ ALIAS SUCCESS: Found image for '$alias'")
-                imageCache[artistName] = url
+                // Only cache when app is active
+                if (isAppActive) {
+                    imageCache[cacheKey] = url
+                    Log.d(TAG, "💾 CACHED: '$artistName' (via alias, key: '$cacheKey', app is active)")
+                } else {
+                    Log.d(TAG, "⊘ NOT CACHED: '$artistName' (via alias, app is in background)")
+                }
                 return url
             }
         }
@@ -326,6 +340,26 @@ object ArtistUtil {
         Log.e(TAG, "✗ FAILED TO FETCH IMAGE: '$artistName' (normalized: '$normalizedName', alias: ${alias ?: "none"})")
         // Don't cache null - allow retry on next call
         return null
+    }
+
+    /**
+     * Clear the image cache and mark app as inactive.
+     * Called when app goes to background.
+     */
+    fun onAppBackground() {
+        isAppActive = false
+        imageCache.clear()
+        Log.d(TAG, "⊗ APP BACKGROUNDED: Cache cleared and caching disabled")
+    }
+
+    /**
+     * Mark app as active - caching will resume.
+     * Called when app comes to foreground.
+     */
+    fun onAppForeground() {
+        isAppActive = true
+        imageCache.clear()
+        Log.d(TAG, "⊕ APP FOREGROUNDED: Cache enabled, previous cache cleared")
     }
 
     /**

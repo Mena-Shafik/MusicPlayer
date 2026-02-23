@@ -19,9 +19,9 @@ class PlaylistRepository(private val context: Context) {
     val allPlaylists: Flow<List<Playlist>> = context.dataStore.data.map { preferences ->
         val jsonString = preferences[PLAYLISTS_KEY] ?: "[]"
         try {
-            val type = object : TypeToken<List<Playlist>>() {}.type
-            gson.fromJson(jsonString, type)
-        } catch (e: Exception) {
+            val lists = parsePlaylistsJson(jsonString)
+            lists
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -38,7 +38,9 @@ class PlaylistRepository(private val context: Context) {
     suspend fun addPlaylist(playlist: Playlist) {
         context.dataStore.edit { preferences ->
             val current = getPlaylistsSync(preferences[PLAYLISTS_KEY] ?: "[]")
-            val updated = current.filter { it.id != playlist.id } + playlist
+            // sanitize songIds to remove duplicates before saving
+            val sanitized = playlist.copy(songIds = playlist.songIds.distinct())
+            val updated = current.filter { it.id != sanitized.id } + sanitized
             preferences[PLAYLISTS_KEY] = gson.toJson(updated)
         }
     }
@@ -60,7 +62,8 @@ class PlaylistRepository(private val context: Context) {
             val current = getPlaylistsSync(preferences[PLAYLISTS_KEY] ?: "[]")
             val updated = current.map { playlist ->
                 if (playlist.id == playlistId && !playlist.songIds.contains(songId)) {
-                    playlist.copy(songIds = playlist.songIds + songId)
+                    val newSongIds = (playlist.songIds + songId).distinct()
+                    playlist.copy(songIds = newSongIds)
                 } else {
                     playlist
                 }
@@ -74,7 +77,8 @@ class PlaylistRepository(private val context: Context) {
             val current = getPlaylistsSync(preferences[PLAYLISTS_KEY] ?: "[]")
             val updated = current.map { playlist ->
                 if (playlist.id == playlistId) {
-                    playlist.copy(songIds = playlist.songIds.filter { it != songId })
+                    val newSongIds = playlist.songIds.filter { it != songId }
+                    playlist.copy(songIds = newSongIds)
                 } else {
                     playlist
                 }
@@ -87,7 +91,17 @@ class PlaylistRepository(private val context: Context) {
         return try {
             val type = object : TypeToken<List<Playlist>>() {}.type
             gson.fromJson(jsonString, type)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    // Minimal parse implementation used previously — keeps backward compatibility by delegating to Gson.
+    private fun parsePlaylistsJson(jsonString: String): List<Playlist> {
+        return try {
+            val type = object : TypeToken<List<Playlist>>() {}.type
+            gson.fromJson<List<Playlist>>(jsonString, type) ?: emptyList()
+        } catch (_: Exception) {
             emptyList()
         }
     }

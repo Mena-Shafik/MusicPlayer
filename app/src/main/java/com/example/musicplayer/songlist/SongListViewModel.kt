@@ -243,6 +243,38 @@ class SongListViewModel(
         }
     }
 
+    // --- Era view state ---
+    private val _isEraView = MutableStateFlow(false)
+    val isEraView: StateFlow<Boolean> = _isEraView
+
+    fun setEraView(enabled: Boolean) {
+        // When enabling era view, turn off album/artist mutually exclusive states
+        if (enabled) {
+            _isAlbumView.value = false
+            _isArtistView.value = false
+        }
+        _isEraView.value = enabled
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setEraView(it, enabled)
+            }
+        }
+    }
+
+    fun toggleEraView() {
+        val newValue = !_isEraView.value
+        if (newValue) {
+            _isAlbumView.value = false
+            _isArtistView.value = false
+        }
+        _isEraView.value = newValue
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setEraView(it, newValue)
+            }
+        }
+    }
+
     // --- Persistent UI state for radio selection ---
     private val _isRadioSelected = MutableStateFlow(false)
     val isRadioSelected: StateFlow<Boolean> = _isRadioSelected
@@ -306,6 +338,15 @@ class SongListViewModel(
                 PreferencesManager.getArtistViewFlow(it).collect { savedArtistView ->
                     _isArtistView.value = savedArtistView
                     if (savedArtistView) _isAlbumView.value = false
+                }
+            }
+            viewModelScope.launch {
+                PreferencesManager.getEraViewFlow(it).collect { savedEraView ->
+                    _isEraView.value = savedEraView
+                    if (savedEraView) {
+                        _isAlbumView.value = false
+                        _isArtistView.value = false
+                    }
                 }
             }
             viewModelScope.launch {

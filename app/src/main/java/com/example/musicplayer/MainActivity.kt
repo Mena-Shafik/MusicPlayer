@@ -41,6 +41,7 @@ import com.example.musicplayer.playlist.PlaylistScreen
 import com.example.musicplayer.playlist.PlaylistDetailScreen
 import com.example.musicplayer.playlist.PlaylistAddSongsScreen
 import com.example.musicplayer.util.Util
+import com.example.musicplayer.util.ArtistUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -258,11 +259,28 @@ class MainActivity : ComponentActivity() {
         ActivityCompat.requestPermissions(this, perms, REQUESTCODE)
     }
 
+    override fun onPause() {
+        super.onPause()
+        // App is going to background - disable caching
+        ArtistUtil.onAppBackground()
+        Log.d("MainActivity", "onPause: Artist image caching disabled")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // App is coming to foreground - enable caching
+        ArtistUtil.onAppForeground()
+        Log.d("MainActivity", "onResume: Artist image caching enabled")
+    }
+
     override fun onDestroy() {
         // If the activity is finishing (user closed the app), stop the playback service so audio stops.
         try {
             if (isFinishing) {
                 stopService(Intent(this, com.example.musicplayer.service.PlayerForegroundService::class.java))
+                // Clear cache on app exit
+                ArtistUtil.clearCache()
+                Log.d("MainActivity", "onDestroy: Cache cleared on app exit")
             }
         } catch (_: Throwable) {
             // best-effort; do not crash the app

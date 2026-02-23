@@ -359,9 +359,9 @@ private fun ArtistCard(
 @Composable
 private fun ArtistSongListPreview() {
     val sample: List<Song> = listOf(
-        Song(id = 1, title = "Song A", artist = "Artist One", duration = 180000.0, path = "/demo/a.mp3", album = "Album X"),
-        Song(id = 2, title = "Song B", artist = "Artist One", duration = 200000.0, path = "/demo/b.mp3", album = "Album X"),
-        Song(id = 3, title = "Song C", artist = "Artist Two", duration = 210000.0, path = "/demo/c.mp3", album = "Album Y")
+        Song(id = 1, title = "Song A", artist = "Artist One", duration = 180000.0, path = "/demo/a.mp3", album = "Album X",2000),
+        Song(id = 2, title = "Song B", artist = "Artist One", duration = 200000.0, path = "/demo/b.mp3", album = "Album X",2000),
+        Song(id = 3, title = "Song C", artist = "Artist Two", duration = 210000.0, path = "/demo/c.mp3", album = "Album Y",2000)
     )
     Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         ArtistSongList(songs = sample)

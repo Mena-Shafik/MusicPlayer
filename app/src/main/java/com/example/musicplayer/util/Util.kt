@@ -18,16 +18,18 @@ import com.example.musicplayer.model.RadioStation
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.radio.RadioApiService
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.File
-import java.net.ConnectException
 import java.net.HttpURLConnection
-import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.URLEncoder
+import com.google.gson.reflect.TypeToken
+
+import java.io.File
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+
 import java.util.ArrayList
 import java.util.Locale
 
@@ -52,7 +54,8 @@ class Util {
                 MediaStore.Audio.AudioColumns.TITLE,
                 MediaStore.Audio.ArtistColumns.ARTIST,
                 MediaStore.Audio.AlbumColumns.ALBUM,
-                MediaStore.Audio.AudioColumns.DURATION
+                MediaStore.Audio.AudioColumns.DURATION,
+                MediaStore.Audio.Media.YEAR
             )
             // check if it is a song
             val where = MediaStore.Audio.Media.IS_MUSIC + "=1"
@@ -68,14 +71,15 @@ class Util {
                     val artist = c.getString(3) ?: "Unknown"
                     val album = c.getString(4) ?: "Unknown"
                     val duration = c.getDouble(5)
-                    val song = Song(mediaStoreId, title, artist, duration, path.toString(), album)
+                    val year = c.getInt(6)
+                    val song = Song(mediaStoreId, title, artist, duration, path.toString(), album, year)
                     tempAudioList.add(song)
 
                     val msg =
-                        "Album id: ${song.id} | Title: ${song.title} | Artist: ${song.artist} | Path: ${song.path} | Duration: ${
+                        "Album id: ${song.id} | Title: ${song.title} | Artist: ${song.artist} | Album: ${song.album ?: "-"} | Year: ${song.year ?: "-"} | Path: ${song.path} | Duration: ${
                             Util.converter(song.duration)
                         }"
-                    //Log.i("data", formatSongRow(song))
+                    Log.i("data", formatSongRow(song))
                 }
                 c.close()
             }
@@ -114,22 +118,23 @@ class Util {
         }
 
         fun formatSongTableHeader(): String {
-            // %-4s = left-aligned width 4, %-30s = left-aligned width 30, etc.
-            // Columns: ID, Title, Artist, Album, Path, Duration
+            // Columns: ID, Title, Artist, Album, Year, Path, Duration
+            // %-10s = ID, %-30s = Title, %-20s = Artist, %-20s = Album, %-6s = Year, %-40s = Path, %8s = Duration
             return String.Companion.format(
-                Locale.US, "%-10s %-30s %-20s %-20s %-40s %8s",
-                "ID", "Title", "Artist", "Album", "Path", "Duration")
+                Locale.US, "%-10s %-30s %-20s %-20s %-6s %-40s %8s",
+                "ID", "Title", "Artist", "Album", "Year", "Path", "Duration")
         }
 
         fun formatSongRow(song: Song): String {
             val id = song.id.toString()
             val title = padOrTruncate(song.title.trim(), 30)
             val artist = padOrTruncate(song.artist.trim(), 20)
-            // Normalize album and path presentation
-            val album = padOrTruncate(song.album?.trim(), 40)
-            val duration = padOrTruncate(song.duration.toString(), 10)
-            val path = padOrTruncate(song.path, 70)
-            return String.Companion.format(Locale.US, "%-10s %-25s %-15s %-40s %-40s %8s", id, title, artist, album, path, duration)
+            val album = padOrTruncate(song.album?.trim(), 20)
+            val year = song.year?.toString() ?: "-"
+            val path = padOrTruncate(song.path, 40)
+            // Use human-friendly duration (m:ss) and truncate if needed
+            val durationStr = padOrTruncate(Util.converter(song.duration), 8)
+            return String.Companion.format(Locale.US, "%-10s %-30s %-20s %-20s %-6s %-40s %8s", id, title, artist, album, year, path, durationStr)
         }
 
         fun converter(time: Double): String {
@@ -174,6 +179,87 @@ class Util {
                 null
             } finally {
                 try { retriever.release() } catch (_: Exception) {}
+            }
+        }
+
+        /**
+         * Fetch album artwork URL from the web using iTunes Search API.
+         * Returns image URL for the album cover if found.
+         */
+        suspend fun getAlbumArtWebUrl(song: Song?): String? {
+            if (song == null || song.title.isBlank() || song.artist.isBlank()) return null
+
+            return withContext(Dispatchers.IO) {
+                try {
+                    val artist = URLEncoder.encode(song.artist.trim(), "UTF-8")
+                    val album = URLEncoder.encode(song.album?.trim() ?: song.title.trim(), "UTF-8")
+
+                    // Use iTunes Search API (free, no auth required)
+                    val apiUrl = "https://itunes.apple.com/search?term=$artist+$album&media=music&entity=album&limit=1"
+                    Log.d(TAG, "Fetching album art from web: $apiUrl")
+
+                    val url = URL(apiUrl)
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    conn.setRequestProperty("User-Agent", "MusicPlayer/1.0")
+
+                    return@withContext if (conn.responseCode == 200) {
+                        val response = conn.inputStream.bufferedReader().use { it.readText() }
+                        val jsonObj = JSONObject(response)
+                        val results = jsonObj.optJSONArray("results")
+
+                        if (results != null && results.length() > 0) {
+                            val album = results.getJSONObject(0)
+                            val artworkUrl = album.optString("artworkUrl600", "")
+                                .ifBlank { album.optString("artworkUrl100", "") }
+
+                            if (artworkUrl.isNotBlank()) {
+                                Log.d(TAG, "✓ Found album art from web: ${artworkUrl.take(80)}")
+                                artworkUrl
+                            } else {
+                                Log.d(TAG, "No artwork found in iTunes API response")
+                                null
+                            }
+                        } else {
+                            Log.d(TAG, "No results from iTunes API for: ${song.artist} - ${song.album}")
+                            null
+                        }
+                    } else {
+                        Log.w(TAG, "iTunes API returned ${conn.responseCode}")
+                        null
+                    }.also { conn.disconnect() }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to fetch album art from web: ${e.message}")
+                    null
+                }
+            }
+        }
+
+        /**
+         * Get album artwork as ImageBitmap from URL string.
+         * Downloads and decodes the image.
+         */
+        suspend fun loadBitmapFromUrl(url: String): ImageBitmap? {
+            return withContext(Dispatchers.IO) {
+                try {
+                    val connection = URL(url).openConnection() as HttpURLConnection
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 10000
+                    connection.readTimeout = 10000
+
+                    return@withContext if (connection.responseCode == 200) {
+                        val bitmap = BitmapFactory.decodeStream(connection.inputStream)
+                        bitmap?.asImageBitmap()
+                    } else {
+                        Log.w(TAG, "Failed to load bitmap from URL: HTTP ${connection.responseCode}")
+                        null
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to load bitmap from URL: ${e.message}")
+                    null
+                }
             }
         }
 
