@@ -192,7 +192,7 @@ fun CardPreview() {
     MaterialTheme {
         Surface(color = Color.Black) {
             SongCardRow(
-                song = Song(id = 1, title = "Title", artist = "Artist", duration = 260000.0, path = "",album = null,2000),
+                song = Song(id = 1, null, title = "Title", artist = "Artist", duration = 260000.0, path = "",album = null,2000),
                 onClick = {},
                 isInPlaylist = false
             )

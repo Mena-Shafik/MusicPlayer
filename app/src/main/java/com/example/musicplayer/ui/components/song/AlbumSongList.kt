@@ -77,8 +77,15 @@ fun AlbumSongList(
 
     // Group songs by album
     val grouped = remember(songs) {
-        songs.groupBy { (it.album?.takeIf { a -> a.isNotBlank() } ?: "Unknown Album") }
+        // normalize album key
+        val g = songs.groupBy { (it.album?.takeIf { a -> a.isNotBlank() } ?: "Unknown Album") }
             .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+
+        // For each album, sort tracks by track number when available, otherwise by title
+        g.mapValues { entry ->
+            val list = entry.value
+            list.sortedWith(compareBy<Song>({ it.track ?: Int.MAX_VALUE }, { (it.title ?: "").lowercase() }))
+        }
     }
 
     // Partition into albums and singles
@@ -87,7 +94,10 @@ fun AlbumSongList(
         list.size >= 2 && !compilationAlbums.contains(albumName)
     }
     val singlesList = grouped.filter { (album, list) ->
-        list.size == 1 || album == "Unknown Album" || compilationAlbums.contains(album)
+        // Treat one-track albums, unknown album placeholders, compilation albums,
+        // and generic album names like "Music", "Single", "Singles" as singles
+        val isGenericSingle = album.equals("Music", ignoreCase = true) || album.equals("Single", ignoreCase = true) || album.equals("Singles", ignoreCase = true)
+        list.size == 1 || album.equals("Unknown Album", ignoreCase = true) || compilationAlbums.contains(album) || isGenericSingle
     }
         .flatMap { it.value }
 
@@ -311,12 +321,13 @@ private fun AlbumCardItem(
 @Preview
 @Composable
 private fun AlbumSongListPreview() {
-    val demo = listOf(
-        Song(1, "Hello", "A", 100.0, "p1", album = "Alpha",2000),
-        Song(2, "World", "B", 100.0, "p2", album = "Alpha",2000),
-        Song(3, "Other", "C", 100.0, "p3", album = "Beta",2000),
-        Song(4, "Another", "A", 100.0, "p4", album = "Beta",2000),
-        Song(5, "Single", "D", 100.0, "p5", album = null,2000),
+    val demo: List<com.example.musicplayer.model.Song> = listOf(
+        // outer Song constructor: (id, track, title, artist, duration, path, album?, year)
+        Song(1, null, "Hello", "A", 100.0, "p1", "Alpha", 2000),
+        Song(2, null, "World", "B", 100.0, "p2", "Alpha", 2000),
+        Song(3, null, "Other", "C", 100.0, "p3", "Beta", 2000),
+        Song(4, null, "Another", "A", 100.0, "p4", "Beta", 2000),
+        Song(5, null, "Single", "D", 100.0, "p5", null, 2000),
     )
     Surface(color = Color.Black.copy(alpha = .5f)) {
         MainBackground()
@@ -327,13 +338,13 @@ private fun AlbumSongListPreview() {
 @Preview
 @Composable
 private fun AlbumSongListPreview_MultiAlbum() {
-    val demo = listOf(
-        Song(1, "Track 1", "A", 100.0, "p1", album = "Alpha",2000),
-        Song(2, "Track 2", "B", 100.0, "p2", album = "Alpha",2000),
-        Song(3, "Track 3", "C", 100.0, "p3", album = "Beta",2000),
-        Song(4, "Track 4", "D", 100.0, "p4", album = "Beta",2000),
-        Song(5, "Track 5", "E", 100.0, "p5", album = "Gamma",2000),
-        Song(6, "Track 6", "F", 100.0, "p6", album = "Gamma",2000),
+    val demo: List<com.example.musicplayer.model.Song> = listOf(
+        Song(1, null, "Track 1", "A", 100.0, "p1", "Alpha", 2000),
+        Song(2, null, "Track 2", "B", 100.0, "p2", "Alpha", 2000),
+        Song(3, null, "Track 3", "C", 100.0, "p3", "Beta", 2000),
+        Song(4, null, "Track 4", "D", 100.0, "p4", "Beta", 2000),
+        Song(5, null, "Track 5", "E", 100.0, "p5", "Gamma", 2000),
+        Song(6, null, "Track 6", "F", 100.0, "p6", "Gamma", 2000),
     )
     Surface(color = Color.Black.copy(alpha = .5f)) {
         MainBackground()

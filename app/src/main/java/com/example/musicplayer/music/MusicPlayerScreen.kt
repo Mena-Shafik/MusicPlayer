@@ -981,7 +981,9 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
 
 
 
-@Preview(showBackground = true, showSystemUi = true, name = "MusicScreen (full) Preview", backgroundColor = 0xFF000000)
+@Preview(showBackground = true, showSystemUi = true, name = "MusicScreen (full) Preview", backgroundColor = 0xFF000000,
+    device = "id:pixel_5"
+)
 @Composable
 fun MusicPlayerScreenFullPreview() {
     MaterialTheme {
@@ -989,9 +991,10 @@ fun MusicPlayerScreenFullPreview() {
         val navController = remember { androidx.navigation.NavController(context) }
         // create a sample playlist
         val sampleSongs = listOf(
-            Song(0, "First Song", "Artist A", 180000.0, "", null, 2000),
-            Song(1, "Second Song", "Artist B", 210000.0, "", null, 2001),
-            Song(2, "Third Song", "Artist C", 240000.0, "", null, 2002)
+            // Use constructor (id, title, artist, duration, path, cover, album?) — omit year in preview
+            Song(0, "First Song", "Artist A", 180000.0, "", null, null),
+            Song(1, "Second Song", "Artist B", 210000.0, "", null, null),
+            Song(2, "Third Song", "Artist C", 240000.0, "", null, null)
         )
         // create a plain VM instance for preview; methods may no-op but it's okay for preview
         val vm = remember { MusicPlayerViewModel() }
@@ -1002,12 +1005,14 @@ fun MusicPlayerScreenFullPreview() {
 }
 
 
-@Preview(showBackground = true, showSystemUi = true, name = "SongsModalBottomSheet - Collapsed", backgroundColor = 0xFF000000)
+@Preview(showBackground = true, showSystemUi = true, name = "SongsModalBottomSheet - Collapsed", backgroundColor = 0xFF000000,
+    device = "id:pixel_5"
+)
 @Composable
 fun SongsModalBottomSheetPreview_Collapsed() {
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3", null, 1990),
-        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3", null, 1991),
+        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3", null, null),
+        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3", null, null),
     )
 
     MaterialTheme {
@@ -1024,13 +1029,15 @@ fun SongsModalBottomSheetPreview_Collapsed() {
 }
 
 
-@Preview(showBackground = true, showSystemUi = true, name = "SongsModalBottomSheet - Expanded", backgroundColor = 0xFF000000)
+@Preview(showBackground = true, showSystemUi = true, name = "SongsModalBottomSheet - Expanded", backgroundColor = 0xFF000000,
+    device = "id:pixel_5"
+)
 @Composable
 fun SongsModalBottomSheetPreview_Expanded() {
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3", null, 1990),
-        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3", null, 1991),
-        Song(2, "Third Song", "Artist C", 240.0, "/storage/emulated/0/Music/third.mp3", null, 1992)
+        Song(0, "First Song", "Artist A", 180.0, "/storage/emulated/0/Music/first.mp3", null, null),
+        Song(1, "Second Song", "Artist B", 200.0, "/storage/emulated/0/Music/second.mp3", null, null),
+        Song(2, "Third Song", "Artist C", 240.0, "/storage/emulated/0/Music/third.mp3", null, null)
     )
 
     MaterialTheme {
@@ -1051,9 +1058,9 @@ fun SongsModalBottomSheetPreview_Expanded() {
 @Composable
 fun SongsModalBottomSheetPreview_LyricsSelected() {
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3", null, 1990),
-        Song(1, "Second Song", "Artist B", 200000.0, "/storage/emulated/0/Music/second.mp3", null, 1991),
-        Song(2, "Third Song", "Artist C", 240000.0, "/storage/emulated/0/Music/third.mp3", null, 1992)
+        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3", null, null),
+        Song(1, "Second Song", "Artist B", 200000.0, "/storage/emulated/0/Music/second.mp3", null, null),
+        Song(2, "Third Song", "Artist C", 240000.0, "/storage/emulated/0/Music/third.mp3", null, null)
     )
 
     // Provide fake cached lyrics for the preview so LyricsTab shows content without network access
@@ -1082,11 +1089,11 @@ fun SongsModalBottomSheetPreview_LyricsSelected() {
 fun SongsModalBottomSheetPreview_RelatedSelected() {
     // Create songs with the same album so related songs will be shown
     val sampleSongs = listOf(
-        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3", "Greatest Hits", 1995),
-        Song(1, "Second Song", "Artist A", 200000.0, "/storage/emulated/0/Music/second.mp3", "Greatest Hits", 1995),
-        Song(2, "Third Song", "Artist A", 240000.0, "/storage/emulated/0/Music/third.mp3", "Greatest Hits", 1995),
-        Song(3, "Fourth Song", "Artist A", 220000.0, "/storage/emulated/0/Music/fourth.mp3", "Greatest Hits", 1995),
-        Song(4, "Fifth Song", "Artist B", 190000.0, "/storage/emulated/0/Music/fifth.mp3", "Different Album", 2001)
+        Song(0, "First Song", "Artist A", 180000.0, "/storage/emulated/0/Music/first.mp3", null, "Greatest Hits"),
+        Song(1, "Second Song", "Artist A", 200000.0, "/storage/emulated/0/Music/second.mp3", null, "Greatest Hits"),
+        Song(2, "Third Song", "Artist A", 240000.0, "/storage/emulated/0/Music/third.mp3", null, "Greatest Hits"),
+        Song(3, "Fourth Song", "Artist A", 220000.0, "/storage/emulated/0/Music/fourth.mp3", null, "Greatest Hits"),
+        Song(4, "Fifth Song", "Artist B", 190000.0, "/storage/emulated/0/Music/fifth.mp3", null, "Different Album")
     )
 
     MaterialTheme {

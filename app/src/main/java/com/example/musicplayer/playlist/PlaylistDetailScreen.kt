@@ -76,7 +76,7 @@ fun PlaylistDetailScreen(
 
     var currentPlaylist by remember { mutableStateOf(playlist) }
     var songs by remember { mutableStateOf(allSongs) }
-    val playlistSongs = remember(currentPlaylist.songIds, songs) {
+    val playlistSongs: List<Song> = remember(currentPlaylist.songIds, songs) {
         songs.filter { it.id in currentPlaylist.songIds }
     }
 
@@ -358,9 +358,10 @@ fun PlaylistDetailScreenPreview() {
     )
 
     val testSongs = listOf(
-        Song(id = 1, title = "Song One", artist = "Artist A", duration = 240000.0, path = "", album = null, year = 2000),
-        Song(id = 2, title = "Song Two", artist = "Artist B", duration = 180000.0, path = "", album = null, year = 2001),
-        Song(id = 3, title = "Song Three", artist = "Artist C", duration = 200000.0, path = "", album = null, year = 2002)
+        // Use outer Song constructor: (id, track, title, artist, duration, path, album?, year)
+        Song(1, null, "Song One", "Artist A", 240000.0, "", null, 2000),
+        Song(2, null, "Song Two", "Artist B", 180000.0, "", null, 2001),
+        Song(3, null, "Song Three", "Artist C", 200000.0, "", null, 2002)
     )
 
     MaterialTheme {
@@ -405,11 +406,11 @@ fun PlaylistAddSongsScreenPreview() {
     )
 
     val testSongs = listOf(
-        Song(id = 1, title = "Song One", artist = "Artist A", duration = 240000.0, path = "", album = null, year = 2000),
-        Song(id = 2, title = "Song Two", artist = "Artist B", duration = 180000.0, path = "", album = null, year = 2001),
-        Song(id = 3, title = "Song Three", artist = "Artist C", duration = 200000.0, path = "", album = null, year = 2002),
-        Song(id = 4, title = "Song Four", artist = "Artist D", duration = 210000.0, path = "", album = null, year = 2003),
-        Song(id = 5, title = "Song Five", artist = "Artist E", duration = 190000.0, path = "", album = null, year = 2004)
+        Song(1, null, "Song One", "Artist A", 240000.0, "", null, 2000),
+        Song(2, null, "Song Two", "Artist B", 180000.0, "", null, 2001),
+        Song(3, null, "Song Three", "Artist C", 200000.0, "", null, 2002),
+        Song(4, null, "Song Four", "Artist D", 210000.0, "", null, 2003),
+        Song(5, null, "Song Five", "Artist E", 190000.0, "", null, 2004)
     )
 
     MaterialTheme {

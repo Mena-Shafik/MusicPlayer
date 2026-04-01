@@ -1,5 +1,5 @@
 [versions]
-agp = "9.0.0"
+agp = "9.1.0"
 exoplayer = "2.19.4"
 kotlin = "2.2.10"
 coreKtx = "1.17.0"
@@ -15,6 +15,8 @@ media3Exoplayer = "1.8.0"
 paletteKtx = "1.0.0"
 volley = "1.2.1"
 material3 = "1.4.0"
+foundation = "1.10.1"
+foundationVersion = "1.10.3"
 
 [libraries]
 androidx-compose-material = { module = "androidx.compose.material:material", version.ref = "material" }
@@ -41,6 +43,8 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
+androidx-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundationVersion" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

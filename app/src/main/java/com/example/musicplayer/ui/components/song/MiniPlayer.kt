@@ -197,8 +197,8 @@ fun MiniPlayer(
 private fun MiniPlayerPreview() {
     // Prepare a small sample playlist with empty paths so placeholder art is used in preview
     val sampleSongs = listOf(
-        Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = "",album = null,2000),
-        Song(id = 2, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "",album = null,2000)
+        Song(id = 1, null, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = "",album = null,2000),
+        Song(id = 2, null, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "",album = null,2000)
     )
 
     // populate PlayerRepository with sample data for preview

@@ -358,10 +358,11 @@ private fun ArtistCard(
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 private fun ArtistSongListPreview() {
-    val sample: List<Song> = listOf(
-        Song(id = 1, title = "Song A", artist = "Artist One", duration = 180000.0, path = "/demo/a.mp3", album = "Album X",2000),
-        Song(id = 2, title = "Song B", artist = "Artist One", duration = 200000.0, path = "/demo/b.mp3", album = "Album X",2000),
-        Song(id = 3, title = "Song C", artist = "Artist Two", duration = 210000.0, path = "/demo/c.mp3", album = "Album Y",2000)
+    val sample: List<com.example.musicplayer.model.Song> = listOf(
+        // outer Song constructor: (id, track, title, artist, duration, path, album?, year)
+        Song(1, null, "Song A", "Artist One", 180000.0, "/demo/a.mp3", "Album X", 2000),
+        Song(2, null, "Song B", "Artist One", 200000.0, "/demo/b.mp3", "Album X", 2000),
+        Song(3, null, "Song C", "Artist Two", 210000.0, "/demo/c.mp3", "Album Y", 2000)
     )
     Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         ArtistSongList(songs = sample)

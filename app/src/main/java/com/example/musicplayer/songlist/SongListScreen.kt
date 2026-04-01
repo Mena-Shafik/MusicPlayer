@@ -525,11 +525,12 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
 @Composable
 fun SongListPreview() {
     MaterialTheme {
-        val sampleSongs = listOf(
-            Song(id = 1, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = "", album = null, year = 2000),
-            Song(id = 2, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "", album = null, year = 1999),
-            Song(id = 3, title = "Another Track", artist = "Artist Three", duration = 200000.0, path = "", album = null, year = 2010),
-            Song(id = 4, title = "Another Track", artist = "Artist Four", duration = 200000.0, path = "", album = null, year = 1985)
+        val sampleSongs: List<com.example.musicplayer.model.Song> = listOf(
+            // Use outer Song constructor: (id, track, title, artist, duration, path, album?, year)
+            Song(1, null, "Preview Song", "Preview Artist", 180000.0, "", null, 2000),
+            Song(2, null, "Another Track", "Artist Two", 200000.0, "", null, 1999),
+            Song(3, null, "Another Track", "Artist Three", 200000.0, "", null, 2010),
+            Song(4, null, "Another Track", "Artist Four", 200000.0, "", null, 1985)
         )
         Scaffold(
             topBar = {

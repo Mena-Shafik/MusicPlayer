@@ -230,17 +230,17 @@ private fun EraCardItem(
 @Composable
 private fun EraSongListPreview() {
     MusicPlayerTheme {
-        val sample = listOf(
-            Song(1, "Great Balls of Fire", "Jerry Lee Lewis", 177000.0, "", album = null, year = 1957),
-            Song(2, "Purple Haze", "Jimi Hendrix", 170000.0, "", album = null, year = 1967),
-            Song(3, "Hotel California", "Eagles", 390000.0, "", album = null, year = 1977),
-            Song(4, "Take On Me", "a-ha", 225000.0, "", album = null, year = 1985),
-            Song(5, "Smells Like Teen Spirit", "Nirvana", 301000.0, "", album = null, year = 1991),
-            Song(6, "Blue (Da Ba Dee)", "Eiffel 65", 223000.0, "", album = null, year = 1999),
-            Song(7, "In Da Club", "50 Cent", 241000.0, "", album = null, year = 2003),
-            Song(8, "Rolling in the Deep", "Adele", 228000.0, "", album = null, year = 2010),
-            Song(9, "Blinding Lights", "The Weeknd", 200000.0, "", album = null, year = 2020)
-        )
+                    val sample: List<Song> = listOf(
+                    Song(1, null, "Great Balls of Fire", "Jerry Lee Lewis", 177000.0, "", null, 1957),
+                    Song(2, null, "Purple Haze", "Jimi Hendrix", 170000.0, "", null, 1967),
+                    Song(3, null, "Hotel California", "Eagles", 390000.0, "", null, 1977),
+                    Song(4, null, "Take On Me", "a-ha", 225000.0, "", null, 1985),
+                    Song(5, null, "Smells Like Teen Spirit", "Nirvana", 301000.0, "", null, 1991),
+                    Song(6, null, "Blue (Da Ba Dee)", "Eiffel 65", 223000.0, "", null, 1999),
+                    Song(7, null, "In Da Club", "50 Cent", 241000.0, "", null, 2003),
+                    Song(8, null, "Rolling in the Deep", "Adele", 228000.0, "", null, 2010),
+                    Song(9, null, "Blinding Lights", "The Weeknd", 200000.0, "", null, 2020)
+                )
         EraSongList(songs = sample, onSongClick = {})
     }
 }

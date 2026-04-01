@@ -53,6 +53,7 @@ class Util {
                 MediaStore.Audio.AudioColumns.DATA,
                 MediaStore.Audio.AudioColumns.TITLE,
                 MediaStore.Audio.ArtistColumns.ARTIST,
+                MediaStore.Audio.AudioColumns.TRACK,
                 MediaStore.Audio.AlbumColumns.ALBUM,
                 MediaStore.Audio.AudioColumns.DURATION,
                 MediaStore.Audio.Media.YEAR
@@ -69,17 +70,19 @@ class Util {
                     if (path.toString().isBlank()) continue
                     val title = c.getString(2) ?: "Unknown"
                     val artist = c.getString(3) ?: "Unknown"
-                    val album = c.getString(4) ?: "Unknown"
-                    val duration = c.getDouble(5)
-                    val year = c.getInt(6)
-                    val song = Song(mediaStoreId, title, artist, duration, path.toString(), album, year)
+                    // TRACK may be 0 if unknown — treat <=0 as null
+                    val rawTrack = try { c.getInt(4) } catch (_: Exception) { 0 }
+                    val trackNullable: Int? = if (rawTrack <= 0) null else rawTrack
+                    val album = c.getString(5) ?: "Unknown"
+                    val duration = c.getDouble(6)
+                    val year = c.getInt(7)
+                    val song = Song(mediaStoreId, trackNullable, title, artist, duration, path.toString(), album, year)
                     tempAudioList.add(song)
 
-                    val msg =
-                        "Album id: ${song.id} | Title: ${song.title} | Artist: ${song.artist} | Album: ${song.album ?: "-"} | Year: ${song.year ?: "-"} | Path: ${song.path} | Duration: ${
-                            Util.converter(song.duration)
-                        }"
-                    Log.i("data", formatSongRow(song))
+                    //val msg = "Album id: ${song.id} | Title: ${song.title} | Artist: ${song.artist} | Album: ${song.album ?: "-"} | Year: ${song.year ?: "-"} | Path: ${song.path} | Duration: ${Util.converter(song.duration)} | rawTrack: $rawTrack | track: ${trackNullable ?: "-"}"
+                    // Keep the existing formatted table row log for compatibility and also log the raw msg with rawTrack
+                    //Log.i("data", formatSongRow(song))
+                    //Log.i("data", msg)
                 }
                 c.close()
             }
@@ -118,23 +121,29 @@ class Util {
         }
 
         fun formatSongTableHeader(): String {
-            // Columns: ID, Title, Artist, Album, Year, Path, Duration
-            // %-10s = ID, %-30s = Title, %-20s = Artist, %-20s = Album, %-6s = Year, %-40s = Path, %8s = Duration
-            return String.Companion.format(
-                Locale.US, "%-10s %-30s %-20s %-20s %-6s %-40s %8s",
-                "ID", "Title", "Artist", "Album", "Year", "Path", "Duration")
+            // Columns: ID, Title, Artist, Album, Track, Year, Path, Duration
+            // %-10s = ID, %-30s = Title, %-20s = Artist, %-20s = Album, %-6s = Track, %-6s = Year, %-40s = Path, %8s = Duration
+            return String.format(
+                Locale.US, "%-10s %-30s %-20s %-20s %-6s %-6s %-40s %8s",
+                "ID", "Title", "Artist", "Album", "Track", "Year", "Path", "Duration")
         }
 
-        fun formatSongRow(song: Song): String {
+        fun formatSongRow(song: Song, rawTrack: Int? = null): String {
             val id = song.id.toString()
             val title = padOrTruncate(song.title.trim(), 30)
             val artist = padOrTruncate(song.artist.trim(), 20)
             val album = padOrTruncate(song.album?.trim(), 20)
+            // Prefer the raw track value when available; otherwise use the normalized song.track
+            val trackStr = when {
+                rawTrack != null && rawTrack > 0 -> rawTrack.toString()
+                song.track != null -> song.track.toString()
+                else -> "-"
+            }
             val year = song.year?.toString() ?: "-"
             val path = padOrTruncate(song.path, 40)
             // Use human-friendly duration (m:ss) and truncate if needed
             val durationStr = padOrTruncate(Util.converter(song.duration), 8)
-            return String.Companion.format(Locale.US, "%-10s %-30s %-20s %-20s %-6s %-40s %8s", id, title, artist, album, year, path, durationStr)
+            return String.format(Locale.US, "%-10s %-30s %-20s %-20s %-6s %-6s %-40s %8s", id, title, artist, album, trackStr, year, path, durationStr)
         }
 
         fun converter(time: Double): String {
