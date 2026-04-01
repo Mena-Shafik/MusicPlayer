@@ -47,7 +47,8 @@ import com.example.musicplayer.ui.components.playlist.CreatePlaylistDialog
 @Composable
 fun PlaylistScreen(
     navController: NavHostController,
-    onPlaylistSelected: (Playlist) -> Unit = {}
+    onPlaylistSelected: (Playlist) -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val viewModel: PlaylistViewModel = viewModel(
@@ -94,6 +95,7 @@ fun PlaylistScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                .then(modifier)
         ) {
             MainBackground()
 
@@ -195,7 +197,9 @@ private fun PlaylistScreenPreview() {
                 BottomNav(selectedIndex = 2, onSelected = { })
             }
         ) { innerPadding ->
-            PlaylistScreen(navController = navController, onPlaylistSelected = {})
+            // Apply the preview's innerPadding to the PlaylistScreen's root modifier so
+            // content is not obscured by the app bar in preview and lint is satisfied.
+            PlaylistScreen(navController = navController, onPlaylistSelected = {}, modifier = Modifier.padding(innerPadding))
         }
     }
 }
