@@ -3,7 +3,12 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("kotlin-parcelize")
+    // KAPT plugin for annotation processing
+    id("org.jetbrains.kotlin.kapt")
 }
+
+// KSP plugin wasn't resolvable for the project's Kotlin version; use kapt for Room for now
+apply(plugin = "kotlin-kapt")
 
 android {
     namespace = "com.example.musicplayer"
@@ -103,4 +108,12 @@ dependencies {
 
     // DataStore for persisting preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // Room (local persistence) - runtime, ktx and compiler (kapt)
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    kapt("androidx.room:room-compiler:2.8.4")
+
+    // Room testing helpers
+    testImplementation("androidx.room:room-testing:2.8.4")
 }
