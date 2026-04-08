@@ -58,12 +58,20 @@ class Util {
                 MediaStore.Audio.AudioColumns.DURATION,
                 MediaStore.Audio.Media.YEAR
             )
+
+            // Build audioId -> genre map (delegated to helper). Using a prebuilt map is
+            // more efficient than querying the genres table for every audio row.
+            val audioIdToGenre = buildAudioIdToGenreMap(context)
             // check if it is a song
             val where = MediaStore.Audio.Media.IS_MUSIC + "=1"
             val c = context.contentResolver.query(uri, projection, where, null, "title")
             if (c != null) {
+                // Print a table header for easier reading of subsequent rows in logcat
+                try { Log.i("data", formatSongTableHeader()) } catch (_: Throwable) {}
                 while (c.moveToNext()) {
-                    val mediaStoreId = c.getInt(0) // Get MediaStore ID (stable across scans)
+                    // Read MediaStore ID as Long (stable) and keep a safe Int copy for the Song model
+                    val mediaStoreIdLong = try { c.getLong(0) } catch (_: Throwable) { c.getInt(0).toLong() }
+                    val mediaStoreId = try { mediaStoreIdLong.toInt() } catch (_: Throwable) { (mediaStoreIdLong and 0xFFFFFFFF).toInt() }
                     val tempPath = c.getString(1)
                     val path = tempPath.toUri()
                     // Skip entries without a valid path to avoid passing empty strings to MediaMetadataRetriever
@@ -75,18 +83,90 @@ class Util {
                     val trackNullable: Int? = if (rawTrack <= 0) null else rawTrack
                     val album = c.getString(5) ?: "Unknown"
                     val duration = c.getDouble(6)
-                    val year = c.getInt(7)
-                    val song = Song(mediaStoreId, trackNullable, title, artist, duration, path.toString(), album, year)
+                    val rawYear = try { c.getInt(7) } catch (_: Exception) { 0 }
+                    val song = Song(mediaStoreId, trackNullable, title, artist, duration, path.toString(), album, rawYear)
+                    // Normalize: treat non-positive years as unknown (null)
+                    song.year = if (rawYear > 0) rawYear else null
+                    // Lookup by the long MediaStore id; the map uses Long keys
+                    song.genre = audioIdToGenre[mediaStoreIdLong]
+
+                    // If year is unknown in MediaStore, try a lightweight metadata fallback
+                    if (song.year == null) {
+                        try {
+                            val mmr = MediaMetadataRetriever()
+                            try {
+                                mmr.setDataSource(context, path)
+                                val yearStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR)
+                                val parsed = yearStr?.toIntOrNull()
+                                if (parsed != null && parsed > 0) song.year = parsed
+                            } catch (_: Throwable) {
+                                // ignore metadata fallback errors
+                            } finally {
+                                try { mmr.release() } catch (_: Throwable) {}
+                            }
+                        } catch (_: Throwable) {
+                            // ignore
+                        }
+                    }
+                    // If genre is still missing, try to extract embedded GENRE tag from the file
+                    if (song.genre.isNullOrBlank()) {
+                        try {
+                            val mmr2 = MediaMetadataRetriever()
+                            try {
+                                mmr2.setDataSource(context, path)
+                                val genreTag = mmr2.extractMetadata(MediaMetadataRetriever.METADATA_KEY_GENRE)
+                                if (!genreTag.isNullOrBlank()) song.genre = genreTag.trim()
+                            } catch (_: Throwable) {
+                                // ignore
+                            } finally {
+                                try { mmr2.release() } catch (_: Throwable) {}
+                            }
+                        } catch (_: Throwable) {
+                            // ignore
+                        }
+                    }
                     tempAudioList.add(song)
 
                     //val msg = "Album id: ${song.id} | Title: ${song.title} | Artist: ${song.artist} | Album: ${song.album ?: "-"} | Year: ${song.year ?: "-"} | Path: ${song.path} | Duration: ${Util.converter(song.duration)} | rawTrack: $rawTrack | track: ${trackNullable ?: "-"}"
                     // Keep the existing formatted table row log for compatibility and also log the raw msg with rawTrack
-                    //Log.i("data", formatSongRow(song))
+                    Log.i("data", formatSongRow(song, rawTrack))
                     //Log.i("data", msg)
                 }
                 c.close()
             }
             return tempAudioList
+        }
+
+        // Build a map of audioId -> genreName by iterating genres and their members.
+        // This is separated out so it can be reused and tested independently.
+        private fun buildAudioIdToGenreMap(context: Context): Map<Long, String> {
+            val map = mutableMapOf<Long, String>()
+            try {
+                val gCursor = context.contentResolver.query(
+                    MediaStore.Audio.Genres.EXTERNAL_CONTENT_URI,
+                    arrayOf(MediaStore.Audio.Genres._ID, MediaStore.Audio.Genres.NAME),
+                    null, null, null
+                )
+                gCursor?.use { gc ->
+                    while (gc.moveToNext()) {
+                        val genreId = try { gc.getLong(0) } catch (_: Throwable) { continue }
+                        val genreName = try { gc.getString(1) } catch (_: Throwable) { continue } ?: continue
+                        val membersUri = MediaStore.Audio.Genres.Members.getContentUri("external", genreId)
+                        // Use the standardized AUDIO_ID column when available and read as Long
+                        val mCursor = context.contentResolver.query(membersUri, arrayOf(MediaStore.Audio.Genres.Members.AUDIO_ID), null, null, null)
+                        mCursor?.use { mc ->
+                            while (mc.moveToNext()) {
+                                val audioId = try { mc.getLong(0) } catch (_: Throwable) { continue }
+                                map[audioId] = genreName
+                            }
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+                // ignore failures and return whatever was collected
+            }
+            try { Log.d(TAG, "buildAudioIdToGenreMap: collected ${map.size} mappings") } catch (_: Throwable) {}
+            return map
         }
 
         private fun padOrTruncate(s: String?, width: Int): String {
@@ -122,10 +202,11 @@ class Util {
 
         fun formatSongTableHeader(): String {
             // Columns: ID, Title, Artist, Album, Track, Year, Path, Duration
-            // %-10s = ID, %-30s = Title, %-20s = Artist, %-20s = Album, %-6s = Track, %-6s = Year, %-40s = Path, %8s = Duration
+            // Columns: ID, Title, Artist, Album, Genre, Track, Year, Path, Duration
+            // %-10s = ID, %-30s = Title, %-20s = Artist, %-20s = Album, %-15s = Genre, %-6s = Track, %-6s = Year, %-40s = Path, %8s = Duration
             return String.format(
-                Locale.US, "%-10s %-30s %-20s %-20s %-6s %-6s %-40s %8s",
-                "ID", "Title", "Artist", "Album", "Track", "Year", "Path", "Duration")
+                Locale.US, "%-10s %-30s %-20s %-20s %-15s %-6s %-6s %-40s %8s",
+                "ID", "Title", "Artist", "Album", "Genre", "Track", "Year", "Path", "Duration")
         }
 
         fun formatSongRow(song: Song, rawTrack: Int? = null): String {
@@ -133,17 +214,19 @@ class Util {
             val title = padOrTruncate(song.title.trim(), 30)
             val artist = padOrTruncate(song.artist.trim(), 20)
             val album = padOrTruncate(song.album?.trim(), 20)
+            val genreStr = padOrTruncate(song.genre?.trim(), 15)
             // Prefer the raw track value when available; otherwise use the normalized song.track
             val trackStr = when {
                 rawTrack != null && rawTrack > 0 -> rawTrack.toString()
                 song.track != null -> song.track.toString()
                 else -> "-"
             }
-            val year = song.year?.toString() ?: "-"
+            // Treat unknown or non-positive years as '-'
+            val year = (song.year?.takeIf { it > 0 }?.toString()) ?: "-"
             val path = padOrTruncate(song.path, 40)
             // Use human-friendly duration (m:ss) and truncate if needed
             val durationStr = padOrTruncate(Util.converter(song.duration), 8)
-            return String.format(Locale.US, "%-10s %-30s %-20s %-20s %-6s %-6s %-40s %8s", id, title, artist, album, trackStr, year, path, durationStr)
+            return String.format(Locale.US, "%-10s %-30s %-20s %-20s %-15s %-6s %-6s %-40s %8s", id, title, artist, album, genreStr, trackStr, year, path, durationStr)
         }
 
         fun converter(time: Double): String {

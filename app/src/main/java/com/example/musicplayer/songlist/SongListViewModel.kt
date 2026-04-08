@@ -31,7 +31,7 @@ class SongListViewModel(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
 
-    enum class SortOrder { TITLE_ASC, TITLE_DESC, ADDED_DESC }
+    enum class SortOrder { TITLE_ASC, TITLE_DESC, GENRE_ASC, ADDED_DESC, ALBUM_TRACK, ARTIST_ASC }
 
     private val _sortOrder = MutableStateFlow(SortOrder.TITLE_ASC)
     val sortOrder: StateFlow<SortOrder> = _sortOrder
@@ -63,6 +63,15 @@ class SongListViewModel(
         res = when (sort) {
             SortOrder.TITLE_ASC -> res.sortedBy { (it.title ?: "").lowercase() }
             SortOrder.TITLE_DESC -> res.sortedByDescending { (it.title ?: "").lowercase() }
+            SortOrder.GENRE_ASC -> res.sortedWith(compareBy({ (it.genre ?: "").lowercase() }, { (it.title ?: "").lowercase() }))
+            SortOrder.ALBUM_TRACK -> res.sortedWith(
+                compareBy(
+                    { (it.album ?: "").lowercase() },
+                    { it.track ?: Int.MAX_VALUE },
+                    { (it.title ?: "").lowercase() }
+                )
+            )
+            SortOrder.ARTIST_ASC -> res.sortedWith(compareBy({ (it.artist ?: "").lowercase() }, { (it.album ?: "").lowercase() }, { it.track ?: Int.MAX_VALUE }))
             SortOrder.ADDED_DESC -> res // assume original order is newest-first if provided
         }
         res
@@ -197,9 +206,16 @@ class SongListViewModel(
     private val _isAlbumView = MutableStateFlow(false)
     val isAlbumView: StateFlow<Boolean> = _isAlbumView
 
-    fun setAlbumView(enabled: Boolean) {
-        if (enabled) _isArtistView.value = false
+    fun toggleAlbumView(enabled: Boolean) {
+        if (enabled) {
+            // ensure only one grouped view is active
+            _isArtistView.value = false
+            _isEraView.value = false
+            _isGenreView.value = false
+        }
         _isAlbumView.value = enabled
+        // When enabling album view, prefer album+track sorting for correct track order within albums
+        if (enabled) _sortOrder.value = SortOrder.ALBUM_TRACK
         context?.let {
             viewModelScope.launch {
                 PreferencesManager.setAlbumView(it, enabled)
@@ -209,8 +225,15 @@ class SongListViewModel(
 
     fun toggleAlbumView() {
         val newValue = !_isAlbumView.value
-        if (newValue) _isArtistView.value = false
+        if (newValue) {
+            // turning album view on -> turn others off
+            _isArtistView.value = false
+            _isEraView.value = false
+            _isGenreView.value = false
+        }
         _isAlbumView.value = newValue
+        // Ensure album view uses album+track sorting
+        if (newValue) _sortOrder.value = SortOrder.ALBUM_TRACK
         context?.let {
             viewModelScope.launch {
                 PreferencesManager.setAlbumView(it, newValue)
@@ -222,9 +245,14 @@ class SongListViewModel(
     private val _isArtistView = MutableStateFlow(false)
     val isArtistView: StateFlow<Boolean> = _isArtistView
 
-    fun setArtistView(enabled: Boolean) {
-        if (enabled) _isAlbumView.value = false
+    fun toggleArtistView(enabled: Boolean) {
+        if (enabled) {
+            _isAlbumView.value = false
+            _isEraView.value = false
+            _isGenreView.value = false
+        }
         _isArtistView.value = enabled
+        if (enabled) _sortOrder.value = SortOrder.ARTIST_ASC
         context?.let {
             viewModelScope.launch {
                 PreferencesManager.setArtistView(it, enabled)
@@ -234,8 +262,13 @@ class SongListViewModel(
 
     fun toggleArtistView() {
         val newValue = !_isArtistView.value
-        if (newValue) _isAlbumView.value = false
+        if (newValue) {
+            _isAlbumView.value = false
+            _isEraView.value = false
+            _isGenreView.value = false
+        }
         _isArtistView.value = newValue
+        if (newValue) _sortOrder.value = SortOrder.ARTIST_ASC
         context?.let {
             viewModelScope.launch {
                 PreferencesManager.setArtistView(it, newValue)
@@ -247,11 +280,12 @@ class SongListViewModel(
     private val _isEraView = MutableStateFlow(false)
     val isEraView: StateFlow<Boolean> = _isEraView
 
-    fun setEraView(enabled: Boolean) {
-        // When enabling era view, turn off album/artist mutually exclusive states
+    fun toggleEraView(enabled: Boolean) {
+        // When enabling era view, turn off album/artist/genre mutually exclusive states
         if (enabled) {
             _isAlbumView.value = false
             _isArtistView.value = false
+            _isGenreView.value = false
         }
         _isEraView.value = enabled
         context?.let {
@@ -266,11 +300,53 @@ class SongListViewModel(
         if (newValue) {
             _isAlbumView.value = false
             _isArtistView.value = false
+            _isGenreView.value = false
         }
         _isEraView.value = newValue
         context?.let {
             viewModelScope.launch {
                 PreferencesManager.setEraView(it, newValue)
+            }
+        }
+    }
+
+    // --- Genre view state ---
+    private val _isGenreView = MutableStateFlow(false)
+    val isGenreView: StateFlow<Boolean> = _isGenreView
+    // Small helper to enable exactly one grouped view and disable the others.
+    private fun setExclusiveViews(album: Boolean = false, artist: Boolean = false, era: Boolean = false, genre: Boolean = false) {
+        _isAlbumView.value = album
+        _isArtistView.value = artist
+        _isEraView.value = era
+        _isGenreView.value = genre
+    }
+
+    /**
+     * Enable/disable genre grouped view. When enabling, turn off other mutually-exclusive views.
+     * This version accepts an explicit boolean.
+     */
+    fun toggleGenreView(enabled: Boolean) {
+        if (enabled) {
+            setExclusiveViews(genre = true)
+        } else {
+            _isGenreView.value = false
+        }
+        // Persist genre view preference
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setGenreView(it, enabled)
+            }
+        }
+    }
+
+    /** Parameterless toggle that flips the current genre view state. */
+    fun toggleGenreView() {
+        val newValue = !_isGenreView.value
+        if (newValue) setExclusiveViews(genre = true) else _isGenreView.value = false
+        // Persist the toggled value
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setGenreView(it, newValue)
             }
         }
     }
@@ -346,6 +422,16 @@ class SongListViewModel(
                     if (savedEraView) {
                         _isAlbumView.value = false
                         _isArtistView.value = false
+                    }
+                }
+            }
+            viewModelScope.launch {
+                PreferencesManager.getGenreViewFlow(it).collect { savedGenreView ->
+                    _isGenreView.value = savedGenreView
+                    if (savedGenreView) {
+                        _isAlbumView.value = false
+                        _isArtistView.value = false
+                        _isEraView.value = false
                     }
                 }
             }

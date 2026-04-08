@@ -59,6 +59,7 @@ fun SettingsScreen(navController: NavHostController) {
     val isArtistView by viewModel.isArtistView.collectAsState(initial = false)
     // Era view switch (show eras like 80s/90s/2000s)
     val isEraView by viewModel.isEraView.collectAsState(initial = false)
+    val isGenreView by viewModel.isGenreView.collectAsState(initial = false)
     val useDefaultRadioList by viewModel.useDefaultRadioList.collectAsState(initial = true)
 
     Scaffold(
@@ -111,18 +112,23 @@ fun SettingsScreen(navController: NavHostController) {
                         SwitchCardRow(
                             title = "Sort by album",
                             checked = isAlbumView,
-                            onCheckedChange = { enabled -> viewModel.setAlbumView(enabled) }
+                            onCheckedChange = { enabled -> viewModel.toggleAlbumView(enabled) }
                         )
                         SwitchCardRow(
                             title = "Sort by artist",
                             checked = isArtistView,
-                            onCheckedChange = { enabled -> viewModel.setArtistView(enabled) }
+                            onCheckedChange = { enabled -> viewModel.toggleArtistView(enabled) }
                         )
                         // Show eras switch
                         SwitchCardRow(
                             title = "Show by eras",
                             checked = isEraView,
-                            onCheckedChange = { enabled -> viewModel.setEraView(enabled) }
+                            onCheckedChange = { enabled -> viewModel.toggleEraView(enabled) }
+                        )
+                        SwitchCardRow(
+                            title = "Show by genres",
+                            checked = isGenreView,
+                            onCheckedChange = { enabled -> viewModel.toggleGenreView(enabled) }
                         )
                     }
                 }

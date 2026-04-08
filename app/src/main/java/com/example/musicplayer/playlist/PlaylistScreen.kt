@@ -179,6 +179,7 @@ private fun PlaylistScreenPreview() {
     val navController = rememberNavController()
     MaterialTheme {
         Scaffold(
+            containerColor = Color.Transparent,
             topBar = {
                 MainAppBar(
                     showSearch = false,
@@ -216,6 +217,7 @@ private fun PlaylistScreenPreviewWithData() {
     val navController = rememberNavController()
     MaterialTheme {
         Scaffold(
+            containerColor = Color.Transparent,
             topBar = {
                 MainAppBar(
                     showSearch = false,

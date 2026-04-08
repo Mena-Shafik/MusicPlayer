@@ -39,6 +39,7 @@ import androidx.navigation.NavHostController
 import com.example.musicplayer.util.Util
 import com.example.musicplayer.ui.components.song.AlbumSongList
 import com.example.musicplayer.ui.components.song.ArtistSongList
+import com.example.musicplayer.ui.components.song.GenreSongList
 import com.example.musicplayer.ui.components.common.MainAppBar
 import com.example.musicplayer.ui.components.common.MainBackground
 import com.example.musicplayer.ui.components.song.MiniPlayer
@@ -98,6 +99,7 @@ fun ListSongsScreen(
     val isAlbumView by viewModel.isAlbumView.collectAsState()
     val isArtistView by viewModel.isArtistView.collectAsState()
     val isEraView by viewModel.isEraView.collectAsState()
+    val isGenreView by viewModel.isGenreView.collectAsState()
 
     // load and filter songs
     /*val view = LocalView.current
@@ -258,6 +260,22 @@ fun ListSongsScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 onSongClick = { song ->
                                     // Find index for playback selection
+                                    val index = songs.indexOfFirst { it.id == song.id }
+                                    if (index >= 0) {
+                                        playerVm.setPlaylist(context, songs, index)
+                                        PlayerStateManager.setCurrentIndex(index)
+                                        playerVm.play(context)
+                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                                    }
+                                }
+                            )
+                        }
+                        // Genre grouped view
+                        isGenreView -> {
+                            GenreSongList(
+                                songs = songs,
+                                modifier = Modifier.fillMaxSize(),
+                                onSongClick = { song ->
                                     val index = songs.indexOfFirst { it.id == song.id }
                                     if (index >= 0) {
                                         playerVm.setPlaylist(context, songs, index)
@@ -533,6 +551,7 @@ fun SongListPreview() {
             Song(4, null, "Another Track", "Artist Four", 200000.0, "", null, 1985)
         )
         Scaffold(
+            containerColor = Color.Transparent,
             topBar = {
                 Column {
                     MainAppBar(

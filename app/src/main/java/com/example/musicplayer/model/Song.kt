@@ -9,6 +9,7 @@ class Song {
     var artist: String = "-"
     var path: String = "-"
     var album: String? = "-"
+    var genre: String? = null
     var duration: Double = 00.00
     var track: Int? = null
     var year: Int? = null
@@ -26,6 +27,7 @@ class Song {
         val path: String?,
         val album: String? = null,
         val year: Int? = null,
+        val genre: String? = null,
     ) : Parcelable
 
     constructor(id: Int, track: Int?, title: String, artist: String, duration: Double, path: String?, album: String? = null, year: Int) {
@@ -50,6 +52,8 @@ class Song {
         this.album = album
     }
 
+    // Backward-compatible convenience constructor used by unit tests and callers
+    // that only provide id, title, artist, duration and path (album optional).
     // Backward-compatible convenience constructor used by unit tests and callers
     // that only provide id, title, artist, duration and path (album optional).
     constructor(id: Int, title: String, artist: String, duration: Double, path: String, album: String? = null) {
