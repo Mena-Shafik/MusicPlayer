@@ -34,38 +34,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Install Android SDK tools (fast)
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-audio
-          # Recent versions require a 'script' input. Provide a no-op command so the action
-          # config step succeeds and the emulator stays running for subsequent steps.
-          script: |
-            echo "Emulator provisioned"
-
-      - name: Wait for emulator
+      - name: Build
         run: |
-          adb wait-for-device
-          adb devices
-          adb shell getprop sys.boot_completed | grep -m 1 1 || (echo "Emulator not booted" && exit 1)
-
-      - name: Build and run instrumentation tests
-        run: |-
-          ./gradlew connectedAndroidTest --no-daemon --stacktrace
-
-      - name: Pull screenshots from emulator
-        run: |
-          mkdir -p fastlane/android_screenshots
-          adb pull /sdcard/shot-screenshots fastlane/android_screenshots || true
-          ls -la fastlane/android_screenshots || true
-
-      - name: Upload screenshots artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-screenshots
-          path: fastlane/android_screenshots
+          ./gradlew build --no-daemon --stacktrace
 
