@@ -143,16 +143,48 @@ Click to expand the screenshots gallery. If images don't display, make sure the 
 <details>
   <summary>Open screenshots gallery</summary>
 
-  <div align="center">
-    <a href="screenshots/home.png"><img src="screenshots/home.png" alt="Home" width="150" style="margin:6px;"/></a>
-    <a href="screenshots/album.png"><img src="screenshots/album.png" alt="Album" width="150" style="margin:6px;"/></a>
-    <a href="screenshots/artist.png"><img src="screenshots/artist.png" alt="Artist" width="150" style="margin:6px;"/></a>
-    <a href="screenshots/eras.png"><img src="screenshots/eras.png" alt="Era" width="150" style="margin:6px;"/></a>
-    <a href="screenshots/musicplayer.png"><img src="screenshots/musicplayer.png" alt="Player" width="150" style="margin:6px;"/></a>
-    <a href="screenshots/radio.png"><img src="screenshots/radio.png" alt="Radio" width="150" style="margin:6px;"/></a>
-    <a href="screenshots/playlist.png"><img src="screenshots/playlist.png" alt="Playlists" width="150" style="margin:6px;"/></a>
-    <a href="screenshots/playlist_detail.png"><img src="screenshots/playlist_detail.png" alt="Playlist Detail" width="150" style="margin:6px;"/></a>
-  </div>
+  <!-- Organized, collapsible sections so the gallery is easier to browse -->
+  <details>
+    <summary>Main / Home</summary>
+    <div align="center">
+      <a href="screenshots/home.png"><img src="screenshots/home.png" alt="Home" width="150" style="margin:6px;"/></a>
+    </div>
+  </details>
+
+  <details>
+    <summary>Player / Now playing</summary>
+    <div align="center">
+      <a href="screenshots/musicplayer.png"><img src="screenshots/musicplayer.png" alt="Player" width="150" style="margin:6px;"/></a>
+      <a href="screenshots/musicplayer_lyrics.png"><img src="screenshots/musicplayer_lyrics.png" alt="Player Lyrics" width="150" style="margin:6px;"/></a>
+      <a href="screenshots/musicplayer_next.png"><img src="screenshots/musicplayer_next.png" alt="Player Next" width="150" style="margin:6px;"/></a>
+    </div>
+  </details>
+
+  <details>
+    <summary>Library / Lists</summary>
+    <div align="center">
+      <a href="screenshots/album.png"><img src="screenshots/album.png" alt="Album" width="150" style="margin:6px;"/></a>
+      <a href="screenshots/artist.png"><img src="screenshots/artist.png" alt="Artist" width="150" style="margin:6px;"/></a>
+      <a href="screenshots/eras.png"><img src="screenshots/eras.png" alt="Eras" width="150" style="margin:6px;"/></a>
+    </div>
+  </details>
+
+  <details>
+    <summary>Playlists</summary>
+    <div align="center">
+      <a href="screenshots/playlist.png"><img src="screenshots/playlist.png" alt="Playlists" width="150" style="margin:6px;"/></a>
+      <a href="screenshots/playlist_detail.png"><img src="screenshots/playlist_detail.png" alt="Playlist Detail" width="150" style="margin:6px;"/></a>
+    </div>
+  </details>
+
+  <details>
+    <summary>Radio & Players</summary>
+    <div align="center">
+      <a href="screenshots/radio.png"><img src="screenshots/radio.png" alt="Radio" width="150" style="margin:6px;"/></a>
+      <a href="screenshots/radioplayer.png"><img src="screenshots/radioplayer.png" alt="Radio Player" width="150" style="margin:6px;"/></a>
+    </div>
+  </details>
+
 
 </details>
 
