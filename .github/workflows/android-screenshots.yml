@@ -10,6 +10,9 @@ jobs:
   screenshots:
     name: Capture screenshots on emulator
     runs-on: ubuntu-latest
+    env:
+      # Opt-in to Node.js 24 for actions that are updated to support it (optional)
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -39,6 +42,10 @@ jobs:
           arch: x86_64
           force-avd-creation: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-audio
+          # Recent versions require a 'script' input. Provide a no-op command so the action
+          # config step succeeds and the emulator stays running for subsequent steps.
+          script: |
+            echo "Emulator provisioned"
 
       - name: Wait for emulator
         run: |
