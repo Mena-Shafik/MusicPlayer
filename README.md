@@ -104,19 +104,19 @@ git clone https://github.com/Mena-Shafik/MusicPlayer.git
 
 ## 🖼️ Screenshots
 
-Place your captured screenshots in `app/screenshots/`. Example filenames used by the project's test scripts and CI (if enabled):
+Place your captured screenshots in `screenshots/` (top-level). Example filenames present in the repository:
 
-- `app/screenshots/home.png` — Home / song list
-- `app/screenshots/album.png` — Album/grouped view
-- `app/screenshots/artist.png` — Artist/grouped view
-- `app/screenshots/era.png` — Era/grouped view
-- `app/screenshots/player.png` — Full player screen
+- `screenshots/home.png` — Home / song list
+- `screenshots/album.png` — Album/grouped view
+- `screenshots/artist.png` — Artist/grouped view
+- `screenshots/eras.png` — Era/grouped view
+- `screenshots/musicplayer.png` — Full player / app artwork
 
-Additional suggested screenshots:
+Additional suggested screenshots (already present in `screenshots/`):
 
-- `app/screenshots/radio.png` — Radio screen / current station
-- `app/screenshots/playlist.png` — Playlists list
-- `app/screenshots/playlist_detail.png` — Playlist detail (songs in a playlist)
+- `screenshots/radio.png` — Radio screen / current station
+- `screenshots/playlist.png` — Playlists list
+- `screenshots/playlist_detail.png` — Playlist detail (songs in a playlist)
 
 Embed screenshots in this README using relative paths so GitHub renders them. Example:
 
@@ -125,11 +125,11 @@ Embed screenshots in this README using relative paths so GitHub renders them. Ex
 
 Home screen:
 
-![Home screen](app/screenshots/home.png)
+![Home screen](screenshots/home.png)
 
 Player screen:
 
-![Player screen](app/screenshots/player.png)
+![Player screen](screenshots/musicplayer.png)
 ```
 
 Tip: keep both high-resolution originals (PNG) and smaller web-optimized copies if you want the README to load faster.
@@ -144,14 +144,14 @@ Click to expand the screenshots gallery. If images don't display, make sure the 
   <summary>Open screenshots gallery</summary>
 
   <div align="center">
-    <a href="app/screenshots/home.png"><img src="app/screenshots/home.png" alt="Home" width="240" style="margin:6px;"/></a>
-    <a href="app/screenshots/album.png"><img src="app/screenshots/album.png" alt="Album" width="240" style="margin:6px;"/></a>
-    <a href="app/screenshots/artist.png"><img src="app/screenshots/artist.png" alt="Artist" width="240" style="margin:6px;"/></a>
-    <a href="app/screenshots/era.png"><img src="app/screenshots/era.png" alt="Era" width="240" style="margin:6px;"/></a>
-    <a href="app/screenshots/player.png"><img src="app/screenshots/player.png" alt="Player" width="240" style="margin:6px;"/></a>
-    <a href="app/screenshots/radio.png"><img src="app/screenshots/radio.png" alt="Radio" width="240" style="margin:6px;"/></a>
-    <a href="app/screenshots/playlist.png"><img src="app/screenshots/playlist.png" alt="Playlists" width="240" style="margin:6px;"/></a>
-    <a href="app/screenshots/playlist_detail.png"><img src="app/screenshots/playlist_detail.png" alt="Playlist Detail" width="240" style="margin:6px;"/></a>
+    <a href="screenshots/home.png"><img src="screenshots/home.png" alt="Home" width="240" style="margin:6px;"/></a>
+    <a href="screenshots/album.png"><img src="screenshots/album.png" alt="Album" width="240" style="margin:6px;"/></a>
+    <a href="screenshots/artist.png"><img src="screenshots/artist.png" alt="Artist" width="240" style="margin:6px;"/></a>
+    <a href="screenshots/eras.png"><img src="screenshots/eras.png" alt="Era" width="240" style="margin:6px;"/></a>
+    <a href="screenshots/musicplayer.png"><img src="screenshots/musicplayer.png" alt="Player" width="240" style="margin:6px;"/></a>
+    <a href="screenshots/radio.png"><img src="screenshots/radio.png" alt="Radio" width="240" style="margin:6px;"/></a>
+    <a href="screenshots/playlist.png"><img src="screenshots/playlist.png" alt="Playlists" width="240" style="margin:6px;"/></a>
+    <a href="screenshots/playlist_detail.png"><img src="screenshots/playlist_detail.png" alt="Playlist Detail" width="240" style="margin:6px;"/></a>
   </div>
 
 </details>
