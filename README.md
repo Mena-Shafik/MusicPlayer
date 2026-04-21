@@ -138,18 +138,23 @@ Tip: keep both high-resolution originals (PNG) and smaller web-optimized copies 
 
 ## 📸 Clickable gallery
 
-Click any thumbnail to open the full-size image:
+Click to expand the screenshots gallery. If images don't display, make sure the files exist at the paths listed above (they must be committed to the repository under `app/screenshots/`).
 
-<div align="center">
-  <a href="app/screenshots/home.png"><img src="app/screenshots/home.png" alt="Home" width="240" style="margin:6px;"/></a>
-  <a href="app/screenshots/album.png"><img src="app/screenshots/album.png" alt="Album" width="240" style="margin:6px;"/></a>
-  <a href="app/screenshots/artist.png"><img src="app/screenshots/artist.png" alt="Artist" width="240" style="margin:6px;"/></a>
-  <a href="app/screenshots/era.png"><img src="app/screenshots/era.png" alt="Era" width="240" style="margin:6px;"/></a>
-  <a href="app/screenshots/player.png"><img src="app/screenshots/player.png" alt="Player" width="240" style="margin:6px;"/></a>
-  <a href="app/screenshots/radio.png"><img src="app/screenshots/radio.png" alt="Radio" width="240" style="margin:6px;"/></a>
-  <a href="app/screenshots/playlist.png"><img src="app/screenshots/playlist.png" alt="Playlists" width="240" style="margin:6px;"/></a>
-  <a href="app/screenshots/playlist_detail.png"><img src="app/screenshots/playlist_detail.png" alt="Playlist Detail" width="240" style="margin:6px;"/></a>
-</div>
+<details>
+  <summary>Open screenshots gallery</summary>
+
+  <div align="center">
+    <a href="app/screenshots/home.png"><img src="app/screenshots/home.png" alt="Home" width="240" style="margin:6px;"/></a>
+    <a href="app/screenshots/album.png"><img src="app/screenshots/album.png" alt="Album" width="240" style="margin:6px;"/></a>
+    <a href="app/screenshots/artist.png"><img src="app/screenshots/artist.png" alt="Artist" width="240" style="margin:6px;"/></a>
+    <a href="app/screenshots/era.png"><img src="app/screenshots/era.png" alt="Era" width="240" style="margin:6px;"/></a>
+    <a href="app/screenshots/player.png"><img src="app/screenshots/player.png" alt="Player" width="240" style="margin:6px;"/></a>
+    <a href="app/screenshots/radio.png"><img src="app/screenshots/radio.png" alt="Radio" width="240" style="margin:6px;"/></a>
+    <a href="app/screenshots/playlist.png"><img src="app/screenshots/playlist.png" alt="Playlists" width="240" style="margin:6px;"/></a>
+    <a href="app/screenshots/playlist_detail.png"><img src="app/screenshots/playlist_detail.png" alt="Playlist Detail" width="240" style="margin:6px;"/></a>
+  </div>
+
+</details>
 
 ---
 
