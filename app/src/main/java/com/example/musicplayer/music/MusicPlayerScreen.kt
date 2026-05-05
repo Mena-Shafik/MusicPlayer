@@ -78,6 +78,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -100,6 +101,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
+import com.example.musicplayer.ui.components.background.AuroraBackground
 import com.example.musicplayer.ui.components.common.MusicControls
 import com.example.musicplayer.ui.components.song.SongCardRow
 import com.example.musicplayer.ui.components.playlist.AddToPlaylistDialog
@@ -141,6 +143,11 @@ fun MusicPlayerScreen(
 
     // background color target extracted from album art
     var targetBackgroundColor by remember { mutableStateOf(Color.Black) }
+    // current album bitmap passed to AuroraBackground for palette sampling
+    var currentAlbumBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+    // collect preference early so we can make Scaffold and system bars transparent when Aurora is enabled
+    val useAuroraBackground by com.example.musicplayer.preferences.PreferencesManager.getUseAuroraBackgroundFlow(ctx).collectAsState(initial = false)
 
     // Animate the background color smoothly when target changes
     val backgroundColor by animateColorAsState(
@@ -155,13 +162,27 @@ fun MusicPlayerScreen(
 
     val activity = LocalContext.current as? Activity
 
-    LaunchedEffect(backgroundColor) {
-        activity?.window?.statusBarColor = backgroundColor.toArgb()
-        activity?.window?.let { win ->
-            val controller = WindowInsetsControllerCompat(win, win.decorView)
-            // true = dark icons (for light background), false = light icons (for dark background)
-            controller.isAppearanceLightStatusBars = backgroundColor.luminance() > 0.5f
-        }
+    LaunchedEffect(backgroundColor, useAuroraBackground) {
+        // If aurora background is used we want system bars to be transparent so the aurora shows through.
+        try {
+            activity?.window?.let { win ->
+                if (useAuroraBackground) {
+                    try { WindowCompat.setDecorFitsSystemWindows(win, false) } catch (_: Throwable) {}
+                    try { win.statusBarColor = android.graphics.Color.TRANSPARENT } catch (_: Throwable) {}
+                    // Do not change navigation bar color here — keep system navigation bar color stable
+                } else {
+                    try { WindowCompat.setDecorFitsSystemWindows(win, true) } catch (_: Throwable) {}
+                    try { win.statusBarColor = backgroundColor.toArgb() } catch (_: Throwable) {}
+                    // Leave navigation bar color unchanged to respect system theming
+                }
+
+                val controller = WindowInsetsControllerCompat(win, win.decorView)
+                // Decide light/dark icons based on the target background color
+                val light = targetBackgroundColor.luminance() > 0.5f
+                controller.isAppearanceLightStatusBars = light
+                // Do not modify navigation bar icon appearance here to avoid changing system nav bar visuals
+            }
+        } catch (_: Throwable) {}
     }
 
     // When back pressed, simply navigate back (do not pause playback so the mini-player can appear in the list)
@@ -206,191 +227,208 @@ fun MusicPlayerScreen(
     val extraPeek = if (navBarBottom == 24.dp) 30.dp else 8.dp
     val sheetPeekHeight = navBarBottom + extraPeek
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(text = "", color = Color.White) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                modifier = Modifier.statusBarsPadding(),
-                actions = {
-                    IconButton(onClick = {
-                        try {
-                            val currentId = song?.id
-                            if (currentId != null) {
-                                selectedSongIdForPlaylist = currentId
-                                showAddToPlaylistDialog = true
-                                Log.d("MusicPlayerScreen", "Opening AddToPlaylistDialog for songId=$currentId")
-                            } else {
-                                Toast.makeText(ctx, "No song available to add", Toast.LENGTH_SHORT).show()
-                            }
-                        } catch (_: Throwable) {}
-                    }) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = "Add to playlist",
-                            tint = Color.White
-                        )
-                    }
-                }
-            )
-        },
-        containerColor = backgroundColor
-    ) { innerPadding ->
-        // persistent BottomSheetScaffold so the mini-player peek is visible and main content stays interactive
-        val bottomSheetScaffoldState = androidx.compose.material.rememberBottomSheetScaffoldState(
-            bottomSheetState = androidx.compose.material.rememberBottomSheetState(initialValue = BottomSheetValue.Collapsed)
-        )
-        val bsScope = rememberCoroutineScope()
 
-        BottomSheetScaffold(
-            modifier = Modifier.padding(innerPadding),
-            scaffoldState = bottomSheetScaffoldState,
-            sheetPeekHeight = sheetPeekHeight,
-            sheetShape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
-            sheetElevation = 8.dp,
-            sheetBackgroundColor = Color.Transparent,
-            backgroundColor = Color.Transparent,
-            sheetContent = {
-                SongsSheetContent(
-                    songs = activeSongs,
-                    currentIndex = currentIndex,
-                    backgroundColor = backgroundColor,
-                    onSelect = { idx ->
-                        // set playlist and start playing
-                        viewModel.setPlaylist(ctx, activeSongs, idx)
-                        viewModel.play(ctx)
-                        bsScope.launch { bottomSheetScaffoldState.bottomSheetState.collapse() }
-                    },
-                    onOpenSheet = {
-                        // expand the BottomSheetScaffold when a tab is clicked inside the sheet header
-                        bsScope.launch { try { bottomSheetScaffoldState.bottomSheetState.expand() } catch (_: Throwable) {} }
-                    },
-                    showIndicator = (bottomSheetScaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded),
-                    isExpanded = (bottomSheetScaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded)
+    val scaffoldContainerColor = if (useAuroraBackground) Color.Transparent else backgroundColor
+
+    // Draw aurora behind the entire UI (including TopAppBar); keep Scaffold as the primary layout
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (useAuroraBackground) {
+            AuroraBackground(modifier = Modifier.fillMaxSize(), albumCoverBitmap = currentAlbumBitmap)
+        }
+
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = { Text(text = "", color = Color.White) },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                    modifier = Modifier.statusBarsPadding(),
+                    actions = {
+                        IconButton(onClick = {
+                            try {
+                                val currentId = song?.id
+                                if (currentId != null) {
+                                    selectedSongIdForPlaylist = currentId
+                                    showAddToPlaylistDialog = true
+                                    Log.d("MusicPlayerScreen", "Opening AddToPlaylistDialog for songId=$currentId")
+                                } else {
+                                    Toast.makeText(ctx, "No song available to add", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (_: Throwable) {}
+                        }) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = "Add to playlist",
+                                tint = Color.White
+                            )
+                        }
+                    }
                 )
             },
-            content = { paddingValues ->
-                // main content — remains interactive while sheet is collapsed
-                Column(
-                    modifier = Modifier
+            containerColor = scaffoldContainerColor
+        ) { innerPadding ->
+            // persistent BottomSheetScaffold so the mini-player peek is visible and main content stays interactive
+            val bottomSheetScaffoldState = androidx.compose.material.rememberBottomSheetScaffoldState(
+                bottomSheetState = androidx.compose.material.rememberBottomSheetState(initialValue = BottomSheetValue.Collapsed)
+            )
+            val bsScope = rememberCoroutineScope()
+
+            BottomSheetScaffold(
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                scaffoldState = bottomSheetScaffoldState,
+                sheetPeekHeight = sheetPeekHeight,
+                sheetShape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+                sheetElevation = 8.dp,
+                sheetBackgroundColor = Color.Transparent,
+                backgroundColor = Color.Transparent,
+                sheetContent = {
+                    SongsSheetContent(
+                        songs = activeSongs,
+                        currentIndex = currentIndex,
+                        backgroundColor = backgroundColor,
+                        onSelect = { idx ->
+                            // set playlist and start playing
+                            viewModel.setPlaylist(ctx, activeSongs, idx)
+                            viewModel.play(ctx)
+                            bsScope.launch { bottomSheetScaffoldState.bottomSheetState.collapse() }
+                        },
+                        onOpenSheet = {
+                            // expand the BottomSheetScaffold when a tab is clicked inside the sheet header
+                            bsScope.launch { try { bottomSheetScaffoldState.bottomSheetState.expand() } catch (_: Throwable) {} }
+                        },
+                        showIndicator = (bottomSheetScaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded),
+                        isExpanded = (bottomSheetScaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded)
+                    )
+                },
+                content = { paddingValues ->
+                    // main content — remains interactive while sheet is collapsed
+
+                    val contentModifier = Modifier
                         .fillMaxWidth()
                         .fillMaxHeight()
-                        .background(backgroundBrush)
-                        .padding(paddingValues),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (song != null) {
-                        AnimatedContent(
-                            targetState = song.id,
-                            transitionSpec = {
-                                (fadeIn(animationSpec = tween(500)) + scaleIn(
-                                    initialScale = 0.95f,
-                                    animationSpec = tween(500)
-                                )) togetherWith
-                                        (fadeOut(animationSpec = tween(300)) + scaleOut(
-                                            targetScale = 1.05f,
-                                            animationSpec = tween(300)
-                                        ))
-                            },
-                            label = "Song transition"
-                        ) { songId ->
-                            val currentSong = activeSongs.find { it.id == songId } ?: songs.find { it.id == songId }
-                            if (currentSong != null) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    AlbumImage(song = currentSong, onDominantColor = { c: Color -> targetBackgroundColor = c })
-                                    Column(modifier = Modifier
-                                        .size(340.dp, 130.dp)
-                                        .padding(10.dp).align(Alignment.CenterHorizontally),) {
-                                        Text(
-                                            text = currentSong.title,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 22.sp,
-                                            textAlign = TextAlign.Center,
-                                            maxLines = 1,
-                                            modifier = Modifier
-                                                .width(340.dp)
-                                                .padding(8.dp)
-                                                .basicMarquee(
-                                                    iterations = Int.MAX_VALUE,
-                                                    initialDelayMillis = 2000,
-                                                    spacing = MarqueeSpacing(50.dp)
-                                                )
+                        .then(if (useAuroraBackground) Modifier else Modifier.background(backgroundBrush))
+                        .padding(paddingValues)
+
+                    Column(
+                        modifier = contentModifier,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (song != null) {
+                            AnimatedContent(
+                                targetState = song.id,
+                                transitionSpec = {
+                                    (fadeIn(animationSpec = tween(500)) + scaleIn(
+                                        initialScale = 0.95f,
+                                        animationSpec = tween(500)
+                                    )) togetherWith
+                                            (fadeOut(animationSpec = tween(300)) + scaleOut(
+                                                targetScale = 1.05f,
+                                                animationSpec = tween(300)
+                                            ))
+                                },
+                                label = "Song transition"
+                            ) { songId ->
+                                val currentSong = activeSongs.find { it.id == songId } ?: songs.find { it.id == songId }
+                                if (currentSong != null) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        AlbumImage(
+                                            song = currentSong,
+                                            onDominantColor = { c: Color -> targetBackgroundColor = c },
+                                            onBitmap = { bmp -> currentAlbumBitmap = bmp }
                                         )
-                                        val artistLineCount = currentSong.artist.split("\n").size
-                                        Text(
-                                            text = currentSong.artist,
-                                            color = Color.White,
-                                            textAlign = TextAlign.Center,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = if (artistLineCount > 3) Int.MAX_VALUE else 3,
-                                            modifier = Modifier
-                                                .padding(10.dp)
-                                                .width(340.dp)
-                                                .then(
-                                                    if (artistLineCount > 3) {
-                                                        Modifier.basicMarquee(
-                                                            iterations = Int.MAX_VALUE,
-                                                            initialDelayMillis = 2000,
-                                                            spacing = MarqueeSpacing(50.dp)
-                                                        )
-                                                    } else {
-                                                        Modifier
-                                                    }
-                                                )
-                                        )
+                                        Column(modifier = Modifier
+                                            .size(340.dp, 130.dp)
+                                            .padding(10.dp).align(Alignment.CenterHorizontally),) {
+                                            Text(
+                                                text = currentSong.title,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 22.sp,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 1,
+                                                modifier = Modifier
+                                                    .width(340.dp)
+                                                    .padding(8.dp)
+                                                    .basicMarquee(
+                                                        iterations = Int.MAX_VALUE,
+                                                        initialDelayMillis = 2000,
+                                                        spacing = MarqueeSpacing(50.dp)
+                                                    )
+                                            )
+                                            val artistLineCount = currentSong.artist.split("\n").size
+                                            Text(
+                                                text = currentSong.artist,
+                                                color = Color.White,
+                                                textAlign = TextAlign.Center,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = if (artistLineCount > 3) Int.MAX_VALUE else 3,
+                                                modifier = Modifier
+                                                    .padding(10.dp)
+                                                    .width(340.dp)
+                                                    .then(
+                                                        if (artistLineCount > 3) {
+                                                            Modifier.basicMarquee(
+                                                                iterations = Int.MAX_VALUE,
+                                                                initialDelayMillis = 2000,
+                                                                spacing = MarqueeSpacing(50.dp)
+                                                            )
+                                                        } else {
+                                                            Modifier
+                                                        }
+                                                    )
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        }
 
 
-                        val effectiveDuration = if (durationMs > 0L) durationMs.toFloat() else song.duration.toFloat()
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Slider(
-                                value = sliderPosition.coerceIn(0f, effectiveDuration),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color(0xFFFFA500),
-                                    activeTrackColor = Color(0xFFFFA500),
-                                    inactiveTrackColor = Color(0xFFFFDAB9)
-                                ),
-                                onValueChange = { isUserSeeking = true; sliderPosition = it },
-                                onValueChangeFinished = {
-                                    isUserSeeking = false; viewModel.seekTo(
-                                    ctx,
-                                    sliderPosition.toInt()
+                            val effectiveDuration = if (durationMs > 0L) durationMs.toFloat() else song.duration.toFloat()
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Slider(
+                                    value = sliderPosition.coerceIn(0f, effectiveDuration),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFFFFA500),
+                                        activeTrackColor = Color(0xFFFFA500),
+                                        inactiveTrackColor = Color(0xFFFFDAB9)
+                                    ),
+                                    onValueChange = { isUserSeeking = true; sliderPosition = it },
+                                    onValueChangeFinished = {
+                                        isUserSeeking = false; viewModel.seekTo(
+                                        ctx,
+                                        sliderPosition.toInt()
+                                    )
+                                    },
+                                    valueRange = 0f..effectiveDuration,
+                                    modifier = Modifier.width(300.dp)
                                 )
-                                },
-                                valueRange = 0f..effectiveDuration,
-                                modifier = Modifier.width(300.dp)
-                            )
 
-                            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 50.dp)) {
-                                Text(
-                                    text = Util.converter(sliderPosition.toDouble()),
-                                    color = Color.White,
-                                    textAlign = TextAlign.Start,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = Util.converter(effectiveDuration.toDouble()),
-                                    color = Color.White,
-                                    textAlign = TextAlign.End,
-                                    modifier = Modifier.weight(1f)
-                                )
+                                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 50.dp)) {
+                                    Text(
+                                        text = Util.converter(sliderPosition.toDouble()),
+                                        color = Color.White,
+                                        textAlign = TextAlign.Start,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = Util.converter(effectiveDuration.toDouble()),
+                                        color = Color.White,
+                                        textAlign = TextAlign.End,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
                             }
+
+                            MusicControls(isPlaying = isPlaying, replayEnabled = replayEnabled, shuffleEnabled = shuffleEnabled, onPlayPause = { viewModel.togglePlayPause(ctx) }, onNext = { viewModel.next(ctx) }, onPrev = { viewModel.previous(ctx) }, onReplayToggle = { viewModel.toggleReplay() }, onShuffleToggle = { enabled -> viewModel.toggleShuffle(enabled) })
                         }
 
-                        MusicControls(isPlaying = isPlaying, replayEnabled = replayEnabled, shuffleEnabled = shuffleEnabled, onPlayPause = { viewModel.togglePlayPause(ctx) }, onNext = { viewModel.next(ctx) }, onPrev = { viewModel.previous(ctx) }, onReplayToggle = { viewModel.toggleReplay() }, onShuffleToggle = { enabled -> viewModel.toggleShuffle(enabled) })
+                        // small tappable area to expand the sheet
+                        //Box(modifier = Modifier.fillMaxWidth().height(32.dp).clickable { bsScope.launch { bottomSheetScaffoldState.bottomSheetState.expand() } })
                     }
-
-                    // small tappable area to expand the sheet
-                    //Box(modifier = Modifier.fillMaxWidth().height(32.dp).clickable { bsScope.launch { bottomSheetScaffoldState.bottomSheetState.expand() } })
                 }
-            }
-        )
+            )
+        }
     }
 
     // Render AddToPlaylistDialog when requested
@@ -605,7 +643,8 @@ fun AlbumImage(
     song: Song,
     modifier: Modifier = Modifier,
     onDominantColor: (Color) -> Unit = {},
-    onAccentColor: (Color) -> Unit = {}
+    onAccentColor: (Color) -> Unit = {},
+    onBitmap: (android.graphics.Bitmap?) -> Unit = {}
 ) {
     val context = LocalContext.current
     var displayBitmap by remember(song.path) { mutableStateOf<ImageBitmap?>(null) }
@@ -664,6 +703,8 @@ fun AlbumImage(
                 }
                 onDominantColor(Color(dominantInt))
                 onAccentColor(Color(accentInt))
+                // forward the loaded android Bitmap to caller for background sampling
+                try { onBitmap(bitmap.asAndroidBitmap()) } catch (_: Throwable) { onBitmap(null) }
             }
         } else {
             Image(
@@ -671,6 +712,8 @@ fun AlbumImage(
                 contentDescription = "Album Art",
                 modifier = imageModifier
             )
+            // no bitmap available — inform caller
+            LaunchedEffect(Unit) { onBitmap(null) }
         }
     }
 }
@@ -1108,8 +1151,7 @@ fun SongsModalBottomSheetPreview_RelatedSelected() {
             initialSelectedTab = 2 // Related
         )
     }
+
 }
-
-
 
 

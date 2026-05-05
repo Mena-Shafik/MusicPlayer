@@ -3,6 +3,9 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("kotlin-parcelize")
+    id("org.jetbrains.kotlin.kapt")
+    // KSP plugin removed (was causing issues). If you need KSP later, re-add the plugin here and a
+    // matching version in `settings.gradle.kts` or a pluginManagement block.
 }
 
 android {
@@ -15,8 +18,12 @@ android {
         applicationId = "com.example.musicplayer"
         minSdk = 36
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // Use centralized version properties (defined in gradle.properties)
+        versionCode = (project.findProperty("VERSION_CODE") as String).toInt()
+        versionName = (project.findProperty("VERSION_NAME") as String)
+        // Expose version info via BuildConfig for compile-time access
+        buildConfigField("String", "APP_VERSION_NAME", "\"${project.findProperty("VERSION_NAME") as String}\"")
+        buildConfigField("int", "APP_VERSION_CODE", (project.findProperty("VERSION_CODE") as String))
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -40,6 +47,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // Enable generation of BuildConfig fields (we use buildConfigField to expose app version)
+        buildConfig = true
     }
 }
 
@@ -103,4 +112,11 @@ dependencies {
 
     // DataStore for persisting preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // Room (DB) - runtime + ktx; Room's compiler was previously configured with KSP
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    // Room compiler: use KAPT to generate the Room implementation (AppDatabase_Impl)
+    kapt("androidx.room:room-compiler:2.8.4")
+    testImplementation("androidx.room:room-testing:2.8.4")
 }

@@ -15,6 +15,7 @@ object PreferencesManager {
     private val ARTIST_VIEW_KEY = booleanPreferencesKey("artist_view_enabled")
     private val USE_DEFAULT_RADIO_LIST_KEY = booleanPreferencesKey("use_default_radio_list")
     private val ERA_VIEW_KEY = booleanPreferencesKey("era_view_enabled")
+    private val USE_AURORA_BG_KEY = booleanPreferencesKey("use_aurora_background")
 
     fun getAlbumViewFlow(context: Context): Flow<Boolean> =
         context.dataStore.data.map { preferences ->
@@ -68,6 +69,17 @@ object PreferencesManager {
     suspend fun setUseDefaultRadioList(context: Context, useDefault: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[USE_DEFAULT_RADIO_LIST_KEY] = useDefault
+        }
+    }
+
+    fun getUseAuroraBackgroundFlow(context: Context): Flow<Boolean> =
+        context.dataStore.data.map { preferences ->
+            preferences[USE_AURORA_BG_KEY] ?: false
+        }
+
+    suspend fun setUseAuroraBackground(context: Context, useAurora: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[USE_AURORA_BG_KEY] = useAurora
         }
     }
 }

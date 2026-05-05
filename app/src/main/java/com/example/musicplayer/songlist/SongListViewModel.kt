@@ -311,6 +311,19 @@ class SongListViewModel(
         }
     }
 
+    // --- Use Aurora background in music player ---
+    private val _useAuroraBackground = MutableStateFlow(false)
+    val useAuroraBackground: StateFlow<Boolean> = _useAuroraBackground
+
+    fun setUseAuroraBackground(useAurora: Boolean) {
+        _useAuroraBackground.value = useAurora
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setUseAuroraBackground(it, useAurora)
+            }
+        }
+    }
+
     /**
      * Get radio stations based on the useDefaultRadioList preference.
      * If true, returns JSON default stations.
@@ -357,6 +370,11 @@ class SongListViewModel(
             viewModelScope.launch {
                 PreferencesManager.getUseDefaultRadioListFlow(it).collect { savedUseDefault ->
                     _useDefaultRadioList.value = savedUseDefault
+                }
+            }
+            viewModelScope.launch {
+                PreferencesManager.getUseAuroraBackgroundFlow(it).collect { savedUseAurora ->
+                    _useAuroraBackground.value = savedUseAurora
                 }
             }
         }

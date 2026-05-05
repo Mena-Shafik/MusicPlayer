@@ -32,7 +32,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import com.example.musicplayer.BuildConfig
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.musicplayer.songlist.SongListViewModel
@@ -60,6 +61,7 @@ fun SettingsScreen(navController: NavHostController) {
     // Era view switch (show eras like 80s/90s/2000s)
     val isEraView by viewModel.isEraView.collectAsState(initial = false)
     val useDefaultRadioList by viewModel.useDefaultRadioList.collectAsState(initial = true)
+    val useAuroraBackground by viewModel.useAuroraBackground.collectAsState(initial = false)
 
     Scaffold(
         topBar = {
@@ -69,7 +71,7 @@ fun SettingsScreen(navController: NavHostController) {
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -127,6 +129,31 @@ fun SettingsScreen(navController: NavHostController) {
                     }
                 }
 
+                Card(modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "UI",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        SwitchCardRow(
+                            title = "Aurora background",
+                            checked = useAuroraBackground,
+                            onCheckedChange = { enabled -> viewModel.setUseAuroraBackground(enabled) }
+                        )
+                    }
+                }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
@@ -151,6 +178,31 @@ fun SettingsScreen(navController: NavHostController) {
                             onCheckedChange = { viewModel.setUseDefaultRadioList(it) }
                         )
                     }
+                }
+            }
+
+            // App / OS version shown at the bottom of the settings screen
+            val osVersion = "Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})"
+            val appVersion = BuildConfig.APP_VERSION_NAME
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(8.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = osVersion,
+                        color = Color.White.copy(alpha = 0.6f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = "Version $appVersion",
+                        color = Color.White.copy(alpha = 0.6f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }
