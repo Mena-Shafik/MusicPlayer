@@ -6,6 +6,12 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.LifecycleEventObserver
+import android.os.PowerManager
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
@@ -36,25 +42,54 @@ import kotlin.math.*
 fun AuroraBackground(
     modifier: Modifier = Modifier,
     albumCoverBitmap: Bitmap? = null,
-    speed: Float = 0.5f,
-    intensity: Float = 0.9f
+    speed: Float = 0.8f,
+    intensity: Float = 0.95f,
 ) {
     // Use a continuously increasing time value (0..1) updated each frame so the
     // animation never "jumps" when the underlying animation restarts.
     // We compute a period in seconds similar to the previous duration (20000ms / speed).
     val tState = remember { mutableStateOf(0f) }
-    LaunchedEffect(speed) {
+
+    // Lifecycle & power mode awareness to reduce battery usage when the screen is off
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
+    val isPowerSave = remember { mutableStateOf(false) }
+    val isActive = remember { mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) }
+
+    DisposableEffect(lifecycleOwner) {
+        // observe lifecycle to pause animation when not visible
+        val observer = LifecycleEventObserver { _, _ ->
+            isActive.value = lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        // initial power save state
+        try {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            isPowerSave.value = pm.isPowerSaveMode
+        } catch (_: Throwable) {}
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    LaunchedEffect(speed, isActive.value, isPowerSave.value) {
         // compute a continuous cycle count (elapsed / period). We DO NOT modulo it so the
         // underlying sin/cos calls remain continuous across cycle boundaries.
-        val periodSec = (20f / max(0.1f, speed)) // 20s / speed -> matches previous 20000ms logic
+        val periodSec = (12f / max(0.1f, speed)) // base 12s / speed -> faster default cycle
         val startNanos = System.nanoTime()
         while (true) {
-            val now = System.nanoTime()
-            val elapsedSec = (now - startNanos) / 1_000_000_000f
-            // continuous cycles (may exceed 1.0) — sin/cos remain continuous, no abrupt wrap
-            tState.value = (elapsedSec / periodSec)
-            // aim for ~60fps update; use a small delay to yield
-            kotlinx.coroutines.delay(16L)
+            if (isActive.value && !isPowerSave.value) {
+                val now = System.nanoTime()
+                val elapsedSec = (now - startNanos) / 1_000_000_000f
+                // continuous cycles (may exceed 1.0) — sin/cos remain continuous, no abrupt wrap
+                tState.value = (elapsedSec / periodSec)
+                // aim for ~60fps update; use a small delay to yield
+                kotlinx.coroutines.delay(16L)
+            } else {
+                // when not active or power saver on, slow down updates to save CPU/GPU
+                kotlinx.coroutines.delay(1000L)
+            }
         }
     }
     val t by remember { tState }

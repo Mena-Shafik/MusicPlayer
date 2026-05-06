@@ -113,6 +113,9 @@ dependencies {
     // DataStore for persisting preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
+    // Lifecycle compose helpers (LocalLifecycleOwner, etc.)
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")
+
     // Room (DB) - runtime + ktx; Room's compiler was previously configured with KSP
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
