@@ -28,6 +28,11 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -157,8 +162,18 @@ fun SearchBar(
         //elevation= AppBarDefaults.
         color = Color.Transparent
     ) {
+        // Request focus and show keyboard when the SearchBar enters composition.
+        val focusRequester = remember { FocusRequester() }
+        val keyboardController = LocalSoftwareKeyboardController.current
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+
         TextField(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester),
             value = text,
             onValueChange = { onTextChange(it) },
             placeholder = {
@@ -188,9 +203,12 @@ fun SearchBar(
             trailingIcon = {
                 IconButton(
                     onClick = {
+                        val keyboard = keyboardController
                         if (text.isNotEmpty()) {
                             onTextChange("")
                         } else {
+                            // hide keyboard before closing the search bar
+                            keyboard?.hide()
                             onCloseClicked()
                         }
                     }) {

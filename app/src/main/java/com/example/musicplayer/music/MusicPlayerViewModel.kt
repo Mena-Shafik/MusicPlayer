@@ -36,6 +36,8 @@ class MusicPlayerViewModel : ViewModel() {
         PlayerIntentBuilder.startPrepare(appCtx, startIndex, true)
     }
 
+    // ...existing code...
+
     fun play(context: Context) {
         val appCtx = context.applicationContext
         Log.d(TAG, "play requested using appCtx=$appCtx")

@@ -89,6 +89,17 @@ fun ListSongsScreen(
         try { onToggleSearch() } catch (_: Throwable) {}
         searchVisible = !searchVisible
     }
+    // We'll use the NavController's savedStateHandle to persist a "pendingClearSearch"
+    // flag across navigation (the ListSongsScreen may be recomposed when returning).
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    LaunchedEffect(savedStateHandle) {
+        val pending = savedStateHandle?.get<Boolean>("pendingClearSearch") ?: false
+        if (pending) {
+            try { viewModel.setQuery("") } catch (_: Throwable) {}
+            if (searchVisible) { toggleSearch() }
+            savedStateHandle?.set("pendingClearSearch", false)
+        }
+    }
     // album view state comes from viewModel
 
     // Use persistent radio selection stored in the SongListViewModel so selection
@@ -135,6 +146,7 @@ fun ListSongsScreen(
 
     // playback state used to decide whether to show the mini player
     val isPlaying by PlayerStateManager.isPlaying.collectAsState()
+    val allSongs by viewModel.songs.collectAsState()
     val positionMs by PlayerStateManager.positionMs.collectAsState()
     // show mini when we have a playlist and playback has actually started (either playing, or paused with a non-zero position)
     val showMini = (isPlaying || positionMs > 0L)
@@ -219,19 +231,36 @@ fun ListSongsScreen(
                             EraSongList(
                                 songs = songs,
                                 modifier = Modifier.fillMaxSize(),
-                                onSongClick = { song ->
-                                    val index = songs.indexOfFirst { it.id == song.id }
-                                    if (index >= 0) {
-                                        playerVm.setPlaylist(context, songs, index)
-                                        PlayerStateManager.setCurrentIndex(index)
-                                        playerVm.play(context)
-                                        navController.navigate(
-                                            NavRoutes.MusicPlayer.createRoute(
-                                                song.id
+                                    onSongClick = { song ->
+                                        val index = songs.indexOfFirst { it.id == song.id }
+                                        if (index >= 0) {
+                                            // If user is currently performing a search, avoid replacing the global
+                                            // playlist with the filtered search results. Instead play only the
+                                            // selected song so a "search playlist" is not created.
+                                            if (query.isBlank()) {
+                                                playerVm.setPlaylist(context, songs, index)
+                                                PlayerStateManager.setCurrentIndex(index)
+                                                } else {
+                                                    val idxAll = allSongs.indexOfFirst { it.id == song.id }
+                                                    if (idxAll >= 0) {
+                                                        playerVm.setPlaylist(context, allSongs, idxAll)
+                                                        PlayerStateManager.setCurrentIndex(idxAll)
+                                                    } else {
+                                                        playerVm.setPlaylist(context, listOf(song), 0)
+                                                        PlayerStateManager.setCurrentIndex(0)
+                                                    }
+                                                }
+                                            playerVm.play(context)
+                                                    // Mark the home entry's savedState so the search will be
+                                                    // cleared when the user returns from the player.
+                                                    navController.currentBackStackEntry?.savedStateHandle?.set("pendingClearSearch", true)
+                                                    navController.navigate(
+                                                NavRoutes.MusicPlayer.createRoute(
+                                                    song.id
+                                                )
                                             )
-                                        )
+                                        }
                                     }
-                                }
                             )
                         }
                         isAlbumView -> {
@@ -243,9 +272,23 @@ fun ListSongsScreen(
                                     // Find index for playback selection
                                     val index = songs.indexOfFirst { it.id == song.id }
                                     if (index >= 0) {
-                                        playerVm.setPlaylist(context, songs, index)
-                                        PlayerStateManager.setCurrentIndex(index)
-                                        playerVm.play(context)
+                                        if (query.isBlank()) {
+                                            playerVm.setPlaylist(context, songs, index)
+                                            PlayerStateManager.setCurrentIndex(index)
+                                            playerVm.play(context)
+                                        } else {
+                                            val idxAll = allSongs.indexOfFirst { it.id == song.id }
+                                            if (idxAll >= 0) {
+                                                playerVm.setPlaylist(context, allSongs, idxAll)
+                                                PlayerStateManager.setCurrentIndex(idxAll)
+                                                playerVm.play(context)
+                                            } else {
+                                                playerVm.setPlaylist(context, listOf(song), 0)
+                                                PlayerStateManager.setCurrentIndex(0)
+                                                playerVm.play(context)
+                                            }
+                                        }
+                                        navController.currentBackStackEntry?.savedStateHandle?.set("pendingClearSearch", true)
                                         navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
                                     }
                                 }
@@ -260,9 +303,23 @@ fun ListSongsScreen(
                                     // Find index for playback selection
                                     val index = songs.indexOfFirst { it.id == song.id }
                                     if (index >= 0) {
-                                        playerVm.setPlaylist(context, songs, index)
-                                        PlayerStateManager.setCurrentIndex(index)
-                                        playerVm.play(context)
+                                        if (query.isBlank()) {
+                                            playerVm.setPlaylist(context, songs, index)
+                                            PlayerStateManager.setCurrentIndex(index)
+                                            playerVm.play(context)
+                                        } else {
+                                            val idxAll = allSongs.indexOfFirst { it.id == song.id }
+                                            if (idxAll >= 0) {
+                                                playerVm.setPlaylist(context, allSongs, idxAll)
+                                                PlayerStateManager.setCurrentIndex(idxAll)
+                                                playerVm.play(context)
+                                            } else {
+                                                playerVm.setPlaylist(context, listOf(song), 0)
+                                                PlayerStateManager.setCurrentIndex(0)
+                                                playerVm.play(context)
+                                            }
+                                        }
+                                        navController.currentBackStackEntry?.savedStateHandle?.set("pendingClearSearch", true)
                                         navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
                                     }
                                 }
@@ -275,9 +332,24 @@ fun ListSongsScreen(
                                 onSongClicked = { index ->
                                     val selected = songs.getOrNull(index)
                                     if (selected != null) {
-                                        playerVm.setPlaylist(context, songs, index)
-                                        PlayerStateManager.setCurrentIndex(index)
+                                        if (query.isBlank()) {
+                                            playerVm.setPlaylist(context, songs, index)
+                                            PlayerStateManager.setCurrentIndex(index)
+                                        } else {
+                                            // When user is searching, prefer to play from the full/global library
+                                            // so Up Next and Related continue to operate on the global list.
+                                            val idxAll = allSongs.indexOfFirst { it.id == selected.id }
+                                            if (idxAll >= 0) {
+                                                playerVm.setPlaylist(context, allSongs, idxAll)
+                                                PlayerStateManager.setCurrentIndex(idxAll)
+                                            } else {
+                                                // Fallback to single-item playlist if song not found in global list
+                                                playerVm.setPlaylist(context, listOf(selected), 0)
+                                                PlayerStateManager.setCurrentIndex(0)
+                                            }
+                                        }
                                         playerVm.play(context)
+                                        navController.currentBackStackEntry?.savedStateHandle?.set("pendingClearSearch", true)
                                         navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
                                     }
                                 },
@@ -525,7 +597,7 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
 @Composable
 fun SongListPreview() {
     MaterialTheme {
-        val sampleSongs: List<com.example.musicplayer.model.Song> = listOf(
+        val sampleSongs: List<Song> = listOf(
             // Use outer Song constructor: (id, track, title, artist, duration, path, album?, year)
             Song(1, null, "Preview Song", "Preview Artist", 180000.0, "", null, 2000),
             Song(2, null, "Another Track", "Artist Two", 200000.0, "", null, 1999),

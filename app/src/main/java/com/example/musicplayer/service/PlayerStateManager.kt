@@ -29,6 +29,8 @@ object PlayerStateManager {
     private val _isPrepared = MutableStateFlow(false)
     val isPrepared: StateFlow<Boolean> = _isPrepared
 
+    // ...existing code...
+
     /**
      * Mark player as prepared and set a safe duration value.
      * Call this from MediaPlayer.OnPreparedListener with the known duration (mp.duration).
@@ -103,6 +105,7 @@ object PlayerStateManager {
     }
 
     fun setPlaylist(songs: List<Song>, startIndex: Int): Boolean {
+        // ...existing code...
         // Avoid redundant resets which can restart/prepare the service and cause unexpected switches.
         val current = _playlist.value
         // Consider playlists identical if they have same length and matching song IDs in order
@@ -133,6 +136,8 @@ object PlayerStateManager {
         _isPrepared.value = false
         return true
     }
+
+    // ...existing code...
 
     fun setCurrentIndex(idx: Int) {
         safeLog("setCurrentIndex -> $idx")
@@ -191,6 +196,8 @@ object PlayerStateManager {
         val songs = _playlist.value
         if (songs.isEmpty()) return _currentIndex.value
 
+        // ...existing code...
+
         return if (_shuffleEnabled.value) {
             if (shuffleQueue.isEmpty()) prepareShufflePool(excludeIndex = _currentIndex.value)
             val next = shuffleQueue.firstOrNull() ?: _currentIndex.value
@@ -208,6 +215,8 @@ object PlayerStateManager {
     fun prevIndex(): Int {
         val songs = _playlist.value
         if (songs.isEmpty()) return _currentIndex.value
+
+        // ...existing code...
 
         return if (_shuffleEnabled.value) {
             if (playedHistory.isNotEmpty()) {
