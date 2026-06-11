@@ -15,8 +15,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,7 +33,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -51,6 +58,7 @@ fun MainAppBar(
     onQueryChange: (String) -> Unit,
     onSearchedClicked: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenHistory: (() -> Unit)? = null,
     onOpenPlaylists: () -> Unit = {},
     title: String = "Songs",
     searchEnabled: Boolean = true,
@@ -99,6 +107,7 @@ fun MainAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         } else {
+            var menuExpanded by remember { mutableStateOf(false) }
             TopAppBar(
                 title = {
                     Text(
@@ -126,11 +135,44 @@ fun MainAppBar(
                             )
                         }
                     }
-                    IconButton(onClick = onOpenSettings) {
+                    IconButton(onClick = { menuExpanded = true }) {
                         Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Open settings",
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "Open menu",
                             tint = Color.White
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        if (onOpenHistory != null) {
+                            DropdownMenuItem(
+                                text = { Text("History") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.History,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onOpenHistory()
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Settings") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Settings,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onOpenSettings()
+                            }
                         )
                     }
                 },

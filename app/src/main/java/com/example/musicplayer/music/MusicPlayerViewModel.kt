@@ -3,10 +3,14 @@ package com.example.musicplayer.music
 import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.musicplayer.history.HistoryRepository
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.service.PlayerIntentBuilder
 import com.example.musicplayer.service.PlayerStateManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 class MusicPlayerViewModel : ViewModel() {
     private val TAG = "MusicPlayerVM"
@@ -18,6 +22,8 @@ class MusicPlayerViewModel : ViewModel() {
     val durationMs: StateFlow<Long> = PlayerStateManager.durationMs
     val replayEnabled: StateFlow<Boolean> = PlayerStateManager.replayEnabled
     val shuffleEnabled: StateFlow<Boolean> = PlayerStateManager.shuffleEnabled
+
+    private var historyRepository: HistoryRepository? = null
 
     fun setPlaylist(context: Context, songs: List<Song>, startIndex: Int = 0) {
         Log.d(TAG, "setPlaylist startIndex=$startIndex size=${songs.size}")
@@ -34,6 +40,21 @@ class MusicPlayerViewModel : ViewModel() {
         // Explicitly ask the service to prepare (and start) the requested index. This is
         // more reliable than relying on startPlay coalescing behavior.
         PlayerIntentBuilder.startPrepare(appCtx, startIndex, true)
+
+        // Track the song in history
+        val song = songs.getOrNull(startIndex)
+        if (song != null) {
+            if (historyRepository == null) {
+                historyRepository = HistoryRepository(appCtx)
+            }
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    historyRepository?.addToHistory(song)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error adding to history: ${e.message}")
+                }
+            }
+        }
     }
 
     // ...existing code...

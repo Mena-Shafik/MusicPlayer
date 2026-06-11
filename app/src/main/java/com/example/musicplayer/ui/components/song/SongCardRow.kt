@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -61,13 +61,14 @@ fun SongCardRow(
 
     LaunchedEffect(song.path) {
         imageBitmap = null  // reset when song changes
-        if (song.path.isNotBlank()) {
+        val hasValidSongFilePath = song.path.isNotBlank() && song.path != "-"
+        if (hasValidSongFilePath) {
             imageBitmap = withContext(Dispatchers.IO) {
                 try {
-                    // First try to get embedded album art
+                    // First try to get embedded album art from the song file.
                     var bitmap = Util.getAlbumArt(context, song.path)
 
-                    // If no embedded art, try to fetch from web
+                    // Only use web lookup as a fallback when the song file has no embedded art.
                     if (bitmap == null) {
                         Log.d("SongCardRow", "No embedded artwork for '${song.title}', fetching from web...")
                         val webUrl = Util.getAlbumArtWebUrl(song)
@@ -154,8 +155,8 @@ fun SongCardRow(
         // Menu button for Add to Playlist
         IconButton(onClick = { menuExpanded = true }) {
             Icon(
-                imageVector = Icons.Filled.MoreVert,
-                contentDescription = "More options",
+                imageVector = Icons.Filled.Add,
+                contentDescription = "Open menu",
                 tint = Color.White
             )
         }

@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -16,6 +17,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,8 +42,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.BottomSheetValue
 import androidx.compose.material.BottomSheetScaffold
 import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.Slider
-import androidx.compose.material.SliderDefaults
+// Slider replaced by custom InteractiveSeekBar
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,6 +56,7 @@ import androidx.compose.material.TabRowDefaults
 import androidx.compose.runtime.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectDragGestures
+// interaction imports no longer needed for Slider
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.TabRowDefaults.tabIndicatorOffset
@@ -386,35 +388,32 @@ fun MusicPlayerScreen(
 
                             val effectiveDuration = if (durationMs > 0L) durationMs.toFloat() else song.duration.toFloat()
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Slider(
+                                InteractiveSeekBar(
                                     value = sliderPosition.coerceIn(0f, effectiveDuration),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = Color(0xFFFFA500),
-                                        activeTrackColor = Color(0xFFFFA500),
-                                        inactiveTrackColor = Color(0xFFFFDAB9)
-                                    ),
+                                    valueRange = 0f..effectiveDuration,
+                                    modifier = Modifier.width(340.dp),
+                                    activeColor = Color(0xFFFFA500),
+                                    inactiveColor = Color(0xFFFFDAB9),
                                     onValueChange = { isUserSeeking = true; sliderPosition = it },
                                     onValueChangeFinished = {
-                                        isUserSeeking = false; viewModel.seekTo(
-                                        ctx,
-                                        sliderPosition.toInt()
-                                    )
-                                    },
-                                    valueRange = 0f..effectiveDuration,
-                                    modifier = Modifier.width(300.dp)
+                                        isUserSeeking = false
+                                        viewModel.seekTo(ctx, sliderPosition.toInt())
+                                    }
                                 )
 
-                                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 50.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp)) {
                                     Text(
                                         text = Util.converter(sliderPosition.toDouble()),
                                         color = Color.White,
                                         textAlign = TextAlign.Start,
+                                        fontSize = 12.sp,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text(
                                         text = Util.converter(effectiveDuration.toDouble()),
                                         color = Color.White,
                                         textAlign = TextAlign.End,
+                                        fontSize = 12.sp,
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -714,6 +713,84 @@ fun AlbumImage(
             )
             // no bitmap available — inform caller
             LaunchedEffect(Unit) { onBitmap(null) }
+        }
+    }
+}
+
+@Composable
+fun InteractiveSeekBar(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    modifier: Modifier = Modifier,
+    activeColor: Color = Color(0xFFFFA500),
+    inactiveColor: Color = Color(0xFFFFDAB9),
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit
+) {
+    // Press state for showing thumb and thickening the track
+    var pressed by remember { mutableStateOf(false) }
+    val thumbRadius by animateFloatAsState(targetValue = if (pressed) 8f else 0f, label = "thumbRadius")
+    val trackHeightDp by animateFloatAsState(targetValue = if (pressed) 6f else 2f, label = "trackHeight")
+
+    Box(modifier = modifier
+        .height(24.dp)
+        .pointerInput(Unit) {
+            detectDragGestures(
+                onDragStart = { offset ->
+                    pressed = true
+                    // update value immediately on press
+                    val w = size.width.toFloat()
+                    val x = offset.x.coerceIn(0f, w)
+                    val frac = if (w > 0f) x / w else 0f
+                    val newValue = (valueRange.start + (valueRange.endInclusive - valueRange.start) * frac)
+                    onValueChange(newValue)
+                },
+                onDrag = { change, dragAmount ->
+                    change.consume()
+                    val x = change.position.x.coerceIn(0f, size.width.toFloat())
+                    val frac = if (size.width > 0f) x / size.width else 0f
+                    val newValue = (valueRange.start + (valueRange.endInclusive - valueRange.start) * frac)
+                    onValueChange(newValue)
+                },
+                onDragEnd = {
+                    pressed = false
+                    onValueChangeFinished()
+                },
+                onDragCancel = {
+                    pressed = false
+                    onValueChangeFinished()
+                }
+            )
+        }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val trackHeightPx = trackHeightDp.dp.toPx().coerceAtLeast(1f)
+            // draw inactive track
+            drawRoundRect(
+                color = inactiveColor,
+                topLeft = androidx.compose.ui.geometry.Offset(0f, (h - trackHeightPx) / 2f),
+                size = androidx.compose.ui.geometry.Size(w, trackHeightPx),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
+            )
+
+            // draw active track
+            val frac = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+            val activeW = w * frac
+            drawRoundRect(
+                color = activeColor,
+                topLeft = androidx.compose.ui.geometry.Offset(0f, (h - trackHeightPx) / 2f),
+                size = androidx.compose.ui.geometry.Size(activeW, trackHeightPx),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
+            )
+
+            // draw thumb only when pressed (thumbRadius > 0)
+            if (thumbRadius > 0f) {
+                val cx = activeW
+                val cy = h / 2f
+                drawCircle(color = activeColor, radius = thumbRadius, center = androidx.compose.ui.geometry.Offset(cx, cy))
+            }
         }
     }
 }
@@ -1025,7 +1102,7 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
 
 
 @Preview(showBackground = true, showSystemUi = true, name = "MusicScreen (full) Preview", backgroundColor = 0xFF000000,
-    device = "id:pixel_5"
+    device = "id:pixel_6"
 )
 @Composable
 fun MusicPlayerScreenFullPreview() {
@@ -1049,7 +1126,7 @@ fun MusicPlayerScreenFullPreview() {
 
 
 @Preview(showBackground = true, showSystemUi = true, name = "SongsModalBottomSheet - Collapsed", backgroundColor = 0xFF000000,
-    device = "id:pixel_5"
+    device = "id:pixel_6"
 )
 @Composable
 fun SongsModalBottomSheetPreview_Collapsed() {
@@ -1073,7 +1150,7 @@ fun SongsModalBottomSheetPreview_Collapsed() {
 
 
 @Preview(showBackground = true, showSystemUi = true, name = "SongsModalBottomSheet - Expanded", backgroundColor = 0xFF000000,
-    device = "id:pixel_5"
+    device = "id:pixel_6"
 )
 @Composable
 fun SongsModalBottomSheetPreview_Expanded() {
@@ -1153,5 +1230,6 @@ fun SongsModalBottomSheetPreview_RelatedSelected() {
     }
 
 }
+
 
 

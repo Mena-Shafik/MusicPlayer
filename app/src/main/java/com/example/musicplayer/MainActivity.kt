@@ -35,6 +35,7 @@ import com.example.musicplayer.music.MusicPlayerScreen
 import com.example.musicplayer.radio.RadioPlayerScreen
 import com.example.musicplayer.songlist.ListSongsScreen
 import com.example.musicplayer.settings.SettingsScreen
+import com.example.musicplayer.history.HistoryScreen
 import com.example.musicplayer.ui.theme.MusicPlayerTheme
 import com.example.musicplayer.navigation.NavRoutes
 import com.example.musicplayer.playlist.PlaylistScreen
@@ -97,6 +98,20 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(NavRoutes.Settings.route) {
                         SettingsScreen(navController = navController)
+                    }
+
+                    composable(NavRoutes.History.route) {
+                        val context = LocalContext.current
+                        val songs: List<Song> = remember(context) { Util.getAllAudioFromDevice(context) }
+                        HistoryScreen(
+                            navController = navController,
+                            onSongClick = { song ->
+                                val index = songs.indexOfFirst { it.id == song.id }
+                                if (index >= 0) {
+                                    navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                                }
+                            }
+                        )
                     }
 
                     composable(NavRoutes.Playlists.route) {

@@ -187,6 +187,7 @@ fun ListSongsScreen(
                         query = query,
                         onQueryChange = { onQueryChange(it) },
                         onSearchedClicked = { onSearchedClicked(it) },
+                        onOpenHistory = { navController.navigate(NavRoutes.History.route) },
                         onOpenSettings = { navController.navigate(NavRoutes.Settings.route) },
                         onOpenPlaylists = { navController.navigate(NavRoutes.Playlists.route) }
                     )
