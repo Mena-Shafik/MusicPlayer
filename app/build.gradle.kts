@@ -11,13 +11,13 @@ plugins {
 android {
     namespace = "com.example.musicplayer"
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
 
     defaultConfig {
         applicationId = "com.example.musicplayer"
         minSdk = 36
-        targetSdk = 36
+        targetSdk = 37
         // Use centralized version properties (defined in gradle.properties)
         versionCode = (project.findProperty("VERSION_CODE") as String).toInt()
         versionName = (project.findProperty("VERSION_NAME") as String)

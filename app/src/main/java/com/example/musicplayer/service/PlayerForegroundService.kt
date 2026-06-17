@@ -4,6 +4,8 @@ import android.app.Service
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Binder
 import android.os.IBinder
 import android.util.Log
@@ -29,6 +31,11 @@ class PlayerForegroundService : Service() {
     private val binder = Binder()
 
     private var mediaPlayer: MediaPlayer? = null
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var isDucked: Boolean = false
+    // Tracks whether we should auto-resume playback when audio focus is regained
+    private var resumeOnFocusGain: Boolean = false
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var pollJob: Job? = null
     private var currentArtwork: Bitmap? = null
@@ -45,6 +52,7 @@ class PlayerForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        audioManager = getSystemService(AudioManager::class.java)
         // Ensure notification channel exists and promote to foreground immediately with a minimal notification.
         try {
             PlayerNotificationManager.ensureChannel(this)
@@ -88,6 +96,56 @@ class PlayerForegroundService : Service() {
             })
         }
         mediaSession?.isActive = true
+
+        // Setup audio focus request with a listener to handle transient losses (such as calls)
+        try {
+            val afAttr = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            val listener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+                when (focusChange) {
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        // regain full focus — restore volume and optionally resume
+                        isDucked = false
+                        try { mediaPlayer?.setVolume(1.0f, 1.0f) } catch (_: Throwable) {}
+                        // If we paused due to a transient focus loss (e.g., incoming call), resume now
+                        try {
+                            if (resumeOnFocusGain) {
+                                resumeOnFocusGain = false
+                                playInternal()
+                            }
+                        } catch (_: Throwable) {}
+                    }
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                        // Transient loss (e.g., incoming call) -> pause playback and remember to resume
+                        try {
+                            resumeOnFocusGain = PlayerStateManager.isPlaying.value
+                        } catch (_: Throwable) {
+                            resumeOnFocusGain = mediaPlayer?.isPlaying == true
+                        }
+                        try { pauseInternal() } catch (_: Throwable) {}
+                    }
+                    AudioManager.AUDIOFOCUS_LOSS -> {
+                        // Permanent loss -> pause and do not auto-resume
+                        resumeOnFocusGain = false
+                        try { pauseInternal() } catch (_: Throwable) {}
+                    }
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                        // Lower volume while ducked
+                        isDucked = true
+                        try { mediaPlayer?.setVolume(0.2f, 0.2f) } catch (_: Throwable) {}
+                    }
+                }
+            }
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(afAttr)
+                .setAcceptsDelayedFocusGain(false)
+                .setOnAudioFocusChangeListener(listener)
+                .build()
+        } catch (_: Throwable) {
+            // Audio focus may not be available on some platforms; continue without it
+        }
 
         // initialize player
         mediaPlayer = MediaPlayer().apply {
@@ -150,11 +208,21 @@ class PlayerForegroundService : Service() {
                         isPreparing = false
                         // Update repository current index now that the prepared item is actually starting
                         try { PlayerStateManager.setCurrentIndex(currentPreparedIndex) } catch (_: Throwable) {}
-                        mp.start()
-                        PlayerStateManager.setIsPlaying(true)
-                        updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                        startForegroundNotification()
-                        Log.d(TAG, "onPrepared: started playback for idx=$currentPreparedIndex path=$currentPreparedPath")
+                                try {
+                                    val got = requestAudioFocus()
+                                    if (got) {
+                                        mp.start()
+                                        PlayerStateManager.setIsPlaying(true)
+                                        updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                                        startForegroundNotification()
+                                        Log.d(TAG, "onPrepared: started playback for idx=$currentPreparedIndex path=$currentPreparedPath (audio focus granted)")
+                                    } else {
+                                        // audio focus denied; remain paused
+                                        PlayerStateManager.setIsPlaying(false)
+                                        updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                                        Log.d(TAG, "onPrepared: audio focus denied -> not starting playback for idx=$currentPreparedIndex")
+                                    }
+                                } catch (_: Throwable) {}
                     } else {
                         // Prepared an outdated item; reset and prepare the currently desired item instead.
                         Log.d(TAG, "onPrepared: prepared path=$currentPreparedPath does not match desired=$desiredPath -> switching to desired")
@@ -489,11 +557,20 @@ class PlayerForegroundService : Service() {
             if (PlayerStateManager.durationMs.value <= 0L || currentPreparedIndex != desiredIdx) {
                 prepareCurrent(startPlaying = true)
             } else {
-                mediaPlayer?.start()
-                PlayerStateManager.setIsPlaying(true)
-                updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-                startForegroundNotification()
-                Log.d(TAG, "playInternal: started playback idx=$desiredIdx")
+                try {
+                    val got = requestAudioFocus()
+                    if (got) {
+                        mediaPlayer?.start()
+                        PlayerStateManager.setIsPlaying(true)
+                        updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                        startForegroundNotification()
+                        Log.d(TAG, "playInternal: started playback idx=$desiredIdx (audio focus granted)")
+                    } else {
+                        PlayerStateManager.setIsPlaying(false)
+                        updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                        Log.d(TAG, "playInternal: audio focus denied -> not starting playback idx=$desiredIdx")
+                    }
+                } catch (_: Throwable) {}
             }
         } catch (_: Throwable) {
             Log.w(TAG, "playInternal error")
@@ -506,6 +583,8 @@ class PlayerForegroundService : Service() {
                 mediaPlayer?.pause()
                 PlayerStateManager.setIsPlaying(false)
                 updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                // Release audio focus when pausing
+                try { abandonAudioFocus() } catch (_: Throwable) {}
             }
             if (suppressNotification) {
                 // user dismissed notification; cancel it and do not re-post
@@ -567,6 +646,29 @@ class PlayerForegroundService : Service() {
             .build()
         mediaSession?.setMetadata(metadata)
         updateNotificationFromSession()
+    }
+
+    // Request audio focus before starting playback. Returns true if focus granted (or unavailable).
+    private fun requestAudioFocus(): Boolean {
+        try {
+            val res = audioFocusRequest?.let { audioManager?.requestAudioFocus(it) }
+                ?: AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED || res == AudioManager.AUDIOFOCUS_REQUEST_DELAYED
+        } catch (_: Throwable) {
+            // If audio focus APIs are unavailable, assume OK
+            return true
+        }
+    }
+
+    // Abandon audio focus when playback stops or service is destroyed
+    private fun abandonAudioFocus() {
+        try {
+            audioFocusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
+            // clear any pending resume flag when we explicitly abandon focus
+            resumeOnFocusGain = false
+        } catch (_: Throwable) {
+            // ignore
+        }
     }
 
     private fun startPolling() {
@@ -642,6 +744,7 @@ class PlayerForegroundService : Service() {
         super.onDestroy()
         pollJob?.cancel()
         try { mediaPlayer?.release() } catch (_: Throwable) {}
+        try { abandonAudioFocus() } catch (_: Throwable) {}
         // clear prepared-state in repo since the player is released
         PlayerStateManager.clearPrepared()
         try { currentArtwork?.recycle() } catch (_: Throwable) {}

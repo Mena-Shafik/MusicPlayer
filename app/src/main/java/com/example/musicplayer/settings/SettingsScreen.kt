@@ -181,35 +181,6 @@ fun SettingsScreen(navController: NavHostController) {
                         )
                     }
                 }
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { navController.navigate(com.example.musicplayer.navigation.NavRoutes.History.route) },
-                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "History",
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = "Go to History",
-                            tint = Color.White.copy(alpha = 0.7f)
-                        )
-                    }
-                }
             }
 
             // App / OS version shown at the bottom of the settings screen
