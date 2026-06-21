@@ -53,7 +53,8 @@ fun SongCardRow(
     modifier: Modifier = Modifier,
     onAddToPlaylist: (songId: Int) -> Unit = {},
     onRemoveFromPlaylist: (songId: Int) -> Unit = {},
-    isInPlaylist: Boolean = false
+    isInPlaylist: Boolean = false,
+    showDuration: Boolean = true
 ) {
     val context = LocalContext.current
     var imageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -140,16 +141,18 @@ fun SongCardRow(
             )
         }
 
-        Column(horizontalAlignment = Alignment.End) {
-            Text(
-                text = Util.converter(song.duration),
-                modifier = Modifier
-                    .width(80.dp)
-                    .padding(10.dp),
-                color = Color.White,
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.End
-            )
+        if (showDuration) {
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = Util.converter(song.duration),
+                    modifier = Modifier
+                        .width(80.dp)
+                        .padding(10.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.End
+                )
+            }
         }
 
         // Menu button for Add to Playlist

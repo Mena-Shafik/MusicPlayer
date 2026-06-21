@@ -124,7 +124,8 @@ class PlayerForegroundService : Service() {
                         } catch (_: Throwable) {
                             resumeOnFocusGain = mediaPlayer?.isPlaying == true
                         }
-                        try { pauseInternal() } catch (_: Throwable) {}
+                        // Pause but keep audio focus management to the system so we can auto-resume
+                        try { pauseInternal(releaseAudioFocus = false) } catch (_: Throwable) {}
                     }
                     AudioManager.AUDIOFOCUS_LOSS -> {
                         // Permanent loss -> pause and do not auto-resume
@@ -577,14 +578,16 @@ class PlayerForegroundService : Service() {
         }
     }
 
-    private fun pauseInternal(suppressNotification: Boolean = false) {
+    private fun pauseInternal(suppressNotification: Boolean = false, releaseAudioFocus: Boolean = true) {
         try {
             if (mediaPlayer?.isPlaying == true) {
                 mediaPlayer?.pause()
                 PlayerStateManager.setIsPlaying(false)
                 updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
-                // Release audio focus when pausing
-                try { abandonAudioFocus() } catch (_: Throwable) {}
+                // Release audio focus when pausing, unless caller requests keeping focus (transient interruptions)
+                if (releaseAudioFocus) {
+                    try { abandonAudioFocus() } catch (_: Throwable) {}
+                }
             }
             if (suppressNotification) {
                 // user dismissed notification; cancel it and do not re-post

@@ -14,6 +14,7 @@ fun HistoryItem(
     SongCardRow(
         song = song,
         onClick = { onSongClick(song) },
-        modifier = modifier
+        modifier = modifier,
+        showDuration = false
     )
 }
