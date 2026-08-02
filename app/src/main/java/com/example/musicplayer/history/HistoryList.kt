@@ -1,7 +1,7 @@
 package com.example.musicplayer.history
 
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,7 +28,7 @@ fun HistoryList(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(vertical = 8.dp)
     ) {
-        itemsIndexed(items = songs, key = { index, song -> "${song.id}_$index" }) { _, song ->
+        items(items = songs, key = { it.id }) { song ->
             HistoryItem(
                 song = song,
                 onSongClick = onSongClick
