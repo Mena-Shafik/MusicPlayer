@@ -21,6 +21,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import android.graphics.Bitmap
 import com.example.musicplayer.util.Util
+import com.example.musicplayer.history.HistoryRepository
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
 import android.widget.Toast
@@ -39,6 +40,8 @@ class PlayerForegroundService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var pollJob: Job? = null
     private var currentArtwork: Bitmap? = null
+    // lazy history repository for recording played tracks
+    private var historyRepository: HistoryRepository? = null
     // track which playlist index is currently loaded/prepared in the mediaPlayer
     private var currentPreparedIndex: Int = -1
     // track last time we updated the notification (ms) to avoid excessive updates
@@ -212,11 +215,30 @@ class PlayerForegroundService : Service() {
                                 try {
                                     val got = requestAudioFocus()
                                     if (got) {
+                                        // Stop any active radio service to ensure only local playback runs
+                                        try {
+                                            val stopIntent = Intent(this@PlayerForegroundService, com.example.musicplayer.radio.RadioPlayerService::class.java).apply {
+                                                action = com.example.musicplayer.radio.RadioPlayerService.ACTION_STOP
+                                            }
+                                            try { startService(stopIntent) } catch (e: Exception) { Log.w(TAG, "Failed to stop RadioPlayerService: ${e.message}") }
+                                        } catch (_: Throwable) {}
                                         mp.start()
                                         PlayerStateManager.setIsPlaying(true)
                                         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
                                         startForegroundNotification()
                                         Log.d(TAG, "onPrepared: started playback for idx=$currentPreparedIndex path=$currentPreparedPath (audio focus granted)")
+                                        // Record this track in history now that playback actually started.
+                                        try {
+                                            val songToRecord = PlayerStateManager.playlist.value.getOrNull(currentPreparedIndex)
+                                            if (songToRecord != null) {
+                                                if (historyRepository == null) {
+                                                    historyRepository = HistoryRepository(this@PlayerForegroundService.applicationContext)
+                                                }
+                                                scope.launch(Dispatchers.IO) {
+                                                    try { historyRepository?.addToHistory(songToRecord) } catch (e: Throwable) { Log.e(TAG, "Error adding to history: ${'$'}{e.message}") }
+                                                }
+                                            }
+                                        } catch (_: Throwable) {}
                                     } else {
                                         // audio focus denied; remain paused
                                         PlayerStateManager.setIsPlaying(false)
@@ -561,6 +583,13 @@ class PlayerForegroundService : Service() {
                 try {
                     val got = requestAudioFocus()
                     if (got) {
+                        // Stop any active radio service to ensure only local playback runs
+                        try {
+                            val stopIntent = Intent(this@PlayerForegroundService, com.example.musicplayer.radio.RadioPlayerService::class.java).apply {
+                                action = com.example.musicplayer.radio.RadioPlayerService.ACTION_STOP
+                            }
+                            try { startService(stopIntent) } catch (e: Exception) { Log.w(TAG, "Failed to stop RadioPlayerService: ${e.message}") }
+                        } catch (_: Throwable) {}
                         mediaPlayer?.start()
                         PlayerStateManager.setIsPlaying(true)
                         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
@@ -712,9 +741,9 @@ class PlayerForegroundService : Service() {
             artist,
             isPlaying,
             currentArtwork,
-            true,
-            true,
-            token,
+            showPrev = true,
+            showNext = true,
+            mediaSessionToken = token,
             progressMs = prog,
             durationMs = max
         )
@@ -734,9 +763,9 @@ class PlayerForegroundService : Service() {
             artist,
             isPlaying,
             currentArtwork,
-            true,
-            true,
-            token,
+            showPrev = true,
+            showNext = true,
+            mediaSessionToken = token,
             progressMs = prog,
             durationMs = max
         )
