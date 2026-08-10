@@ -19,8 +19,13 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -29,6 +34,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -49,6 +55,8 @@ import kotlinx.coroutines.launch
 import com.example.musicplayer.R
 import com.example.musicplayer.util.Util
 import com.example.musicplayer.ui.components.radio.RadioTagChips
+import com.example.musicplayer.ui.components.common.MultiRadialBackground
+import com.example.musicplayer.ui.components.common.RadialSpec
 import com.example.musicplayer.model.RadioStation
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -186,9 +194,69 @@ fun RadioPlayerScreen(
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize(), topBar = { CenterAlignedTopAppBar(title = { Text(text = "", color = Color.White) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent), modifier = Modifier.statusBarsPadding()) }, containerColor = backgroundColor) { innerPadding ->
+    // Background drawn full-screen behind the whole Scaffold (including the top app bar),
+    // not just the content area below it — otherwise a "transparent" app bar just shows the
+    // Scaffold's own flat containerColor instead of this blur/wash.
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Fixed dark gradient + soft station-wash glow (not derived per-station — the
+        // favicon palette extraction below is a stub that always returns black/white).
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color(0xFF23252B),
+                        0.55f to Color(0xFF111318),
+                        1f to Color(0xFF05060A)
+                    )
+                )
+        )
+        MultiRadialBackground(
+            specs = listOf(
+                RadialSpec(fx = 0.30f, fy = 0.18f, radius = 300.dp, colors = listOf(Color(0xFFFFA500), Color.Transparent), alpha = 0.3f),
+                RadialSpec(fx = 0.80f, fy = 0.40f, radius = 280.dp, colors = listOf(Color(0xFF7A8296), Color.Transparent), alpha = 0.7f)
+            ),
+            blurRadius = 80.dp
+        )
+
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            text = "LIVE RADIO",
+                            color = Color.White.copy(alpha = 0.65f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.4.sp
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowDown,
+                                contentDescription = "Close player",
+                                tint = Color.White
+                            )
+                        }
+                    },
+                    actions = {
+                        Icon(
+                            imageVector = Icons.Filled.Radio,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                    modifier = Modifier.statusBarsPadding()
+                )
+            },
+            containerColor = Color.Transparent
+        ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            Column(modifier = Modifier.fillMaxWidth().fillMaxHeight().background(backgroundBrush), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
                 // Use the raw station-provided favicon exactly as supplied by the API, but
                 // normalize protocol-relative URLs ("//host/...") to "https://host/..." so Coil can load them.
                 // StationImage will display the bundled fallback if the favicon is blank or fails to load.
@@ -200,7 +268,15 @@ fun RadioPlayerScreen(
                 try { Log.d("RadioPlayerScreen", "Loading station favicon: $favUrl") } catch (_: Throwable) {}
                 StationImage(path = favUrl, onDominantColor = { extracted -> backgroundColor = extracted })
                 Column(modifier = Modifier.size(340.dp, 130.dp).padding(10.dp).align(Alignment.CenterHorizontally)) {
-                    Text(text = currentStationName.ifBlank { "Unknown" }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp, textAlign = TextAlign.Center, modifier = Modifier.width(340.dp).padding(10.dp))
+                    Text(
+                        text = currentStationName.ifBlank { "Unknown" },
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
+                        lineHeight = 30.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(340.dp).padding(10.dp)
+                    )
                     RadioTagChips(
                         tagsRaw = currentStationTags,
                         modifier = Modifier.width(340.dp),
@@ -208,25 +284,38 @@ fun RadioPlayerScreen(
                         chipContentColor = Color.LightGray
                     )
 
-                    // Show current song metadata (title then artist) when available from the service
+                    // Show current song metadata as an "ON AIR NOW" block when the service has
+                    // some (only rendered once — this used to also render again via a separate
+                    // RadioNowPlayingInfo call below the controls, showing the same text twice).
                     if (!playingTitle.isNullOrBlank()) {
                         Text(
-                            text = playingTitle,
-                            color = Color.White.copy(alpha = 0.95f),
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "ON AIR NOW",
+                            color = Color(0xFFFFA500),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 1.4.sp,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.width(340.dp).padding(top = 6.dp)
+                            modifier = Modifier.width(340.dp).padding(top = 10.dp)
                         )
-                    }
-
-                    if (!playingArtist.isNullOrBlank()) {
                         Text(
-                            text = playingArtist,
-                            color = Color.White.copy(alpha = 0.75f),
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = playingTitle,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.SemiBold,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.width(340.dp).padding(top = 2.dp)
+                            modifier = Modifier.width(340.dp).padding(top = 4.dp)
                         )
+                        if (!playingArtist.isNullOrBlank()) {
+                            Text(
+                                text = playingArtist,
+                                color = Color.White.copy(alpha = 0.6f),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.width(340.dp)
+                            )
+                        }
                     }
                 }
                 RadioControls(
@@ -245,8 +334,6 @@ fun RadioPlayerScreen(
                         } catch (_: Throwable) {}
                     }
                 )
-                // Separate composable to display now-playing title and artist under the controls
-                RadioNowPlayingInfo(title = playingTitle, artist = playingArtist)
             }
 
             // Show the raw stream/service status as plain text at the bottom center of the screen
@@ -256,9 +343,12 @@ fun RadioPlayerScreen(
             Text(
                 text = statusText,
                 color = Color.White.copy(alpha = 0.50f),
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+                fontSize = 12.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.2.sp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp)
             )
+        }
         }
     }
 }
@@ -271,18 +361,30 @@ fun StationImage(
     onAccentColor: (Color) -> Unit = {}
 ) {
     val context = LocalContext.current
+    // Station logos are typically white/light artwork, so — unlike album art — the tile
+    // itself is white with a muted glyph, not a dark placeholder.
+    val tileModifier = modifier
+        .width(308.dp)
+        .height(308.dp)
+        .shadow(
+            elevation = 24.dp,
+            shape = RoundedCornerShape(8.dp),
+            ambientColor = Color.Black.copy(alpha = 0.55f),
+            spotColor = Color.Black.copy(alpha = 0.55f)
+        )
+        .clip(RoundedCornerShape(8.dp))
+        .background(Color.White)
 
     // If path is blank just show the fallback immediately
     if (path.isBlank()) {
-        Image(
-            painter = painterResource(id = R.drawable.img),
-            contentDescription = "Station Art",
-            modifier = modifier
-                .width(340.dp)
-                .height(340.dp)
-                .clip(RoundedCornerShape(5.dp)),
-            contentScale = ContentScale.Crop
-        )
+        Box(modifier = tileModifier, contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Filled.Radio,
+                contentDescription = "Station Art",
+                tint = Color(0xFF8A8A8A),
+                modifier = Modifier.size(100.dp)
+            )
+        }
         // Default colors when we don't have art
         LaunchedEffect(Unit) {
             onDominantColor(Color.Black)
@@ -291,21 +393,29 @@ fun StationImage(
         return
     }
 
-    // Use AsyncImage with built-in crossfade for smooth transitions
-    AsyncImage(
-        model = ImageRequest.Builder(context)
-            .data(path)
-            .crossfade(500)
-            .build(),
-        contentDescription = "Station Art",
-        modifier = modifier
-            .width(340.dp)
-            .height(340.dp)
-            .clip(RoundedCornerShape(5.dp)),
-        contentScale = ContentScale.Crop,
-        placeholder = painterResource(id = R.drawable.img),
-        error = painterResource(id = R.drawable.img)
-    )
+    var loaded by remember(path) { mutableStateOf(false) }
+    Box(modifier = tileModifier, contentAlignment = Alignment.Center) {
+        if (!loaded) {
+            Icon(
+                imageVector = Icons.Filled.Radio,
+                contentDescription = null,
+                tint = Color(0xFF8A8A8A),
+                modifier = Modifier.size(100.dp)
+            )
+        }
+        // Use AsyncImage with built-in crossfade for smooth transitions
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(path)
+                .crossfade(500)
+                .build(),
+            contentDescription = "Station Art",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            onSuccess = { loaded = true },
+            onError = { loaded = false }
+        )
+    }
 
     // Default colors for now (AsyncImage handles image loading internally)
     LaunchedEffect(path) {

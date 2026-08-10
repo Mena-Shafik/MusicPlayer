@@ -31,6 +31,7 @@ import com.example.musicplayer.navigation.NavRoutes
 import com.example.musicplayer.ui.components.common.BottomNav
 import com.example.musicplayer.ui.components.common.MainAppBar
 import com.example.musicplayer.ui.components.common.MainBackground
+import com.example.musicplayer.ui.components.background.AuroraRibbonBackground
 import com.example.musicplayer.util.Util
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -69,6 +70,11 @@ fun RadioScreen(navController: NavHostController) {
     val isRadioSelected by viewModel.isRadioSelected.collectAsState()
     LaunchedEffect(Unit) { viewModel.setRadioSelected(true) }
 
+    // Background drawn full-screen behind the whole Scaffold (including the top/bottom bars),
+    // not just the content area between them — otherwise a "transparent" bar just shows the
+    // Scaffold's own flat containerColor instead of this blur.
+    Box(modifier = Modifier.fillMaxSize()) {
+    AuroraRibbonBackground()
     Scaffold(
         topBar = {
             MainAppBar(
@@ -94,15 +100,14 @@ fun RadioScreen(navController: NavHostController) {
                     }
                 }
             )
-        }
+        },
+        containerColor = Color.Transparent
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .pullRefresh(pullRefreshState)
-                .background(Color.Black)
         ) {
-            MainBackground()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -119,6 +124,7 @@ fun RadioScreen(navController: NavHostController) {
                 backgroundColor = Color.Black.copy(alpha = 0.7f)
             )
         }
+    }
     }
 }
 
@@ -143,31 +149,28 @@ fun DisplayListRadioStationsPreview() {
 
         val vm = remember { SongListViewModel(userStationsInitial = sampleStations) }
 
-        Scaffold(
-            topBar = {
-                Column {
-                    MainAppBar(
-                        showSearch = false,
-                        onToggleSearch = {},
-                        query = "",
-                        onQueryChange = {},
-                        onSearchedClicked = {},
-                        onOpenSettings = {},
-                        onOpenPlaylists = {},
-                        title = "Radio"
-                    )
-                }
-            },
-            bottomBar = {
-                BottomNav(selectedIndex = 1, onSelected = { /* no-op in preview */ })
-            }
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-            ) {
-                MainBackground()
+        Box(modifier = Modifier.fillMaxSize()) {
+            AuroraRibbonBackground()
+            Scaffold(
+                topBar = {
+                    Column {
+                        MainAppBar(
+                            showSearch = false,
+                            onToggleSearch = {},
+                            query = "",
+                            onQueryChange = {},
+                            onSearchedClicked = {},
+                            onOpenSettings = {},
+                            onOpenPlaylists = {},
+                            title = "Radio"
+                        )
+                    }
+                },
+                bottomBar = {
+                    BottomNav(selectedIndex = 1, onSelected = { /* no-op in preview */ })
+                },
+                containerColor = Color.Transparent
+            ) { innerPadding ->
                 Column(
                     modifier = Modifier
                         .fillMaxSize()

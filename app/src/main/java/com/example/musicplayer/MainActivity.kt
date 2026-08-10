@@ -10,6 +10,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.collectAsState
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -62,19 +65,28 @@ class MainActivity : ComponentActivity() {
         viewModel.isLoading.observe(this) { loading ->
             keepSplashOn = loading == true
         }
-        splash.setKeepOnScreenCondition { keepSplashOn }
+        // Hold for at least one full icon rotation (matches rotate_icon.xml's 3600ms cycle)
+        // even if the media scan finishes almost instantly — otherwise a fast/empty library
+        // dismisses the splash before the spin has completed even a fraction of a turn.
+        val splashStartElapsedMs = android.os.SystemClock.elapsedRealtime()
+        val minSplashDurationMs = 1500L
+        splash.setKeepOnScreenCondition {
+            keepSplashOn || (android.os.SystemClock.elapsedRealtime() - splashStartElapsedMs) < minSplashDurationMs
+        }
 
-        // Start preloading songs on a background thread; hide splash when done.
+        // Start preloading songs on a background thread; hide splash when done. The result
+        // is shared via LibraryPreloadCache so ListSongsScreen doesn't have to re-scan
+        // MediaStore from scratch the moment the splash dismisses.
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                // load all audio from device (may require permissions)
+            val loaded = try {
                 Util.getAllAudioFromDevice(this@MainActivity)
             } catch (e: Exception) {
                 Log.w("MainActivity", "Failed to preload songs: ${e.message}")
-            } finally {
-                withContext(Dispatchers.Main) {
-                    viewModel.setLoadingComplete()
-                }
+                emptyList()
+            }
+            com.example.musicplayer.util.LibraryPreloadCache.set(loaded)
+            withContext(Dispatchers.Main) {
+                viewModel.setLoadingComplete()
             }
         }
 
@@ -91,7 +103,16 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(Color.Black)
                 ) {
-                    NavHost(navController = navController, startDestination = NavRoutes.Home.route) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = NavRoutes.Home.route,
+                        // Smooth crossfade between destinations (Songs/Radio/Playlists tab
+                        // switching, plus any pushed screen) instead of the previous instant cut.
+                        enterTransition = { fadeIn(animationSpec = tween(220)) },
+                        exitTransition = { fadeOut(animationSpec = tween(180)) },
+                        popEnterTransition = { fadeIn(animationSpec = tween(220)) },
+                        popExitTransition = { fadeOut(animationSpec = tween(180)) }
+                    ) {
                     // Home route shows the songs list directly
                     composable(NavRoutes.Home.route) {
                         ListSongsScreen(navController = navController)
@@ -198,7 +219,10 @@ class MainActivity : ComponentActivity() {
                     // Radio player route: optionally pass a Serializable RadioStation object
                     composable(
                         "radioPlayer",
-                        arguments = listOf(navArgument("station") { type = NavType.ParcelableType(RadioStation::class.java) })
+                        arguments = listOf(navArgument("station") {
+                            type = NavType.ParcelableType(RadioStation::class.java)
+                            nullable = true
+                        })
                     ) { backStackEntry ->
                         val station = backStackEntry.arguments?.getParcelable<RadioStation>("station")
                         if (station != null) {

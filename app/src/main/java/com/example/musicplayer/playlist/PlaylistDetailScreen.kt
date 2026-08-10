@@ -1,19 +1,31 @@
 package com.example.musicplayer.playlist
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,10 +46,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -46,7 +60,9 @@ import com.example.musicplayer.model.Song
 import com.example.musicplayer.music.MusicPlayerViewModel
 import com.example.musicplayer.navigation.NavRoutes
 import com.example.musicplayer.service.PlayerStateManager
+import com.example.musicplayer.ui.components.background.AuroraRibbonBackground
 import com.example.musicplayer.ui.components.common.MainBackground
+import com.example.musicplayer.ui.components.common.dashedBorder
 import com.example.musicplayer.ui.components.song.SongCardRow
 import com.example.musicplayer.util.Util
 import kotlinx.coroutines.Dispatchers
@@ -88,94 +104,213 @@ fun PlaylistDetailScreen(
         }
     }
 
+    val shuffleEnabled by PlayerStateManager.shuffleEnabled.collectAsState()
+    val totalMinutes = remember(playlistSongs) { (playlistSongs.sumOf { it.duration } / 60000).toInt() }
+
+    // Background drawn full-screen behind the whole Scaffold (including the top bar), not
+    // just the content area below it — otherwise a "transparent" bar just shows the
+    // Scaffold's own flat containerColor instead of this blur.
+    Box(modifier = Modifier.fillMaxSize()) {
+    AuroraRibbonBackground()
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = currentPlaylist.name,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "${playlistSongs.size} songs",
-                            color = Color.Gray,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White
-                        )
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 actions = {
                     IconButton(onClick = {
                         navController.navigate(NavRoutes.PlaylistAddSongs.createRoute(currentPlaylist.id))
                     }) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = "Add Songs",
-                            tint = Color.White
-                        )
+                        Icon(imageVector = Icons.Filled.Add, contentDescription = "Add Songs", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
-        }
+        },
+        containerColor = Color.Transparent
     ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        ) {
-            MainBackground()
-
+        Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                if (playlistSongs.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                // Cover + identity header
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                ) {
+                    if (playlistSongs.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .size(124.dp)
+                                .dashedBorder(1.5.dp, Color.White.copy(alpha = 0.22f), 14.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "No songs in this playlist",
-                                color = Color.Gray,
-                                style = MaterialTheme.typography.headlineSmall
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.3f),
+                                modifier = Modifier.size(48.dp)
                             )
-                            Button(
-                                onClick = {
-                                    navController.navigate(NavRoutes.PlaylistAddSongs.createRoute(currentPlaylist.id))
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFFFA500)
-                                ),
-                                modifier = Modifier.padding(top = 16.dp)
-                            ) {
-                                Text("Add Songs", color = Color.Black, fontWeight = FontWeight.Bold)
-                            }
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(124.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF2A2A2A)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                contentDescription = null,
+                                tint = Color(0xFF5A5A5A),
+                                modifier = Modifier.size(52.dp)
+                            )
                         }
                     }
-                } else {
+                    Column(modifier = Modifier.weight(1f).padding(bottom = 2.dp)) {
+                        Text(
+                            text = "PLAYLIST",
+                            color = Color.White.copy(alpha = 0.55f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 1.4.sp
+                        )
+                        Text(
+                            text = currentPlaylist.name,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 28.sp,
+                            lineHeight = 32.sp,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        Text(
+                            text = if (playlistSongs.isEmpty()) "Empty · 0 min" else "${playlistSongs.size} songs · $totalMinutes min",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                }
+
+                if (currentPlaylist.description.isNotBlank()) {
+                    Text(
+                        text = currentPlaylist.description,
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp).padding(top = 16.dp)
+                    )
+                } else if (playlistSongs.isEmpty()) {
+                    Text(
+                        text = "Nothing in here yet. Add a few songs and it will start filling out.",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp).padding(top = 16.dp)
+                    )
+                }
+
+                // Actions
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)
+                ) {
+                    if (playlistSongs.isEmpty()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(Color.White)
+                                .clickable { navController.navigate(NavRoutes.PlaylistAddSongs.createRoute(currentPlaylist.id)) }
+                        ) {
+                            Icon(imageVector = Icons.Filled.Add, contentDescription = null, tint = Color(0xFF111111))
+                            Text("Add songs", color = Color(0xFF111111), fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .border(1.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(24.dp))
+                                .clickable { navController.navigate(NavRoutes.PlaylistAddSongs.createRoute(currentPlaylist.id)) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(imageVector = Icons.Filled.Search, contentDescription = "Find songs", tint = Color.White.copy(alpha = 0.8f))
+                        }
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(Color.White)
+                                .clickable {
+                                    playerVm.setPlaylist(context, playlistSongs, 0)
+                                    playerVm.play(context)
+                                }
+                        ) {
+                            Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = Color(0xFF111111))
+                            Text("Play", color = Color(0xFF111111), fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .border(1.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(24.dp))
+                                .clickable { PlayerStateManager.toggleShuffle(!shuffleEnabled) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Shuffle,
+                                contentDescription = "Shuffle",
+                                tint = if (shuffleEnabled) Color(0xFFFFA500) else Color.White.copy(alpha = 0.8f)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .border(1.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(24.dp))
+                                .clickable { navController.navigate(NavRoutes.PlaylistAddSongs.createRoute(currentPlaylist.id)) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(imageVector = Icons.Filled.Add, contentDescription = "Add songs", tint = Color.White.copy(alpha = 0.8f))
+                        }
+                    }
+                }
+
+                if (playlistSongs.isNotEmpty()) {
+                    Text(
+                        text = "TRACKS",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 1.2.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp)
+                    )
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         itemsIndexed(playlistSongs) { index, song ->
                             SongCardRow(
                                 song = song,
+                                indexLabel = "${index + 1}",
+                                trailingIcon = Icons.Filled.MoreVert,
                                 onClick = {
                                     // Play the song from this playlist
                                     playerVm.setPlaylist(context, playlistSongs, index)
@@ -194,9 +329,38 @@ fun PlaylistDetailScreen(
                             )
                         }
                     }
+                } else {
+                    // Suggested songs from the library so the next tap is on this screen.
+                    val suggested = remember(songs, currentPlaylist.songIds) {
+                        songs.filterNot { it.id in currentPlaylist.songIds }.take(6)
+                    }
+                    if (suggested.isNotEmpty()) {
+                        Text(
+                            text = "SUGGESTED FROM YOUR LIBRARY",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 1.2.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp)
+                        )
+                        LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                            itemsIndexed(suggested) { _, song ->
+                                SongCardRow(
+                                    song = song,
+                                    showDuration = false,
+                                    onClick = {
+                                        val updated = currentPlaylist.copy(songIds = currentPlaylist.songIds + song.id)
+                                        currentPlaylist = updated
+                                        viewModel.updatePlaylist(updated)
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
     }
 }
 
@@ -239,13 +403,19 @@ fun PlaylistAddSongsScreen(
         }
     }
 
+    // Background drawn full-screen behind the whole Scaffold (including the top bar), not
+    // just the content area below it — otherwise a "transparent" bar just shows the
+    // Scaffold's own flat containerColor instead of this blur.
+    Box(modifier = Modifier.fillMaxSize()) {
+    AuroraRibbonBackground()
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Add Songs to Playlist",
+                        text = "Add Songs",
                         fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
                         color = Color.White
                     )
                 },
@@ -275,65 +445,73 @@ fun PlaylistAddSongsScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                modifier = Modifier.background(Color.Black)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
-        }
+        },
+        containerColor = Color.Transparent
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .padding(innerPadding)
         ) {
-            MainBackground()
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                itemsIndexed(songs) { _, song ->
+                    val isSelected = song.id in selectedSongs
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    itemsIndexed(songs) { _, song ->
-                        val isSelected = song.id in selectedSongs
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (isSelected) Color.DarkGray.copy(alpha = 0.5f) else Color.Transparent)
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = song.title ?: "Unknown",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = song.artist ?: "Unknown Artist",
-                                    color = Color.Gray,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedSongs = if (isSelected) selectedSongs - song.id else selectedSongs + song.id
                             }
-
-                            IconButton(
-                                onClick = {
-                                    selectedSongs = if (isSelected) {
-                                        selectedSongs - song.id
-                                    } else {
-                                        selectedSongs + song.id
-                                    }
-                                },
-                                modifier = Modifier.padding(start = 8.dp)
-                            ) {
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF2A2A2A)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Album,
+                                contentDescription = null,
+                                tint = Color(0xFF5A5A5A),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = song.title ?: "Unknown",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = song.artist ?: "Unknown Artist",
+                                color = Color.White.copy(alpha = 0.65f),
+                                fontSize = 13.sp,
+                                maxLines = 1
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(RoundedCornerShape(13.dp))
+                                .background(if (isSelected) Color(0xFFFFA500) else Color.Transparent)
+                                .border(2.dp, if (isSelected) Color(0xFFFFA500) else Color.White.copy(alpha = 0.3f), RoundedCornerShape(13.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
                                 Icon(
-                                    imageVector = if (isSelected) Icons.Filled.Check else Icons.Filled.Add,
-                                    contentDescription = if (isSelected) "Remove from selection" else "Add to playlist",
-                                    tint = if (isSelected) Color(0xFFFFA500) else Color.White
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = "Selected",
+                                    tint = Color(0xFF111111),
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -341,6 +519,7 @@ fun PlaylistAddSongsScreen(
                 }
             }
         }
+    }
     }
 }
 

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "2.0" redesign splash mark (design source "0e — Aura bloom, dark"): a solid accent
+     disc with a punched centre (the record, read at a glance), a static inset ring, and
+     three rings blooming outward from it. Replaces the earlier "0c" hairline-rings/rotation
+     mark, which never visibly animated on-device — scale+alpha blooming is a much more
+     standard, reliably-supported AVD animation pattern than group rotation. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="432dp"
+    android:height="432dp"
+    android:viewportWidth="432"
+    android:viewportHeight="432">
+
+  <!-- Bloom ring 1 (r=141), scales 0.62->1 and fades 0->0.9->0, staggered per ring. -->
+  <group
+      android:name="bloomGroup1"
+      android:pivotX="216"
+      android:pivotY="216"
+      android:scaleX="0.62"
+      android:scaleY="0.62">
+    <path
+        android:name="bloomPath1"
+        android:pathData="M75,216 a141,141 0 1,0 282,0 a141,141 0 1,0 -282,0"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFA500"
+        android:strokeWidth="4.38"
+        android:strokeAlpha="0"/>
+  </group>
+
+  <!-- Bloom ring 2 -->
+  <group
+      android:name="bloomGroup2"
+      android:pivotX="216"
+      android:pivotY="216"
+      android:scaleX="0.62"
+      android:scaleY="0.62">
+    <path
+        android:name="bloomPath2"
+        android:pathData="M75,216 a141,141 0 1,0 282,0 a141,141 0 1,0 -282,0"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFA500"
+        android:strokeWidth="4.38"
+        android:strokeAlpha="0"/>
+  </group>
+
+  <!-- Bloom ring 3 -->
+  <group
+      android:name="bloomGroup3"
+      android:pivotX="216"
+      android:pivotY="216"
+      android:scaleX="0.62"
+      android:scaleY="0.62">
+    <path
+        android:name="bloomPath3"
+        android:pathData="M75,216 a141,141 0 1,0 282,0 a141,141 0 1,0 -282,0"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFA500"
+        android:strokeWidth="4.38"
+        android:strokeAlpha="0"/>
+  </group>
+
+  <!-- Static inset ring, r=93.8 — never animates -->
+  <path
+      android:pathData="M122.2,216 a93.8,93.8 0 1,0 187.6,0 a93.8,93.8 0 1,0 -187.6,0"
+      android:fillColor="#00000000"
+      android:strokeColor="#24FFFFFF"
+      android:strokeWidth="4.38"/>
+
+  <!-- Disc + punched centre: the one guaranteed-visible animation (matches the platform's
+       accepted pattern for splash icons — a short one-shot entrance within
+       windowSplashScreenAnimationDuration's sub-second budget, not the loop above, which
+       is best-effort and may not render depending on the device/shell). -->
+  <group
+      android:name="discGroup"
+      android:pivotX="216"
+      android:pivotY="216"
+      android:scaleX="0.86"
+      android:scaleY="0.86">
+    <!-- Solid accent disc, r=72 -->
+    <path
+        android:pathData="M144,216 a72,72 0 1,0 144,0 a72,72 0 1,0 -144,0"
+        android:fillColor="#FFFFA500"/>
+    <!-- Punched centre, r=21, in the window/ground colour so it reads correctly on both
+         themes — a hole in the disc, not a fixed black dot. -->
+    <path
+        android:pathData="M195,216 a21,21 0 1,0 42,0 a21,21 0 1,0 -42,0"
+        android:fillColor="@color/aurora_ground"/>
+  </group>
+</vector>

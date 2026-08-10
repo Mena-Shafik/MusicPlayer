@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -37,13 +38,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import android.util.Log
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import coil.transform.CircleCropTransformation
 import com.example.musicplayer.model.Artist
 import com.example.musicplayer.util.ArtistUtil
 import com.example.musicplayer.model.Song
@@ -189,9 +192,10 @@ fun ArtistSongList(
                     if (selectedArtist != null) {
                         Text(
                             text = selectedArtist.name,
-                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
                             color = Color.White,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
                         )
                     }
                 }

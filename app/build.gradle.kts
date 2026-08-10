@@ -67,7 +67,8 @@ dependencies {
     implementation("androidx.compose.material3:material3:${material3_version}")
 
     implementation(libs.androidx.compose.material3)
-    implementation("androidx.navigation:navigation-compose:2.6.0")
+    // 2.7+ needed for NavHost/composable's built-in enterTransition/exitTransition support.
+    implementation("androidx.navigation:navigation-compose:2.8.0")
     implementation(libs.volley)
     implementation(libs.androidx.foundation)
     testImplementation(libs.junit)
@@ -123,4 +124,7 @@ dependencies {
     // Room compiler: use KAPT to generate the Room implementation (AppDatabase_Impl)
     kapt("androidx.room:room-compiler:2.8.4")
     testImplementation("androidx.room:room-testing:2.8.4")
+
+    // EncryptedSharedPreferences, for storing Navidrome server credentials at rest
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }

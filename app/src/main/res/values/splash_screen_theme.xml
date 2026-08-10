@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.App.Test" parent="Theme.SplashScreen">
-        <!-- Set the background color -->
-        <item name="windowSplashScreenBackground">@color/black</item>
-        <!-- Set the splash screen animated icon -->
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_vinyl_record_animated</item>
-        <!-- Set the duration of the splash screen animation -->
-        <item name="windowSplashScreenAnimationDuration">200</item>
+        <!-- "2.0" redesign: the app's own aurora ground (#03050c) instead of plain black -->
+        <item name="windowSplashScreenBackground">@color/aurora_ground</item>
+        <!-- "Aura bloom" mark ("0e" in the design source) — a solid accent disc with a
+             punched centre and three blooming rings, replacing the earlier hairline-rings
+             "0c" mark (rotation never visibly played on-device; scale+alpha is a far more
+             standard, reliably-supported AVD animation). -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_aura_bloom_animated</item>
+        <!-- Matches the entrance animation's own duration exactly, per the design's
+             reference pattern (0c's splash_screen_theme.xml used 600 for its 600ms trim). -->
+        <item name="windowSplashScreenAnimationDuration">400</item>
         <!-- Set the theme of the Activity that follows the splash screen -->
         <item name="postSplashScreenTheme">@style/Theme.MusicPlayer</item>
     </style>

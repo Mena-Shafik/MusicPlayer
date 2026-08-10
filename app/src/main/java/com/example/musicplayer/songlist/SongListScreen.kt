@@ -1,8 +1,14 @@
 package com.example.musicplayer.songlist
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +47,7 @@ import com.example.musicplayer.ui.components.song.AlbumSongList
 import com.example.musicplayer.ui.components.song.ArtistSongList
 import com.example.musicplayer.ui.components.common.MainAppBar
 import com.example.musicplayer.ui.components.common.MainBackground
+import com.example.musicplayer.ui.components.background.AuroraRibbonBackground
 import com.example.musicplayer.ui.components.song.MiniPlayer
 import com.example.musicplayer.ui.components.radio.RadioCardRow
 import com.example.musicplayer.ui.components.song.SongCardRow
@@ -60,6 +67,7 @@ import kotlin.collections.getOrNull
 import com.example.musicplayer.ui.components.common.BottomNav
 import com.example.musicplayer.ui.components.song.EraSongList
 
+@SuppressLint("UnusedContentLambdaTargetStateParameter")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun ListSongsScreen(
@@ -74,11 +82,17 @@ fun ListSongsScreen(
 ) {
     // Get context first for passing to ViewModel
     val context = LocalContext.current
+    // Seed from whatever MainActivity's startup preload has already fetched (it runs
+    // purely to gate the splash screen, but the result is worth reusing) so this screen's
+    // very first frame can already show songs instead of an empty list.
     val viewModel: SongListViewModel = viewModel(
         factory = object : androidx.lifecycle.ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                return SongListViewModel(context = context) as T
+                return SongListViewModel(
+                    initialSongs = com.example.musicplayer.util.LibraryPreloadCache.songs.value,
+                    context = context
+                ) as T
             }
         }
     )
@@ -109,6 +123,7 @@ fun ListSongsScreen(
     val isAlbumView by viewModel.isAlbumView.collectAsState()
     val isArtistView by viewModel.isArtistView.collectAsState()
     val isEraView by viewModel.isEraView.collectAsState()
+    val useAlbumPalette by viewModel.useAlbumPalette.collectAsState()
 
     // load and filter songs
     /*val view = LocalView.current
@@ -124,9 +139,13 @@ fun ListSongsScreen(
         }
     }*/
 
-    LaunchedEffect(context) {
-        val all = withContext(Dispatchers.IO) { Util.getAllAudioFromDevice(context) }
-        viewModel.load(all)
+    // Follow the shared preload cache rather than independently re-scanning MediaStore:
+    // the ViewModel was already seeded from its current value above, and this picks up
+    // the real result if this screen composed before MainActivity's startup scan finished.
+    LaunchedEffect(Unit) {
+        com.example.musicplayer.util.LibraryPreloadCache.songs.collect { cached ->
+            viewModel.load(cached)
+        }
     }
 
     val songs by viewModel.filteredSongs.collectAsState()
@@ -177,9 +196,28 @@ fun ListSongsScreen(
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
     var selectedSongIdForPlaylist by remember { mutableStateOf<Int?>(null) }
 
+    // Hoisted so the background (above) and the flat song list (below) share the same
+    // scroll position — the background samples album art from the song currently ~6 rows
+    // below the top of the viewport, and re-samples as the list scrolls.
+    val songListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    // Background drawn full-screen behind the whole Scaffold (including the top/bottom bars),
+    // not just the content area between them — otherwise a "transparent" bar just shows the
+    // Scaffold's own flat containerColor instead of this blur.
+    Box(modifier = Modifier.fillMaxSize()) {
+    if (useAlbumPalette && !isEraView && !isAlbumView && !isArtistView && !searchVisible && songs.isNotEmpty()) {
+        com.example.musicplayer.ui.components.background.DynamicAuroraRibbonBackground(
+            listState = songListState,
+            songs = songs
+        )
+    } else {
+        AuroraRibbonBackground()
+    }
     Scaffold(
         topBar = {
-            if (showTopBar) {
+            // The dedicated SearchResultsScreen draws its own header when active, replacing
+            // the normal app bar entirely (matching the mockup's full-screen search takeover).
+            if (showTopBar && !searchVisible) {
                 Column {
                     MainAppBar(
                         showSearch = searchVisible,
@@ -205,15 +243,14 @@ fun ListSongsScreen(
                     }
                 },
             )
-        }
+        },
+        containerColor = Color.Transparent
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .pullRefresh(pullRefreshState)
-                .background(Color.Black)
         ) {
-            MainBackground()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -222,11 +259,61 @@ fun ListSongsScreen(
                 // Use a dedicated MusicPlayerViewModel to start playback so setPlaylist + startPlay are atomic
                 val playerVm: MusicPlayerViewModel = viewModel()
 
+                if (searchVisible) {
+                    SearchResultsScreen(
+                        query = query,
+                        onQueryChange = { onQueryChange(it) },
+                        onCancel = {
+                            onQueryChange("")
+                            viewModel.setLibraryViewMode(SongListViewModel.LibraryViewMode.SONGS)
+                            toggleSearch()
+                        },
+                        allSongs = allSongs,
+                        matchedSongs = songs,
+                        onSongClick = { selected ->
+                            val idxAll = allSongs.indexOfFirst { it.id == selected.id }
+                            if (idxAll >= 0) {
+                                playerVm.setPlaylist(context, allSongs, idxAll)
+                                PlayerStateManager.setCurrentIndex(idxAll)
+                            } else {
+                                playerVm.setPlaylist(context, listOf(selected), 0)
+                                PlayerStateManager.setCurrentIndex(0)
+                            }
+                            playerVm.play(context)
+                            navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
+                        },
+                        onArtistClick = { artistName ->
+                            // Land on that artist's songs via the flat Songs sort (not Artist
+                            // view) — search always defaults back to sort-by-song on exit.
+                            viewModel.setLibraryViewMode(SongListViewModel.LibraryViewMode.SONGS)
+                            onQueryChange(artistName)
+                            toggleSearch()
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    return@Column
+                }
+
                 // Song list takes remaining space above mini player
                 Box(modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()) {
-                    // Songs content (album/artist/default)
+                    // Songs content (album/artist/default) — crossfade between view modes
+                    // instead of an abrupt swap.
+                    val contentKey = when {
+                        isEraView -> "era"
+                        isAlbumView -> "album"
+                        isArtistView -> "artist"
+                        else -> "songs"
+                    }
+                    AnimatedContent(
+                        targetState = contentKey,
+                        transitionSpec = {
+                            (fadeIn(animationSpec = tween(220)) togetherWith
+                                fadeOut(animationSpec = tween(150)))
+                        },
+                        label = "libraryViewSwitch"
+                    ) {
                     when {
                         isEraView -> {
                             EraSongList(
@@ -330,6 +417,7 @@ fun ListSongsScreen(
                             SongList(
                                 songs = songs,
                                 modifier = Modifier.fillMaxSize(),
+                                listState = songListState,
                                 onSongClicked = { index ->
                                     val selected = songs.getOrNull(index)
                                     if (selected != null) {
@@ -361,6 +449,7 @@ fun ListSongsScreen(
                             )
                         }
                     }
+                    }
                 }
 
                 // show the mini player only when playback is active so it doesn't take layout space while idle
@@ -384,11 +473,13 @@ fun ListSongsScreen(
 
         }
     }
+    }
 
     // Show Add to Playlist dialog when triggered
     if (showAddToPlaylistDialog && selectedSongIdForPlaylist != null) {
         AddToPlaylistDialog(
             songId = selectedSongIdForPlaylist!!,
+            song = allSongs.find { it.id == selectedSongIdForPlaylist },
             onDismiss = {
                 showAddToPlaylistDialog = false
                 selectedSongIdForPlaylist = null
@@ -480,6 +571,7 @@ fun MainAppBar(
 fun SongList(
     songs: List<Song>,
     modifier: Modifier = Modifier,
+    listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     onSongClicked: (Int) -> Unit = {},
     onAddToPlaylist: (Int) -> Unit = {}
 ) {
@@ -488,7 +580,7 @@ fun SongList(
             .fillMaxWidth(), // removed background(Color.Black)
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(5.dp)) {
             itemsIndexed(songs) { index, song ->
                 SongCardRow(
                     song = song,
@@ -516,9 +608,30 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
     LaunchedEffect(Unit) { viewModel.loadRadioStations() }
 
     // Choose which stations to display based on preference
-    val stations = if (useDefault) defaultStations else apiStations
+    val allStations = if (useDefault) defaultStations else apiStations
+
+    // Genre filter row — "All" plus the distinct genres seen across the current station list.
+    var selectedGenre by remember { mutableStateOf<String?>(null) }
+    val genres = remember(allStations) {
+        allStations.flatMap { Util.parseTags(it.tags) }
+            .map { it.replaceFirstChar { c -> c.uppercase() } }
+            .distinct()
+    }
+    val stations = if (selectedGenre == null) allStations else allStations.filter { station ->
+        Util.parseTags(station.tags).any { it.equals(selectedGenre, ignoreCase = true) }
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
+        if (genres.isNotEmpty()) {
+            com.example.musicplayer.ui.components.radio.RadioGenreFilterRow(
+                genres = genres,
+                selectedGenre = selectedGenre,
+                onSelect = { selectedGenre = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            )
+        }
         when {
             loading -> {
                 Box(modifier = Modifier
@@ -623,12 +736,8 @@ fun SongListPreview() {
                 BottomNav(selectedIndex = 0, onSelected = { /* no-op in preview */ })
             }
         ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-            ) {
-                MainBackground()
+            Box(modifier = Modifier.fillMaxSize()) {
+                AuroraRibbonBackground()
 
                 Column(
                     modifier = Modifier
@@ -648,12 +757,57 @@ fun SongListPreview() {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color.Black)
                     ) {
                         MiniPlayer(modifier = Modifier.align(Alignment.Center))
                     }
                 }
             }
+        }
+    }
+}
+
+@Preview(showSystemUi = true, name = "SearchResultsScreen - Results", backgroundColor = 0xFF000000, showBackground = true)
+@Composable
+private fun SearchResultsScreenPreview() {
+    val sampleSongs: List<Song> = listOf(
+        Song(1, null, "Afterglow", "Nova Reyes", 210000.0, "", null, 2021),
+        Song(2, null, "Afterglow (Live)", "Nova Reyes", 230000.0, "", null, 2022),
+        Song(3, null, "Nightshift", "Nova Reyes", 198000.0, "", null, 2020),
+        Song(4, null, "Static", "Kit Rowan", 205000.0, "", null, 2019)
+    )
+    MaterialTheme {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AuroraRibbonBackground()
+            SearchResultsScreen(
+                query = "nova",
+                onQueryChange = {},
+                onCancel = {},
+                allSongs = sampleSongs,
+                matchedSongs = sampleSongs.filter { it.title.contains("nova", ignoreCase = true) || it.artist.contains("nova", ignoreCase = true) },
+                onSongClick = {},
+                onArtistClick = {},
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+@Preview(showSystemUi = true, name = "SearchResultsScreen - No Results", backgroundColor = 0xFF000000, showBackground = true)
+@Composable
+private fun SearchResultsScreenNoResultsPreview() {
+    MaterialTheme {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AuroraRibbonBackground()
+            SearchResultsScreen(
+                query = "kaleidoscope",
+                onQueryChange = {},
+                onCancel = {},
+                allSongs = emptyList(),
+                matchedSongs = emptyList(),
+                onSongClick = {},
+                onArtistClick = {},
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }

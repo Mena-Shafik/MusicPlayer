@@ -57,8 +57,13 @@ class SongListViewModel(
             } catch (_: Throwable) {
                 ""
             }
+            val album = try {
+                song.album ?: ""
+            } catch (_: Throwable) {
+                ""
+            }
             val lower = q.trim().lowercase()
-            title.lowercase().contains(lower) || artist.lowercase().contains(lower)
+            title.lowercase().contains(lower) || artist.lowercase().contains(lower) || album.lowercase().contains(lower)
         }
         res = when (sort) {
             SortOrder.TITLE_ASC -> res.sortedBy { (it.title ?: "").lowercase() }
@@ -275,6 +280,30 @@ class SongListViewModel(
         }
     }
 
+    enum class LibraryViewMode { SONGS, ALBUMS, ARTISTS, ERAS }
+
+    /**
+     * Sets album/artist/era view flags together in one call so collectors never observe an
+     * intermediate combination (e.g. switching Era -> Albums previously called setEraView(false)
+     * then setAlbumView(true) as two separate StateFlow emissions, which could recompose the
+     * screen in between showing the wrong view for a frame).
+     */
+    fun setLibraryViewMode(mode: LibraryViewMode) {
+        val album = mode == LibraryViewMode.ALBUMS
+        val artist = mode == LibraryViewMode.ARTISTS
+        val era = mode == LibraryViewMode.ERAS
+        _isAlbumView.value = album
+        _isArtistView.value = artist
+        _isEraView.value = era
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setAlbumView(it, album)
+                PreferencesManager.setArtistView(it, artist)
+                PreferencesManager.setEraView(it, era)
+            }
+        }
+    }
+
     // --- Persistent UI state for radio selection ---
     private val _isRadioSelected = MutableStateFlow(false)
     val isRadioSelected: StateFlow<Boolean> = _isRadioSelected
@@ -320,6 +349,32 @@ class SongListViewModel(
         context?.let {
             viewModelScope.launch {
                 PreferencesManager.setUseAuroraBackground(it, useAurora)
+            }
+        }
+    }
+
+    // --- Aurora background color palette ---
+    private val _auroraPalette = MutableStateFlow("Northern")
+    val auroraPalette: StateFlow<String> = _auroraPalette
+
+    fun setAuroraPalette(paletteName: String) {
+        _auroraPalette.value = paletteName
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setAuroraPalette(it, paletteName)
+            }
+        }
+    }
+
+    // --- Sample the song list's background from album art instead of the fixed Aurora palette ---
+    private val _useAlbumPalette = MutableStateFlow(false)
+    val useAlbumPalette: StateFlow<Boolean> = _useAlbumPalette
+
+    fun setUseAlbumPalette(useAlbumPalette: Boolean) {
+        _useAlbumPalette.value = useAlbumPalette
+        context?.let {
+            viewModelScope.launch {
+                PreferencesManager.setUseAlbumPalette(it, useAlbumPalette)
             }
         }
     }
@@ -375,6 +430,16 @@ class SongListViewModel(
             viewModelScope.launch {
                 PreferencesManager.getUseAuroraBackgroundFlow(it).collect { savedUseAurora ->
                     _useAuroraBackground.value = savedUseAurora
+                }
+            }
+            viewModelScope.launch {
+                PreferencesManager.getAuroraPaletteFlow(it).collect { savedPalette ->
+                    _auroraPalette.value = savedPalette
+                }
+            }
+            viewModelScope.launch {
+                PreferencesManager.getUseAlbumPaletteFlow(it).collect { savedUseAlbumPalette ->
+                    _useAlbumPalette.value = savedUseAlbumPalette
                 }
             }
         }

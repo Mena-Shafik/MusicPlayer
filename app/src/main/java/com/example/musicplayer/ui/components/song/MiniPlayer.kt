@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,11 +16,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PauseCircle
-import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,9 +37,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.musicplayer.R
 import com.example.musicplayer.util.Util
 import com.example.musicplayer.model.Song
@@ -67,14 +68,16 @@ fun MiniPlayer(
     // If there's no playlist and no current song, don't show the mini player
     if (playlist.isEmpty() && current == null) return
 
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color.Black.copy(alpha = 0.45f))
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp)
-                .background(Color(0xFF0F0F0F).copy(alpha = 0.95f))
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             // album art (left) - tappable to open full player
             var displayArt by remember(current?.path) { mutableStateOf<ImageBitmap?>(null) }
@@ -107,23 +110,26 @@ fun MiniPlayer(
             }
 
             val imageModifier = Modifier
-                .width(56.dp)
-                .height(56.dp)
+                .width(44.dp)
+                .height(44.dp)
                 .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF2A2A2A))
+                .clickable { onOpenPlayer(current) }
 
             if (displayArt != null) {
                 Image(
                     bitmap = displayArt!!,
                     contentDescription = "Album art",
-                    modifier = imageModifier.clickable { onOpenPlayer(current) },
+                    modifier = imageModifier,
                     contentScale = ContentScale.Crop
                 )
             } else {
                 Image(
                     painter = painterResource(id = R.drawable.ic_album),
                     contentDescription = "Album art",
-                    modifier = imageModifier.clickable { onOpenPlayer(current) },
-                    contentScale = ContentScale.Crop
+                    modifier = imageModifier.padding(10.dp),
+                    contentScale = ContentScale.Crop,
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF5A5A5A))
                 )
             }
 
@@ -133,41 +139,52 @@ fun MiniPlayer(
                 Text(
                     text = current?.title ?: "",
                     color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = current?.artist ?: "",
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 12.sp,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            IconButton(onClick = {
-                val appCtx = context.applicationContext
-                Log.d("MiniPlayer", "play/pause clicked isPlaying=$isPlaying appCtx=$appCtx")
-                if (isPreviewMode) {
-                    // in preview toggle repository state only
-                    PlayerStateManager.setIsPlaying(!PlayerStateManager.isPlaying.value)
-                } else {
-                    // Optimistically update UI state so the button feels responsive, then send intent to service.
-                    PlayerStateManager.setIsPlaying(!isPlaying)
-                    if (isPlaying) PlayerIntentBuilder.startPause(appCtx) else PlayerIntentBuilder.startPlay(appCtx)
-                }
-            }) {
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White)
+                    .clickable {
+                        val appCtx = context.applicationContext
+                        Log.d("MiniPlayer", "play/pause clicked isPlaying=$isPlaying appCtx=$appCtx")
+                        if (isPreviewMode) {
+                            // in preview toggle repository state only
+                            PlayerStateManager.setIsPlaying(!PlayerStateManager.isPlaying.value)
+                        } else {
+                            // Optimistically update UI state so the button feels responsive, then send intent to service.
+                            PlayerStateManager.setIsPlaying(!isPlaying)
+                            if (isPlaying) PlayerIntentBuilder.startPause(appCtx) else PlayerIntentBuilder.startPlay(appCtx)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(
-                    imageVector = if (isPlaying) Icons.Filled.PauseCircle else Icons.Filled.PlayCircle,
+                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
-                    Modifier.size(60.dp,60.dp),
-                    tint = Color.White
+                    modifier = Modifier.size(24.dp),
+                    tint = Color(0xFF111111)
                 )
             }
         }
 
-        // Progress indicator (determinate) — use LinearProgressIndicator instead of a slider
+        // Thin progress bar matching the redesign (track + orange fill), not Material's
+        // default LinearProgressIndicator styling.
         val duration = durationMs
         val position = positionMs.coerceAtMost(duration)
         val progress = remember(position, duration) {
@@ -176,18 +193,23 @@ fun MiniPlayer(
             } else 0f
         }
 
-        Column(modifier = Modifier
-            .fillMaxWidth()) {
-            // determinate progress bar
-            LinearProgressIndicator(
-                progress = { progress },
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp)
+                .height(3.dp)
+                .clip(RoundedCornerShape(1.5.dp))
+                .background(Color.White.copy(alpha = 0.15f))
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(2.dp, 0.dp, 2.dp, 0.dp),
-                color = Color(0xFFFFA500),
-                trackColor = Color(0xFFFFDAB9)
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction = progress)
+                    .background(Color(0xFFFFA500))
             )
         }
+
+        Spacer(modifier = Modifier.height(10.dp))
     }
 }
 

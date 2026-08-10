@@ -9,8 +9,8 @@ import kotlinx.coroutines.launch
 
 class HistoryViewModel(context: Context) : ViewModel() {
     private val repository = HistoryRepository(context)
-    
-    val history: StateFlow<List<Song>> = repository.history
+
+    val history: StateFlow<List<HistoryPlay>> = repository.history
 
     fun addToHistory(song: Song) {
         viewModelScope.launch {

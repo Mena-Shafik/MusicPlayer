@@ -4,7 +4,7 @@
       "stationuuid": "cidc-z103",
       "name": "Z103.5",
       "url": "https://buf-streamb1-ais-relay1.streamb.live/SB00222/playlist.m3u8?listeningSessionID=6922047d0079a643_3999634_eTaWePVI_YnVmLXN0cmVhbWIxLWFpcy1yZWxheTEuc3RyZWFtYi5saXZlOjgwMDA!_0000001rk4j&downloadSessionID=0&args=app_04&clientType=web&host=webapp.CA&modTime=1767836142893&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CIDC-FM&devicename=web-desktop&stationid=7757&dist=iheart&subscription_type=free",
-      "favicon": "https://cdn-profiles.tunein.com/s12366/images/logod.png?t=637554031500000000",
+      "favicon": "https://static.mytuner.mobi/media/tvos_radios/004/cidc-fm-z1035.540928d6.png",
       "country": "Canada",
       "tags": "Top40, Euro, Pop, Hip-Hop, Reggae",
       "bitrate": 128
@@ -39,7 +39,7 @@
     {
       "stationuuid": "chfi-981",
       "name": "CHFI 98.1",
-      "url": "https://19313.live.streamtheworld.com/CHUMFM_ADP/HLS/playlist.m3u8?clientType=web&host=webapp.CA&modTime=1767836142893&profileid=11815995833&terminalid=163&territory=CA&us_privacy=1-N-&callLetters=CHUM-FM&devicename=web-desktop&stationid=6270&dist=iheart&subscription_type=free&partnertok=eyJraWQiOiJpaGVhcnQiLCJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJ0ZCIsImNvcHBhIjowLCJwcm92aWRlcklkIjo0OCwicHJvZmlsZWlkIjoiMTE4MTU5OTU4MzMiLCJpc3MiOiJpaGVhcnQiLCJ1c19wcml2YWN5IjoiMVlZTiIsImRpc3QiOiJpaGVhcnQiLCJleHAiOjE3Njc5MTk4ODcsImlhdCI6MTc2NzgzMzQ4Nywib21pZCI6MH0.XNols_EQzgf7w0jxwCTavH6zmV-BtjM-_aGmMwK5mhs&country=CA&locale=en-CA&site-url=https%3A%2F%2Fwww.iheart.com%2Flive%2Fchum-1045-6270%2F",
+      "url": "https://rogers-hls.leanstream.co/rogers/tor981.stream/playlist.m3u8",
       "favicon": "https://www.seekyoursounds.com/wp-content/uploads/2024/06/Seekr-RadioCover-CHFI-981-1-300x300.png",
       "country": "Canada",
       "tags": "easy listening, adult contemporary",
@@ -66,7 +66,7 @@
     {
       "stationuuid": "Fresh-931",
       "name": "Fresh 93.1",
-      "url": "https://live.leanstream.co/CHAYFM-MP3?args=tunein",
+      "url": "https://corus.leanstream.co/CHAYFM",
       "favicon": "https://cdn-profiles.tunein.com/s31156/images/logod.png?t=155144",
       "country": "Canada",
       "tags": "classic, rock",

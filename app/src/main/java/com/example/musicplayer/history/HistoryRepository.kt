@@ -11,13 +11,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** A history row: the played song plus when it was played (dropped if only [Song] is kept). */
+data class HistoryPlay(val song: Song, val playedAt: Long)
+
 class HistoryRepository(private val context: Context) {
     private val TAG = "HistoryRepository"
     private val database = AppDatabase.getInstance(context)
     private val historyDao = database.historyDao()
 
-    private val _history = MutableStateFlow<List<Song>>(emptyList())
-    val history: StateFlow<List<Song>> = _history
+    private val _history = MutableStateFlow<List<HistoryPlay>>(emptyList())
+    val history: StateFlow<List<HistoryPlay>> = _history
 
     private val MAX_HISTORY_SIZE = 20
 
@@ -26,22 +29,25 @@ class HistoryRepository(private val context: Context) {
         loadHistory()
     }
 
+    private fun HistoryEntry.toPlay() = HistoryPlay(
+        song = Song(
+            id = songId,
+            title = title,
+            artist = artist,
+            duration = 0.0,
+            path = path,
+            album = album
+        ),
+        playedAt = timestamp
+    )
+
     private fun loadHistory() {
         try {
             kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
                 val entries = historyDao.getLastNSongs(MAX_HISTORY_SIZE)
-                val songs = entries.map { entry ->
-                    Song(
-                        id = entry.songId,
-                        title = entry.title,
-                        artist = entry.artist,
-                        duration = 0.0,
-                        path = entry.path,
-                        album = entry.album
-                    )
-                }
-                _history.value = songs
-                Log.d(TAG, "Loaded ${songs.size} history entries from database")
+                val plays = entries.map { it.toPlay() }
+                _history.value = plays
+                Log.d(TAG, "Loaded ${plays.size} history entries from database")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading history: ${e.message}")
@@ -84,18 +90,9 @@ class HistoryRepository(private val context: Context) {
 
             // Update the in-memory state
             val recentEntries = historyDao.getLastNSongs(MAX_HISTORY_SIZE)
-            val songs = recentEntries.map { entry ->
-                Song(
-                    id = entry.songId,
-                    title = entry.title,
-                    artist = entry.artist,
-                    duration = 0.0,
-                    path = entry.path,
-                    album = entry.album
-                )
-            }
-            _history.value = songs
-            Log.d(TAG, "Added song to history: ${song.title}, total history size: ${songs.size}")
+            val plays = recentEntries.map { it.toPlay() }
+            _history.value = plays
+            Log.d(TAG, "Added song to history: ${song.title}, total history size: ${plays.size}")
         } catch (e: Exception) {
             Log.e(TAG, "Error adding to history: ${e.message}")
         }

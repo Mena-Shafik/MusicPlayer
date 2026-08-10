@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Symmetric fade (0->0.9 then back, via repeatMode=reverse) approximating the design
+     spec's 0->.9->0 envelope. Wrapped in <set>, matching the structure of the scale
+     animators (which do animate) rather than the earlier bare <objectAnimator> root
+     (which, like the old rotation animator, never visibly played). -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:startOffset="0">
+    <objectAnimator
+        android:propertyName="strokeAlpha"
+        android:duration="1200"
+        android:valueFrom="0"
+        android:valueTo="0.9"
+        android:valueType="floatType"
+        android:repeatCount="infinite"
+        android:repeatMode="reverse"
+        android:interpolator="@android:interpolator/fast_out_slow_in" />
+</set>

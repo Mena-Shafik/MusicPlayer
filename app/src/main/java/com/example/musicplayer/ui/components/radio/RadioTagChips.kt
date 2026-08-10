@@ -3,10 +3,12 @@ package com.example.musicplayer.ui.components.radio
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.MaterialTheme
@@ -29,16 +31,15 @@ import com.example.musicplayer.util.Util
 fun RadioTagChips(tagsRaw: String?, modifier: Modifier = Modifier, chipBackground: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), chipContentColor: Color = MaterialTheme.colorScheme.onPrimary
 ) {
     val tags = Util.parseTags(tagsRaw)
-    val scroll = rememberScrollState()
 
     if (tags.isEmpty()) return
 
-    Row(
+    FlowRow(
         modifier = modifier
-            .horizontalScroll(scroll)
             .background(Color.Transparent)
             .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         for (t in tags) {
             AssistChip(
@@ -74,13 +75,12 @@ fun RadioTagChips(
     chipContentColor: Color = MaterialTheme.colorScheme.onPrimary
 ) {
     if (tags.isEmpty()) return
-    val scroll = rememberScrollState()
-    Row(
+    FlowRow(
         modifier = modifier
-            .horizontalScroll(scroll)
             .background(Color.Transparent)
             .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         for (t in tags) {
             AssistChip(

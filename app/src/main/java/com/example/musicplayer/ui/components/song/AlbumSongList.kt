@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -37,9 +38,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import android.util.Log
@@ -61,9 +64,9 @@ fun AlbumSongList(
     showSingles: Boolean = true,
 ) {
     val lightText = Color.White
-    val dividerColor = Color(0xFF2A2A2A)
+    val dividerColor = Color.White.copy(alpha = 0.10f)
     val faintText = Color(0xFFB0B0B0)
-    val accentColor = Color(0xFF1DB954) // Spotify green for selected album
+    val accentColor = Color(0xFFFFA500) // "2.0" accent orange for the selected album
     val context = LocalContext.current
 
     // Albums that are compilations/not real albums
@@ -177,19 +180,21 @@ fun AlbumSongList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Singles",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = lightText
+                        text = "SINGLES",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 1.2.sp,
+                        color = Color.White.copy(alpha = 0.5f)
                     )
                     Text(
                         text = "${singlesList.size}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = faintText
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.4f)
                     )
                 }
                 LazyColumn(
@@ -255,18 +260,21 @@ private fun AlbumCardItem(
 
     Box(
         modifier = Modifier
-            .width(140.dp)
-            .background(
-                color = if (isSelected) Color(0xFF1A1A1A) else Color(0xFF0F0F0F),
-                shape = RoundedCornerShape(8.dp)
+            .width(108.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) accentColor else Color.White.copy(alpha = 0.10f),
+                shape = RoundedCornerShape(12.dp)
             )
             .clickable { onSelect() }
-            .padding(12.dp),
+            .padding(8.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             // Album cover image
@@ -275,16 +283,16 @@ private fun AlbumCardItem(
                     bitmap = bitmapState.value!!,
                     contentDescription = albumName,
                     modifier = Modifier
-                        .size(100.dp)
-                        .clip(RoundedCornerShape(4.dp)),
+                        .size(90.dp)
+                        .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop
                 )
             } else {
                 // Placeholder when no cover art
                 Box(
                     modifier = Modifier
-                        .size(100.dp)
-                        .background(Color(0xFF2A2A2A), shape = RoundedCornerShape(4.dp)),
+                        .size(90.dp)
+                        .background(Color(0xFF2A2A2A), shape = RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -298,7 +306,9 @@ private fun AlbumCardItem(
             // Album name and song count
             Text(
                 text = albumName,
-                style = MaterialTheme.typography.labelMedium,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = lightText,
                 maxLines = 1,
                 overflow = TextOverflow.Visible,
@@ -311,8 +321,9 @@ private fun AlbumCardItem(
 
             Text(
                 text = "$songCount song${if (songCount == 1) "" else "s"}",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isSelected) accentColor else faintText
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+                color = if (isSelected) accentColor else Color.White.copy(alpha = 0.5f)
             )
         }
     }

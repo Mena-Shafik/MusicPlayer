@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The guaranteed-visible entrance (matches the design's own reference pattern for 0c's
+     trim_aura_arc.xml — a short one-shot animation inside windowSplashScreenAnimationDuration's
+     sub-second budget). The bloom-ring loop is best-effort, same as 0c's rotation loop. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:ordering="together">
+    <objectAnimator
+        android:propertyName="scaleX"
+        android:duration="400"
+        android:valueFrom="0.86"
+        android:valueTo="1.0"
+        android:valueType="floatType"
+        android:interpolator="@android:interpolator/fast_out_slow_in" />
+    <objectAnimator
+        android:propertyName="scaleY"
+        android:duration="400"
+        android:valueFrom="0.86"
+        android:valueTo="1.0"
+        android:valueType="floatType"
+        android:interpolator="@android:interpolator/fast_out_slow_in" />
+</set>

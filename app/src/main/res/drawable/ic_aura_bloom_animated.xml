@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_aura_bloom">
+    <!-- 400ms entrance, inside the platform's sub-second budget — the one guaranteed-visible
+         animation, matching the design's own reference pattern (0c's trim_aura_arc.xml). -->
+    <target
+        android:name="discGroup"
+        android:animation="@animator/enter_aura_disc" />
+    <!-- Looping bloom; best-effort, same status as 0c's rotation loop. -->
+    <target
+        android:name="bloomGroup1"
+        android:animation="@animator/bloom_scale_ring1" />
+    <target
+        android:name="bloomPath1"
+        android:animation="@animator/bloom_alpha_ring1" />
+    <target
+        android:name="bloomGroup2"
+        android:animation="@animator/bloom_scale_ring2" />
+    <target
+        android:name="bloomPath2"
+        android:animation="@animator/bloom_alpha_ring2" />
+    <target
+        android:name="bloomGroup3"
+        android:animation="@animator/bloom_scale_ring3" />
+    <target
+        android:name="bloomPath3"
+        android:animation="@animator/bloom_alpha_ring3" />
+</animated-vector>
