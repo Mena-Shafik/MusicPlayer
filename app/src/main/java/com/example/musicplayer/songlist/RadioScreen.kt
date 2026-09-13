@@ -28,6 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.example.musicplayer.navigation.NavRoutes
+import com.example.musicplayer.navigation.navigateToTab
 import com.example.musicplayer.ui.components.common.BottomNav
 import com.example.musicplayer.ui.components.common.MainAppBar
 import com.example.musicplayer.ui.components.common.MainBackground
@@ -70,9 +71,7 @@ fun RadioScreen(navController: NavHostController) {
     val isRadioSelected by viewModel.isRadioSelected.collectAsState()
     LaunchedEffect(Unit) { viewModel.setRadioSelected(true) }
 
-    // Background drawn full-screen behind the whole Scaffold (including the top/bottom bars),
-    // not just the content area between them — otherwise a "transparent" bar just shows the
-    // Scaffold's own flat containerColor instead of this blur.
+    // Background drawn full-screen behind the whole Scaffold (including the top/bottom bars), not just the content area between them -- otherwise a "transparent" bar just shows the Scaffold's own flat containerColor instead of this blur.
     Box(modifier = Modifier.fillMaxSize()) {
     AuroraRibbonBackground()
     Scaffold(
@@ -94,9 +93,9 @@ fun RadioScreen(navController: NavHostController) {
                 selectedIndex = 1,
                 onSelected = { idx ->
                     when (idx) {
-                        0 -> navController.navigate(NavRoutes.Home.route) { launchSingleTop = true }
+                        0 -> navController.navigateToTab(NavRoutes.Home.route)
                         1 -> { /* already here */ }
-                        2 -> navController.navigate(NavRoutes.Playlists.route) { launchSingleTop = true }
+                        2 -> navController.navigateToTab(NavRoutes.Playlists.route)
                     }
                 }
             )

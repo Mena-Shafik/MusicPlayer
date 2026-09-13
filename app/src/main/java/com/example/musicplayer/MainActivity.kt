@@ -17,10 +17,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -30,11 +34,14 @@ import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.model.RadioStation
-import com.example.musicplayer.music.MusicPlayerScreen
+import com.example.musicplayer.music.MusicPlayerViewModel
+import com.example.musicplayer.music.PersistentPlayerHost
+import com.example.musicplayer.service.PlayerDockController
 import com.example.musicplayer.radio.RadioPlayerScreen
 import com.example.musicplayer.songlist.ListSongsScreen
 import com.example.musicplayer.settings.SettingsScreen
@@ -44,9 +51,12 @@ import com.example.musicplayer.navigation.NavRoutes
 import com.example.musicplayer.playlist.PlaylistScreen
 import com.example.musicplayer.playlist.PlaylistDetailScreen
 import com.example.musicplayer.playlist.PlaylistAddSongsScreen
+import com.example.musicplayer.navidrome.NavidromeRepository
+import com.example.musicplayer.preferences.PreferencesManager
 import com.example.musicplayer.util.Util
 import com.example.musicplayer.util.ArtistUtil
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -65,18 +75,14 @@ class MainActivity : ComponentActivity() {
         viewModel.isLoading.observe(this) { loading ->
             keepSplashOn = loading == true
         }
-        // Hold for at least one full icon rotation (matches rotate_icon.xml's 3600ms cycle)
-        // even if the media scan finishes almost instantly — otherwise a fast/empty library
-        // dismisses the splash before the spin has completed even a fraction of a turn.
+        // Hold for at least one full icon rotation (matches rotate_icon.xml's 3600ms cycle) even if the media scan finishes almost instantly, otherwise a fast/empty library dismisses the splash mid-spin.
         val splashStartElapsedMs = android.os.SystemClock.elapsedRealtime()
         val minSplashDurationMs = 1500L
         splash.setKeepOnScreenCondition {
             keepSplashOn || (android.os.SystemClock.elapsedRealtime() - splashStartElapsedMs) < minSplashDurationMs
         }
 
-        // Start preloading songs on a background thread; hide splash when done. The result
-        // is shared via LibraryPreloadCache so ListSongsScreen doesn't have to re-scan
-        // MediaStore from scratch the moment the splash dismisses.
+        // Preloads songs on a background thread; result shared via LibraryPreloadCache so ListSongsScreen doesn't re-scan MediaStore the moment the splash dismisses.
         lifecycleScope.launch(Dispatchers.IO) {
             val loaded = try {
                 Util.getAllAudioFromDevice(this@MainActivity)
@@ -97,17 +103,17 @@ class MainActivity : ComponentActivity() {
             MusicPlayerTheme {
                 val navController = rememberNavController()
 
-                // No top bar — show content full screen
-                Column(
+                // No top bar -- full screen content. PersistentPlayerHost is a sibling of the NavHost (not a pushed destination) so it stays mounted/visible across every tab once something is playing.
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black)
                 ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
                     NavHost(
                         navController = navController,
                         startDestination = NavRoutes.Home.route,
-                        // Smooth crossfade between destinations (Songs/Radio/Playlists tab
-                        // switching, plus any pushed screen) instead of the previous instant cut.
+                        // Smooth crossfade between destinations (tab switching plus any pushed screen) instead of the previous instant cut.
                         enterTransition = { fadeIn(animationSpec = tween(220)) },
                         exitTransition = { fadeOut(animationSpec = tween(180)) },
                         popEnterTransition = { fadeIn(animationSpec = tween(220)) },
@@ -123,13 +129,29 @@ class MainActivity : ComponentActivity() {
 
                     composable(NavRoutes.History.route) {
                         val context = LocalContext.current
-                        val songs: List<Song> = remember(context) { Util.getAllAudioFromDevice(context) }
+                        var songs by remember { mutableStateOf<List<Song>>(emptyList()) }
+                        LaunchedEffect(context) {
+                            val local = withContext(Dispatchers.IO) { Util.getAllAudioFromDevice(context) }
+                            val connected = PreferencesManager.getNavidromeConnectedFlow(context).first()
+                            val remote = if (connected) {
+                                try {
+                                    NavidromeRepository(context).listCatalogueSongs()
+                                } catch (e: Exception) {
+                                    emptyList()
+                                }
+                            } else {
+                                emptyList()
+                            }
+                            songs = local + remote
+                        }
+                        val playerVm: MusicPlayerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
                         HistoryScreen(
                             navController = navController,
                             onSongClick = { song ->
                                 val index = songs.indexOfFirst { it.id == song.id }
                                 if (index >= 0) {
-                                    navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                                    playerVm.setPlaylist(context, songs, index)
+                                    PlayerDockController.requestExpand()
                                 }
                             }
                         )
@@ -143,6 +165,10 @@ class MainActivity : ComponentActivity() {
 
                     composable(NavRoutes.Radio.route) {
                         com.example.musicplayer.songlist.RadioScreen(navController = navController)
+                    }
+
+                    composable(NavRoutes.Navidrome.route) {
+                        com.example.musicplayer.navidrome.NavidromeScreen(navController = navController)
                     }
 
                     composable(
@@ -199,23 +225,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    composable(
-                        NavRoutes.MusicPlayer.route,
-                        arguments = listOf(navArgument("songId") { type = NavType.IntType })
-                    ) { backStackEntry ->
-                        val songId = backStackEntry.arguments?.getInt("songId")
-                        val context = LocalContext.current
-                        val songs: List<Song> = remember(context) { Util.getAllAudioFromDevice(context) }
-                        val song = songId?.let { id -> songs.find { it.id == id } }
-                        song?.let {
-                            MusicPlayerScreen(
-                                songId = songId,
-                                songs = songs,
-                                navController = navController
-                            )
-                        }
-                    }
-
                     // Radio player route: optionally pass a Serializable RadioStation object
                     composable(
                         "radioPlayer",
@@ -250,9 +259,19 @@ class MainActivity : ComponentActivity() {
                         RadioPlayerScreen(radioStation = stationFromPath, navController = navController)
                     }
                 }
+                    }
+                    // Only shown on the Home tab; stays mounted (hideContent) so it reappears instantly on return.
+                    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+                    // Root tabs (Home stays as the permanent nav-stack anchor for saveState/restoreState) exit the app on back instead of popping to a previous tab; registered before PersistentPlayerHost so its own collapse-on-back still wins while the full player is open.
+                    androidx.activity.compose.BackHandler(
+                        enabled = currentRoute == NavRoutes.Home.route || currentRoute == NavRoutes.Radio.route || currentRoute == NavRoutes.Playlists.route
+                    ) {
+                        (this@MainActivity).finish()
+                    }
+                    PersistentPlayerHost(hideContent = currentRoute != NavRoutes.Home.route)
+                }
             }
         }
-    }
     }
 
     /*private fun setupPermissions() {

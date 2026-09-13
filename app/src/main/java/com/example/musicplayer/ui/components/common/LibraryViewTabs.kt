@@ -38,19 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 
-/**
- * Pill-shaped segmented tab switcher from the "2.0" design language, e.g. for
- * Songs / Albums / Artists (/ Eras) and the music player's Up Next/Lyrics/Related sheet.
- *
- * [openFraction] is the live, externally-driven collapsed(0)->expanded(1) progress of
- * whatever container this sits in (a drag gesture, not an internal timer) — the
- * highlight's visibility and the selected label's color track it directly (1:1, no extra
- * animateXAsState wrapper) so a tab reads as "selected but not shown" while collapsed and
- * fades/slides in exactly in step with the open gesture, rather than popping in on a
- * fixed-duration timer once some boolean flips. Switching tabs while already open (a
- * discrete action, not a drag) still animates on its own via [animateDpAsState] once so
- * the highlight slides shows correctly regardless of the two motions coming from a click.
- */
+// Pill-shaped segmented tab switcher (Songs/Albums/Artists/Eras, or the player's Up Next/Lyrics/Related sheet); openFraction is the live, externally-driven collapsed(0)->expanded(1) progress of the container this sits in (a drag gesture, not a timer), so the highlight/label color track it 1:1 rather than popping in on a fixed timer once some boolean flips -- switching tabs while already open still animates on its own via animateDpAsState.
 @Composable
 fun LibraryViewTabs(
     labels: List<String>,
@@ -102,9 +90,7 @@ fun LibraryViewTabs(
         ) {
             labels.forEachIndexed { index, label ->
                 val selected = index == selectedIndex
-                // Where this tab's label lands *if* the sheet were fully open — blended
-                // against openFraction below so it only actually reads as selected once
-                // the sheet has (partly) opened.
+                // Where this tab's label lands if the sheet were fully open, blended against openFraction so it only reads as selected once the sheet has (partly) opened.
                 val openSelectedColor by animateColorAsState(
                     targetValue = if (selected) Color(0xFF111111) else unselectedColor,
                     animationSpec = tween(220),
@@ -142,6 +128,19 @@ private fun LibraryViewTabsPreview() {
     MaterialTheme {
         LibraryViewTabs(
             labels = listOf("Songs", "Albums", "Artists"),
+            selectedIndex = 0,
+            onSelected = {},
+            modifier = Modifier.padding(16.dp)
+        )
+    }
+}
+
+@Preview(name = "LibraryViewTabs — Navidrome connected", backgroundColor = 0xFF000000, showBackground = true)
+@Composable
+private fun LibraryViewTabsCatalogueSourcePreview() {
+    MaterialTheme {
+        LibraryViewTabs(
+            labels = listOf("All", "On device", "Catalogue"),
             selectedIndex = 0,
             onSelected = {},
             modifier = Modifier.padding(16.dp)

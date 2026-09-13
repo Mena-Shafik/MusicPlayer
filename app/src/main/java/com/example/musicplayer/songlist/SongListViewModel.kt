@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.musicplayer.model.RadioStation
 import com.example.musicplayer.model.Song
+import com.example.musicplayer.navidrome.NavidromeRepository
 import com.example.musicplayer.preferences.PreferencesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -140,10 +141,7 @@ class SongListViewModel(
     private val _radioError = MutableStateFlow<String?>(null)
     val radioError: StateFlow<String?> = _radioError
 
-    /**
-     * Fetch radio stations for GTA only when we don't already have cached stations.
-     * Use this to avoid re-fetching when navigating back from the player screen.
-     */
+    // Fetches radio stations only when not already cached, to avoid re-fetching when navigating back from the player screen.
     fun fetchRadioStationsIfNeeded(limit: Int = 100) {
         if (_radioStations.value.isNotEmpty() || _radioLoading.value) return
         viewModelScope.launch {
@@ -178,8 +176,53 @@ class SongListViewModel(
         }
     }
 
-    // --- Provide the default (built-in) user stations for the UI ---
-    // Initialize from constructor param so previews can be synchronous and not recreate UI
+    // Navidrome catalogue (remote songs), fetched lazily once the user switches to the "All"/"Catalogue" tab -- not on every app open.
+    private val navidromeRepository: NavidromeRepository? = context?.let { NavidromeRepository(it) }
+
+    private val _catalogueSongs = MutableStateFlow<List<Song>>(emptyList())
+    val catalogueSongs: StateFlow<List<Song>> = _catalogueSongs
+
+    private val _catalogueLoading = MutableStateFlow(false)
+    val catalogueLoading: StateFlow<Boolean> = _catalogueLoading
+
+    private val _catalogueError = MutableStateFlow<String?>(null)
+    val catalogueError: StateFlow<String?> = _catalogueError
+
+    private var catalogueLoadedOnce = false
+
+    // Same title/artist/album substring filter as filteredSongs, applied to the remote list so search behaves consistently regardless of the active source tab.
+    val filteredCatalogueSongs: StateFlow<List<Song>> = combine(_catalogueSongs, _query) { list, q ->
+        if (q.isBlank()) list else list.filter { song ->
+            val lower = q.trim().lowercase()
+            (song.title ?: "").lowercase().contains(lower) ||
+                (song.artist ?: "").lowercase().contains(lower) ||
+                (song.album ?: "").lowercase().contains(lower)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun loadCatalogueIfNeeded() {
+        val repo = navidromeRepository ?: return
+        if (catalogueLoadedOnce || _catalogueLoading.value) return
+        _catalogueLoading.value = true
+        viewModelScope.launch {
+            try {
+                _catalogueSongs.value = repo.listCatalogueSongs()
+                catalogueLoadedOnce = true
+                _catalogueError.value = null
+            } catch (e: Exception) {
+                _catalogueError.value = e.message ?: "Couldn't load the catalogue"
+            } finally {
+                _catalogueLoading.value = false
+            }
+        }
+    }
+
+    fun retryCatalogueLoad() {
+        catalogueLoadedOnce = false
+        loadCatalogueIfNeeded()
+    }
+
+    // Default (built-in) user stations, initialized from a constructor param so previews can be synchronous.
     private val _userStations = MutableStateFlow<List<RadioStation>>(userStationsInitial)
     val userStations: StateFlow<List<RadioStation>> = _userStations
 
@@ -282,12 +325,7 @@ class SongListViewModel(
 
     enum class LibraryViewMode { SONGS, ALBUMS, ARTISTS, ERAS }
 
-    /**
-     * Sets album/artist/era view flags together in one call so collectors never observe an
-     * intermediate combination (e.g. switching Era -> Albums previously called setEraView(false)
-     * then setAlbumView(true) as two separate StateFlow emissions, which could recompose the
-     * screen in between showing the wrong view for a frame).
-     */
+    // Sets album/artist/era view flags together in one call so collectors never observe an intermediate combination (e.g. Era -> Albums previously emitted setEraView(false) then setAlbumView(true) as two separate StateFlow emissions, which could recompose showing the wrong view for a frame).
     fun setLibraryViewMode(mode: LibraryViewMode) {
         val album = mode == LibraryViewMode.ALBUMS
         val artist = mode == LibraryViewMode.ARTISTS
@@ -379,11 +417,7 @@ class SongListViewModel(
         }
     }
 
-    /**
-     * Get radio stations based on the useDefaultRadioList preference.
-     * If true, returns JSON default stations.
-     * If false, fetches from Radio Browser API.
-     */
+    // Uses bundled JSON default stations if useDefaultRadioList is true, otherwise fetches from Radio Browser API.
     fun loadRadioStations() {
         val useDefault = _useDefaultRadioList.value
         if (useDefault) {

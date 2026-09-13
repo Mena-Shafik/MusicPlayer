@@ -37,8 +37,7 @@ class MusicPlayerViewModel : ViewModel() {
         val title = songs.getOrNull(startIndex)?.title ?: ""
         val artist = songs.getOrNull(startIndex)?.artist ?: ""
         try { PlayerIntentBuilder.startUpdate(appCtx, false, startIndex, title, artist) } catch (_: Throwable) {}
-        // Explicitly ask the service to prepare (and start) the requested index. This is
-        // more reliable than relying on startPlay coalescing behavior.
+        // Explicitly ask the service to prepare (and start) the requested index -- more reliable than relying on startPlay coalescing behavior.
         PlayerIntentBuilder.startPrepare(appCtx, startIndex, true)
 
         // Track the song in history

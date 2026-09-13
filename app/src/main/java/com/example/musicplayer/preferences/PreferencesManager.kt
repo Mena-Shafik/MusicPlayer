@@ -106,9 +106,7 @@ object PreferencesManager {
         }
     }
 
-    // Off by default: the song list's background otherwise follows the fixed Aurora
-    // palette above, same as every other screen — this opts a single screen into
-    // sampling live colors from album art instead.
+    // Off by default: the song list's background otherwise follows the fixed Aurora palette above, same as every other screen -- this opts a single screen into sampling live colors from album art instead.
     fun getUseAlbumPaletteFlow(context: Context): Flow<Boolean> =
         context.dataStore.data.map { preferences ->
             preferences[USE_ALBUM_PALETTE_KEY] ?: false
@@ -120,9 +118,7 @@ object PreferencesManager {
         }
     }
 
-    // Non-secret Navidrome connection state. Credentials themselves live in
-    // NavidromeCredentialsStore (encrypted), not here.
-
+    // Non-secret Navidrome connection state; credentials live in NavidromeCredentialsStore (encrypted), not here.
     fun getNavidromeConnectedFlow(context: Context): Flow<Boolean> =
         context.dataStore.data.map { preferences -> preferences[NAVIDROME_CONNECTED_KEY] ?: false }
 
@@ -167,8 +163,7 @@ object PreferencesManager {
         context.dataStore.edit { preferences -> preferences[NAVIDROME_ALLOW_SELF_SIGNED_KEY] = allow }
     }
 
-    /** Clears every Navidrome-related preference on disconnect. Credentials are cleared
-     * separately via NavidromeCredentialsStore.clear(). */
+    // Clears every Navidrome-related preference on disconnect; credentials are cleared separately via NavidromeCredentialsStore.clear().
     suspend fun clearNavidromeState(context: Context) {
         context.dataStore.edit { preferences ->
             preferences.remove(NAVIDROME_CONNECTED_KEY)

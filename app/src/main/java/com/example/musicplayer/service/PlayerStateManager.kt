@@ -23,18 +23,13 @@ object PlayerStateManager {
     private val _durationMs = MutableStateFlow(0L)
     val durationMs: StateFlow<Long> = _durationMs
 
-    // --- prepared state helpers ---
-    // Tracks whether the underlying MediaPlayer is prepared. Callers (the Service) should
-    // mark the player prepared from onPrepared and clear when releasing/resetting the player.
+    // Tracks whether the underlying MediaPlayer is prepared; the Service marks it prepared from onPrepared and clears it when releasing/resetting the player.
     private val _isPrepared = MutableStateFlow(false)
     val isPrepared: StateFlow<Boolean> = _isPrepared
 
     // ...existing code...
 
-    /**
-     * Mark player as prepared and set a safe duration value.
-     * Call this from MediaPlayer.OnPreparedListener with the known duration (mp.duration).
-     */
+    // Call from MediaPlayer.OnPreparedListener with the known duration (mp.duration).
     fun markPrepared(durationMillis: Long) {
         _isPrepared.value = true
         _durationMs.value = durationMillis
@@ -42,9 +37,7 @@ object PlayerStateManager {
         try { Log.d(TAG, "isPrepared=true durationMs=$durationMillis") } catch (_: Throwable) {}
     }
 
-    /**
-     * Clear prepared state (call when player is released/reset).
-     */
+    // Call when player is released/reset.
     fun clearPrepared() {
         _isPrepared.value = false
         _durationMs.value = 0L
@@ -52,21 +45,10 @@ object PlayerStateManager {
         try { Log.d(TAG, "isPrepared=false durationMs=0") } catch (_: Throwable) {}
     }
 
-    /**
-     * A safe getter for duration. Returns last-known duration (0 if unknown).
-     * Avoid calling MediaPlayer.getDuration() directly; instead rely on this value or
-     * call markPrepared(...) from your Service's OnPreparedListener.
-     */
+    // Returns last-known duration (0 if unknown); avoid calling MediaPlayer.getDuration() directly, rely on this or markPrepared(...) from OnPreparedListener instead.
     fun getSafeDuration(): Long = _durationMs.value
 
-    /**
-     * Safely update position using a MediaPlayer instance. This wraps currentPosition
-     * in a try/catch to avoid IllegalStateException when the player isn't in a proper
-     * state (this is the error you saw: "Attempt to call getDuration in wrong state").
-     *
-     * Usage: call PlayerRepository.updatePositionFromPlayerSafe(mediaPlayer)
-     * on your poll/update loop instead of calling mediaPlayer.currentPosition directly.
-     */
+    // Wraps currentPosition in try/catch to avoid IllegalStateException ("Attempt to call getDuration in wrong state") when the player isn't in a proper state; call this from your poll/update loop instead of mediaPlayer.currentPosition directly.
     fun updatePositionFromPlayerSafe(mediaPlayer: android.media.MediaPlayer?) {
         if (mediaPlayer == null) {
             _positionMs.value = 0L
@@ -105,8 +87,7 @@ object PlayerStateManager {
     }
 
     fun setPlaylist(songs: List<Song>, startIndex: Int): Boolean {
-        // ...existing code...
-        // Avoid redundant resets which can restart/prepare the service and cause unexpected switches.
+        // Avoid redundant resets, which can restart/prepare the service and cause unexpected switches.
         val current = _playlist.value
         // Consider playlists identical if they have same length and matching song IDs in order
         val same = if (current.size == songs.size) {
@@ -129,10 +110,7 @@ object PlayerStateManager {
         // reset position and duration for the new song
         _positionMs.value = 0L
         _durationMs.value = 0L
-        // DON'T reset isPlaying here - let the caller control playback state
-        // This prevents the MiniPlayer from disappearing when changing songs
-        // _isPlaying.value = false  // REMOVED
-        // also clear prepared flag because playlist changed
+        // Don't reset isPlaying here -- caller controls playback state; this prevents the mini player from disappearing when changing songs.
         _isPrepared.value = false
         return true
     }
@@ -188,10 +166,7 @@ object PlayerStateManager {
         shuffleQueue = (0 until size).filter { it != excludeIndex }.shuffled(Random(System.currentTimeMillis())).toMutableList()
     }
 
-    /**
-     * Compute the next index according to current shuffle/replay state without mutating _currentIndex.
-     * This method also consumes shuffleQueue and records history when appropriate.
-     */
+    // Computes the next index per current shuffle/replay state without mutating _currentIndex; also consumes shuffleQueue and records history when appropriate.
     fun nextIndex(): Int {
         val songs = _playlist.value
         if (songs.isEmpty()) return _currentIndex.value

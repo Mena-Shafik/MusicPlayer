@@ -8,10 +8,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/**
- * Service to fetch artist images from MusicBrainz and Fanart.tv APIs (free, no auth required).
- * Uses music-specific databases for better accuracy.
- */
+// Fetches artist images from MusicBrainz and Fanart.tv (free, no auth required) for better accuracy than generic image search.
 object ArtistUtil {
     private const val TAG = "ArtistImageService"
     private const val TIMEOUT_MS = 15000
@@ -70,10 +67,7 @@ object ArtistUtil {
         return if (overlapRatio >= 0.8f) 1 else 0
     }
 
-    /**
-     * Fetch artist image URL using MusicBrainz API + Fanart.tv fallback.
-     * MusicBrainz is a free, open music encyclopedia with accurate artist data.
-     */
+    // Fetches artist image URL via MusicBrainz (free, open music encyclopedia) with a Fanart.tv fallback.
     private suspend fun fetchArtistImage(artistName: String): String? {
         return withContext(Dispatchers.IO) {
             try {
@@ -96,8 +90,7 @@ object ArtistUtil {
 
                 val encoded = URLEncoder.encode("\"${artistName.trim()}\"", "UTF-8")
                 Log.d(TAG, "Fetching artist image for: $artistName from MusicBrainz")
-                // ...existing code...
-                // Step 1: Search MusicBrainz for artist MBID
+                // Step 1: search MusicBrainz for the artist MBID.
                 val searchUrl = "https://musicbrainz.org/ws/2/artist/?query=artist:$encoded&fmt=json&limit=5"
                 val searchConn = URL(searchUrl).openConnection() as HttpURLConnection
                 searchConn.requestMethod = "GET"
@@ -160,8 +153,6 @@ object ArtistUtil {
                     return@withContext imageUrl
                 }
 
-                // Step 3: Fallback - try to get a simple image URL pattern
-                // Some services use predictable patterns with MBID
                 Log.d(TAG, "No image found for $artistName via APIs")
                 null
 
@@ -172,10 +163,7 @@ object ArtistUtil {
         }
     }
 
-    /**
-     * Fetch artist image from TheAudioDB API (free service).
-     * Searches by name first, then falls back to MBID if provided.
-     */
+    // Fetches artist image from TheAudioDB (free service), searching by name first then falling back to MBID if provided.
     private suspend fun fetchFromTheAudioDB(mbid: String, artistName: String): String? {
         return try {
             // Try searching by name first
@@ -284,12 +272,7 @@ object ArtistUtil {
     }
 
 
-    /**
-     * Get artist image URL with caching.
-     * Checks cache first, then fetches from MusicBrainz + TheAudioDB.
-     * Falls back to aliases if original name doesn't return images.
-     * Note: Only successful fetches are cached when app is active; failures are retried on next call.
-     */
+    // Checks cache first, then fetches from MusicBrainz + TheAudioDB, falling back to known aliases if the original name returns nothing; only successful fetches are cached (and only while the app is active) so failures retry on next call.
     suspend fun getArtistImageUrl(artistName: String): String? {
         val normalizedName = normalizeArtistName(artistName)
         val cacheKey = normalizedName  // Use normalized name as cache key for consistency
@@ -342,29 +325,20 @@ object ArtistUtil {
         return null
     }
 
-    /**
-     * Clear the image cache and mark app as inactive.
-     * Called when app goes to background.
-     */
+    // Called when app goes to background.
     fun onAppBackground() {
         isAppActive = false
         imageCache.clear()
         Log.d(TAG, "⊗ APP BACKGROUNDED: Cache cleared and caching disabled")
     }
 
-    /**
-     * Mark app as active - caching will resume.
-     * Called when app comes to foreground.
-     */
+    // Called when app comes to foreground; caching resumes.
     fun onAppForeground() {
         isAppActive = true
         imageCache.clear()
         Log.d(TAG, "⊕ APP FOREGROUNDED: Cache enabled, previous cache cleared")
     }
 
-    /**
-     * Clear the image cache (useful for testing or memory management).
-     */
     fun clearCache() {
         imageCache.clear()
         Log.d(TAG, "Image cache cleared")

@@ -37,8 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Filled, bordered text field with an external uppercase-eyebrow label — matches the
- * redesign's field language (no Material floating label / indicator line). */
+// Filled, bordered text field with an external uppercase-eyebrow label -- matches the redesign's field language (no Material floating label/indicator line).
 @Composable
 private fun SheetTextField(
     value: String,

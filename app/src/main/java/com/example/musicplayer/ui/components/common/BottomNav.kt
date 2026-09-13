@@ -35,11 +35,7 @@ private val navTabs = listOf(
     NavTab(R.drawable.ic_nav_playlists_selected, R.drawable.ic_nav_playlists_unselected, "Playlists"),
 )
 
-/**
- * Flat, blurred-dock bottom nav in the "2.0" design language: duotone line icons
- * (orange accent for the selected tab) on a translucent dark bar with a hairline top
- * border, instead of Material3's default filled indicator pill.
- */
+// Flat, blurred-dock bottom nav in the "2.0" design language: duotone line icons (orange accent for the selected tab) on a translucent dark bar with a hairline top border, instead of Material3's default filled indicator pill.
 @Composable
 fun BottomNav(
     selectedIndex: Int,

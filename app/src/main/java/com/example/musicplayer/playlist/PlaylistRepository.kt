@@ -19,10 +19,7 @@ import kotlinx.coroutines.launch
 private val Context.dataStore by preferencesDataStore(name = "playlists_db")
 private val PLAYLISTS_KEY = stringPreferencesKey("all_playlists")
 
-/**
- * PlaylistRepository backed by Room (AppDatabase / PlaylistDao).
- * Keeps the same public API as the previous DataStore-based repo so callers don't need changes.
- */
+// Backed by Room (AppDatabase / PlaylistDao); keeps the same public API as the previous DataStore-based repo so callers don't need changes.
 class PlaylistRepository(private val context: Context) {
     private val dao = AppDatabase.getInstance(context).playlistDao()
 

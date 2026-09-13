@@ -223,8 +223,7 @@ private fun ArtistCard(
     LaunchedEffect(artist.name) {
         Log.i("ArtistCard", "━━━ FETCHING IMAGE FOR: '${artist.name}' ━━━")
         try {
-            // artist.name is already the primary artist (extracted by splitArtists)
-            // No need to extract again
+            // artist.name is already the primary artist (extracted by splitArtists), no need to extract again.
             imageUrl = ArtistUtil.getArtistImageUrl(artist.name)
             if (imageUrl != null) {
                 Log.d("ArtistCard", "✓ IMAGE FOUND: ${imageUrl!!.take(60)}...")

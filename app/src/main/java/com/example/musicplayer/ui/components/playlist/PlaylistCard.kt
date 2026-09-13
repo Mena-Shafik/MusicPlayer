@@ -103,8 +103,7 @@ fun PlaylistCard(
     }
 }
 
-// backgroundColor/showBackground are required here — without them this white-text-on-dark
-// card previews invisibly on Android Studio's default white preview canvas.
+// backgroundColor/showBackground are required here -- without them this white-text-on-dark card previews invisibly on Android Studio's default white preview canvas.
 @Preview(name = "PlaylistCard sample", showBackground = true, backgroundColor = 0xFF03050C)
 @Composable
 private fun PlaylistCardPreview() {

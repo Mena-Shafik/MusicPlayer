@@ -5,21 +5,15 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
@@ -42,6 +38,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.BottomSheetValue
 import androidx.compose.material.BottomSheetScaffold
 import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.SwipeableState
+import androidx.compose.material.rememberSwipeableState
+import androidx.compose.material.swipeable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.lerp as lerpRect
+import androidx.compose.ui.unit.lerp as lerpUnit
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 // Slider replaced by custom InteractiveSeekBar
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.HorizontalDivider
@@ -63,11 +77,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.foundation.MarqueeSpacing
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.luminance
@@ -92,7 +111,6 @@ import com.example.musicplayer.model.Song
 import com.example.musicplayer.R
 import com.example.musicplayer.util.Util
 import com.example.musicplayer.service.PlayerStateManager
-import com.example.musicplayer.ui.components.common.AudioVisualizer
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -107,40 +125,62 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.example.musicplayer.ui.components.background.AuroraBackground
 import com.example.musicplayer.ui.components.common.LibraryViewTabs
 import com.example.musicplayer.ui.components.common.MusicControls
+import com.example.musicplayer.ui.components.player.AlbumImage
+import com.example.musicplayer.ui.components.player.InteractiveSeekBar
+import com.example.musicplayer.ui.components.player.SongsSheetContent
 import com.example.musicplayer.ui.components.song.SongCardRow
 import com.example.musicplayer.ui.components.playlist.AddToPlaylistDialog
 
 
 // Lyrics are now cached on the Song instance (fields: lyrics, lyricsFetched). No global cache needed.
 
+// The Up Next/Lyrics/Related sheet's three resting stops (see MusicPlayerChrome); not private since previewInitialDetent exposes this type across a public function signature.
+enum class SheetDetent { Collapsed, Half, Full }
+
+// Same easing family as PersistentPlayerHost's DockTween/DockEasing (kept identical for motion consistency), but 420ms rather than the outer dock's 900ms since this is a shorter, single-screen transition per the Aura 2.0 design spec.
+private val SheetEasing = CubicBezierEasing(0.22f, 0.9f, 0.24f, 1f)
+private val SheetTween = tween<Float>(durationMillis = 420, easing = SheetEasing)
+
+private val SHEET_COLLAPSED_HEIGHT = 87.dp
+private val SHEET_HALF_HEIGHT = 332.dp
+// Design's own 612dp is sized for its 780dp mockup canvas; scaled up so the sheet reaches close to the mini-row on taller real devices instead of leaving a dead gap, and bumped further after the top bar stopped reserving space at Full (mini-row sits ~80dp higher now).
+private val SHEET_FULL_HEIGHT = 750.dp
+
+// Half/full-detent geometry for the shared album art (see MusicPlayerChrome's sheetProgress doc); the collapsed rect is measured at runtime instead since it must match the collapsed content column's own 340dp placeholder.
+private val HALF_ART_HEIGHT = 448.dp
+private val FULL_ART_SIZE = 58.dp
+private val FULL_ART_CORNER_RADIUS = 8.dp
+private val COLLAPSED_ART_CORNER_RADIUS = 14.dp
+
+// The full-player "chrome" -- everything about Now Playing except the album art/title/artist/play-pause, which PersistentPlayerHost renders as shared elements morphing between this and the mini bar, so this composable leaves an invisible same-size placeholder for the art (onArtBoundsChanged) purely for layout/measurement; previously a NavHost destination reached via navigate()/popBackStack(), it's now mounted permanently by the host, so it no longer takes a songId/song list/NavController -- the active queue comes from viewModel/PlayerStateManager the same way SongsSheetContent always has.
 @SuppressLint("ContextCastToActivity")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
-fun MusicPlayerScreen(
-    songId: Int,
-    songs: List<Song>,
-    navController: NavController,
-    viewModel: MusicPlayerViewModel = viewModel()
+fun MusicPlayerChrome(
+    backgroundColor: Color,
+    currentAlbumBitmap: android.graphics.Bitmap?,
+    onCollapse: () -> Unit,
+    onArtBoundsChanged: (LayoutCoordinates) -> Unit,
+    // Drag-down-to-collapse on the top bar, mirroring the mini bar's own drag-up-to-expand in PersistentPlayerHost (which owns dockProgress); delta is raw pointer movement in px (positive = finger moved down).
+    onCollapseDragDelta: (Float) -> Unit = {},
+    onCollapseDragEnd: () -> Unit = {},
+    // The sheet's own live collapsed(0)->expanded(1) drag progress, reported up so the host can fade the shared album art in step with it since the art is drawn by the host and doesn't automatically pick up this screen's own underlayAlpha fade.
+    onSheetOpenFractionChanged: (Float) -> Unit = {},
+    // Bumped by PersistentPlayerHost on every collapse-to-mini -- snaps the inner sheet back to peek immediately instead of co-fading fully expanded as dockProgress falls, which otherwise reads as "the sheet didn't close".
+    collapseSignal: Int = 0,
+    viewModel: MusicPlayerViewModel = viewModel(),
+    // @Preview-only: real callers always start at Collapsed and reach Half/Full via the grab handle; lets previews show each detent directly.
+    previewInitialDetent: SheetDetent = SheetDetent.Collapsed
 ) {
-    // ensure viewModel has the playlist / start index (tell the service via ViewModel)
     val ctx = LocalContext.current
-    LaunchedEffect(songs, songId) {
-        // If a playlist is already active and contains this song (e.g., launched from a playlist),
-        // keep that playlist and just sync the current index instead of replacing it with the full library.
-        val repo = viewModel.playlist.value
-        val repoIdx = repo.indexOfFirst { it.id == songId }
-        if (repo.isNotEmpty() && repoIdx >= 0) {
-            PlayerStateManager.setCurrentIndex(repoIdx)
-        } else {
-            val requestedIndex = songs.indexOfFirst { it.id == songId }.takeIf { it >= 0 } ?: 0
-            viewModel.setPlaylist(ctx, songs, requestedIndex)
-        }
-    }
+    // Reads MainActivity's startup preload (LibraryPreloadCache) rather than an independent MediaStore re-scan, which used to block during this composable's first-expand mount and make the mini bar appear to hang; used only as the Related tab's candidate pool -- the actual queue is viewModel.playlist/PlayerStateManager.
+    val songs: List<Song> by com.example.musicplayer.util.LibraryPreloadCache.songs.collectAsState()
 
-    //val playlist by viewModel.playlist.collectAsState()
     val currentIndex by viewModel.currentIndex.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
     val replayEnabled by viewModel.replayEnabled.collectAsState()
@@ -148,20 +188,8 @@ fun MusicPlayerScreen(
     val positionMs by viewModel.positionMs.collectAsState()
     val durationMs by viewModel.durationMs.collectAsState()
 
-    // background color target extracted from album art
-    var targetBackgroundColor by remember { mutableStateOf(Color.Black) }
-    // current album bitmap passed to AuroraBackground for palette sampling
-    var currentAlbumBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
-
     // collect preference early so we can make Scaffold and system bars transparent when Aurora is enabled
     val useAuroraBackground by com.example.musicplayer.preferences.PreferencesManager.getUseAuroraBackgroundFlow(ctx).collectAsState(initial = false)
-
-    // Animate the background color smoothly when target changes
-    val backgroundColor by animateColorAsState(
-        targetValue = targetBackgroundColor,
-        animationSpec = tween(durationMillis = 800),
-        label = "Background color transition"
-    )
 
     val backgroundBrush = remember(backgroundColor) {
         Brush.verticalGradient(listOf(backgroundColor, Util.darkerColor(backgroundColor, 0.25f)))
@@ -169,45 +197,7 @@ fun MusicPlayerScreen(
 
     val activity = LocalContext.current as? Activity
 
-    LaunchedEffect(backgroundColor, useAuroraBackground) {
-        // If aurora background is used we want system bars to be transparent so the aurora shows through.
-        try {
-            activity?.window?.let { win ->
-                if (useAuroraBackground) {
-                    try { WindowCompat.setDecorFitsSystemWindows(win, false) } catch (_: Throwable) {}
-                    try { win.statusBarColor = android.graphics.Color.TRANSPARENT } catch (_: Throwable) {}
-                    // Do not change navigation bar color here — keep system navigation bar color stable
-                } else {
-                    try { WindowCompat.setDecorFitsSystemWindows(win, true) } catch (_: Throwable) {}
-                    try { win.statusBarColor = backgroundColor.toArgb() } catch (_: Throwable) {}
-                    // Leave navigation bar color unchanged to respect system theming
-                }
-
-                val controller = WindowInsetsControllerCompat(win, win.decorView)
-                // Decide light/dark icons based on the target background color
-                val light = targetBackgroundColor.luminance() > 0.5f
-                controller.isAppearanceLightStatusBars = light
-                // Do not modify navigation bar icon appearance here to avoid changing system nav bar visuals
-            }
-        } catch (_: Throwable) {}
-    }
-
-    // When back pressed, simply navigate back (do not pause playback so the mini-player can appear in the list)
-    BackHandler {
-        navController.popBackStack()
-    }
-
-    // Also ensure we pause when the composable is disposed (navigated away)
-    DisposableEffect(Unit) {
-        onDispose {
-            //if (isPlaying) {
-            //    viewModel.togglePlayPause(ctx)
-            //}
-        }
-    }
-    // Prefer the repository playlist for the currently-playing song so the UI always
-    // reflects the actual playback state. Fall back to the provided `songs` parameter
-    // if the repository playlist is empty or doesn't contain the expected index.
+    // Prefer the repository playlist so the UI reflects actual playback state, falling back to `songs` if it's empty or missing the expected index.
     val repoPlaylist by viewModel.playlist.collectAsState()
     val activeSongs = if (repoPlaylist.isNotEmpty()) repoPlaylist else songs
     val song = activeSongs.getOrNull(currentIndex) ?: songs.getOrNull(currentIndex) ?: songs.firstOrNull()
@@ -225,34 +215,195 @@ fun MusicPlayerScreen(
         if (!isUserSeeking) sliderPosition = positionMs.toFloat()
     }
 
-    // Sheet peek height: just the collapsed header's own content (grab handle + tab pills,
-    // ~72dp — see the Box/LibraryViewTabs block at the top of SongsSheetContent). The system
-    // navigation bar inset is already reserved by the outer Scaffold's innerPadding (its
-    // default contentWindowInsets includes safeDrawing/navigationBars) which is applied to
-    // this BottomSheetScaffold via .padding(innerPadding) below — adding it again here would
-    // double-count it and inflate the peek past the header into the content underneath.
-    val sheetPeekHeight = 87.dp
+    // Always transparent now -- the sampled-color gradient backdrop is painted once, behind the shared art, at the outer Box level, and an opaque container here would paint over that art since the Scaffold now sits in front of it.
+    val scaffoldContainerColor = Color.Transparent
 
-
-    val scaffoldContainerColor = if (useAuroraBackground) Color.Transparent else backgroundColor
-
-    // Contrast checkpoints along the screen's own vertical gradient (backgroundColor at the
-    // top, fading to a much darker Util.darkerColor(.., 0.25f) at the bottom) — the top bar,
-    // the mid-screen title/artist block and the sheet (handled separately, since its own
-    // panel colors that region once open) each sit at a different point on that gradient, so
-    // a single fixed white/black choice doesn't hold for all three.
-    val topOnBg = if (backgroundColor.luminance() > 0.5f) Color.Black else Color.White
-    val gradientMiddle = Color(
-        red = (backgroundColor.red + Util.darkerColor(backgroundColor, 0.25f).red) / 2f,
-        green = (backgroundColor.green + Util.darkerColor(backgroundColor, 0.25f).green) / 2f,
-        blue = (backgroundColor.blue + Util.darkerColor(backgroundColor, 0.25f).blue) / 2f
+    // Contrast checkpoint for the top bar/title/artist text, animated (not snapped) so switching tracks crossfades the text color smoothly instead of popping at the 0.5 luminance threshold.
+    val topOnBg by animateColorAsState(
+        targetValue = if (backgroundColor.luminance() > 0.5f) Color.Black else Color.White,
+        animationSpec = tween(durationMillis = 500),
+        label = "Chrome text contrast"
     )
-    val middleOnBg = if (gradientMiddle.luminance() > 0.5f) Color.Black else Color.White
 
     // Draw aurora behind the entire UI (including TopAppBar); keep Scaffold as the primary layout
-    Box(modifier = Modifier.fillMaxSize()) {
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
+    // sheetProgress: 0f (collapsed) / 0.5f (half) / 1f (full), continuous while dragging -- drives the sheet plus the shared album art/mini-row/collapsed content below, not just the sheet panel itself.
+    val swipeableState = rememberSwipeableState(
+        initialValue = previewInitialDetent,
+        animationSpec = SheetTween
+    )
+    val collapsedAnchorPx = with(density) { SHEET_COLLAPSED_HEIGHT.toPx() }
+    val halfAnchorPx = with(density) { SHEET_HALF_HEIGHT.toPx() }
+    val fullAnchorPx = with(density) { SHEET_FULL_HEIGHT.toPx() }
+    val sheetAnchors = mapOf(
+        collapsedAnchorPx to SheetDetent.Collapsed,
+        halfAnchorPx to SheetDetent.Half,
+        fullAnchorPx to SheetDetent.Full
+    )
+    // Continuous 0f..1f across the whole collapsed->full span (0.5f exactly at Half), computed piecewise since the anchors aren't evenly spaced.
+    val sheetOffsetPx = swipeableState.offset.value
+    val sheetProgress = if (sheetOffsetPx <= halfAnchorPx) {
+        0.5f * ((sheetOffsetPx - collapsedAnchorPx) / (halfAnchorPx - collapsedAnchorPx)).coerceIn(0f, 1f)
+    } else {
+        0.5f + 0.5f * ((sheetOffsetPx - halfAnchorPx) / (fullAnchorPx - halfAnchorPx)).coerceIn(0f, 1f)
+    }
+
+    // The outer host's shared art is fixed at the collapsed rect (only this composable's inner art moves), so a linear crossfade across the whole sheetProgress range would show both at once as a ghosted double image; saturate the handoff over a short initial window instead so the outer art is fully faded before the inner one moves noticeably.
+    val artHandoffT = (sheetProgress / 0.08f).coerceIn(0f, 1f)
+    LaunchedEffect(artHandoffT) { onSheetOpenFractionChanged(artHandoffT) }
+
+    // True as soon as a transition toward Half/Full is underway (keyed off the swipe's target, not sheetProgress) so the window's edge-to-edge property change gets a head start against the 420ms sheet animation instead of lagging visibly behind it.
+    val edgeToEdgeForArt = swipeableState.targetValue != SheetDetent.Collapsed
+
+    LaunchedEffect(backgroundColor, useAuroraBackground, edgeToEdgeForArt) {
+        // Edge-to-edge whenever Aurora is enabled, or whenever this sheet's shared art has gone full-bleed and needs to extend under the status bar too.
+        try {
+            activity?.window?.let { win ->
+                if (useAuroraBackground || edgeToEdgeForArt) {
+                    try { WindowCompat.setDecorFitsSystemWindows(win, false) } catch (_: Throwable) {}
+                    try { win.statusBarColor = android.graphics.Color.TRANSPARENT } catch (_: Throwable) {}
+                    // Do not change navigation bar color here — keep system navigation bar color stable
+                } else {
+                    try { WindowCompat.setDecorFitsSystemWindows(win, true) } catch (_: Throwable) {}
+                    try { win.statusBarColor = backgroundColor.toArgb() } catch (_: Throwable) {}
+                    // Leave navigation bar color unchanged to respect system theming
+                }
+
+                val controller = WindowInsetsControllerCompat(win, win.decorView)
+                // Decide light/dark icons based on the background color
+                val light = backgroundColor.luminance() > 0.5f
+                controller.isAppearanceLightStatusBars = light
+                // Do not modify navigation bar icon appearance here to avoid changing system nav bar visuals
+            }
+        } catch (_: Throwable) {}
+    }
+
+    // Snap the sheet closed the instant the host starts collapsing, instead of letting it co-fade at full size.
+    LaunchedEffect(collapseSignal) {
+        if (collapseSignal > 0) {
+            try { swipeableState.snapTo(SheetDetent.Collapsed) } catch (_: Throwable) {}
+        }
+    }
+
+    // Tapping the grab handle steps Collapsed -> Half -> Full -> Collapsed; dragging settles to the nearest anchor on release (Modifier.swipeable below), with tap layered on top the same way PersistentPlayerHost's mini bar disambiguates tap-vs-drag.
+    fun stepSheetDetent() {
+        val next = when (swipeableState.currentValue) {
+            SheetDetent.Collapsed -> SheetDetent.Half
+            SheetDetent.Half -> SheetDetent.Full
+            SheetDetent.Full -> SheetDetent.Collapsed
+        }
+        scope.launch { try { swipeableState.animateTo(next) } catch (_: Throwable) {} }
+    }
+    val grabHandleModifier = Modifier
+        .swipeable(
+            state = swipeableState,
+            anchors = sheetAnchors,
+            orientation = Orientation.Vertical,
+            reverseDirection = true
+        )
+        .pointerInput(Unit) {
+            detectTapGestures(onTap = { stepSheetDetent() })
+        }
+
+    // Root-window bounds of this composable's outermost Box; the shared album art is positioned in this same coordinate space, matching PersistentPlayerHost's mini<->full art, so the two hand off seamlessly.
+    var screenBoundsRoot by remember { mutableStateOf<Rect?>(null) }
+    // Measured bounds of the collapsed content column's 340dp art placeholder and the mini-row's 58dp placeholder, both root-relative, captured the same way PersistentPlayerHost captures its own.
+    var collapsedArtRect by remember { mutableStateOf<Rect?>(null) }
+    var fullArtRect by remember { mutableStateOf<Rect?>(null) }
+    // Height of the content area below the top bar (root px), so the title/seek/transport block can be bottom-pinned to the space left above the sheet instead of sitting in fixed flow where the sheet would grow into it.
+    var contentBoundsRoot by remember { mutableStateOf<Rect?>(null) }
+
+    // Bottom edge pinned to exactly where the sheet's top edge sits at Half (not the design's literal 448dp, sized for its own 780dp mockup) so they line up on taller real devices and the art's dissolve-to-background fade is visible right at the seam instead of hidden behind the sheet; falls back to 448dp only before contentBoundsRoot is measured.
+    val halfArtRect = screenBoundsRoot?.let { screen ->
+        val content = contentBoundsRoot
+        val bottom = if (content != null) {
+            content.bottom - halfAnchorPx
+        } else {
+            screen.top + with(density) { HALF_ART_HEIGHT.toPx() }
+        }
+        Rect(screen.left, screen.top, screen.right, bottom)
+    }
+
+    // Piecewise lerp across the two sub-ranges, like PersistentPlayerHost's own dockProgress-driven art rect but with three keyframes; fullArtRect isn't measured until the mini-row has mounted once, which shouldn't block the [0, 0.5] sub-range.
+    val innerArtRect = if (sheetProgress <= 0.5f) {
+        val c = collapsedArtRect
+        val h = halfArtRect
+        if (c != null && h != null) lerpRect(c, h, sheetProgress / 0.5f) else null
+    } else {
+        val h = halfArtRect
+        val f = fullArtRect
+        if (h != null && f != null) lerpRect(h, f, (sheetProgress - 0.5f) / 0.5f) else h
+    }
+    val innerArtCornerRadius = if (sheetProgress <= 0.5f) {
+        lerpUnit(COLLAPSED_ART_CORNER_RADIUS, 0.dp, sheetProgress / 0.5f)
+    } else {
+        lerpUnit(0.dp, FULL_ART_CORNER_RADIUS, (sheetProgress - 0.5f) / 0.5f)
+    }
+
+    // Fades in over the same short window as the outer host's art fades out (artHandoffT) so exactly one of the two shared-art copies is visible at any point.
+    val innerArtAlpha = artHandoffT
+
+    // Collapsed content stays fully visible across [0, 0.5] (half doesn't drop it, matching the design) and only fades (no resizing) across [0.5, 1]; doesn't collide with the sheet since it's bottom-pinned within the shrinking space above it (availableAboveSheetPx) rather than fixed flow.
+    val collapsedChromeAlpha = 1f - ((sheetProgress - 0.5f) / 0.5f).coerceIn(0f, 1f)
+    // Space left above the sheet's current top edge (px); the title/seek/transport block is bottom-aligned within a Box of this height so it grows/shrinks with the sheet instead of a fixed position the sheet can grow into.
+    val availableAboveSheetPx = ((contentBoundsRoot?.height ?: 0f) - sheetOffsetPx).coerceAtLeast(0f)
+    // How far across [0, 0.5] for title/artist/time text-size interpolation -- the one exception to "only art resizes" (buttons/icons stay fixed).
+    val halfLerpT = (sheetProgress / 0.5f).coerceIn(0f, 1f)
+    // Mini-row (compact art-slot + title + its own play button) fades in only past half.
+    val miniRowAlpha = ((sheetProgress - 0.5f) / 0.5f).coerceIn(0f, 1f)
+    // Top bar fades out across the first half of the drag so it's fully hidden by Half -- once the art reaches under the status bar the bar's own row reads as redundant clutter over it.
+    val topBarAlpha = 1f - (sheetProgress / 0.5f).coerceIn(0f, 1f)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { screenBoundsRoot = it.boundsInRoot() }
+    ) {
         if (useAuroraBackground) {
             AuroraBackground(modifier = Modifier.fillMaxSize(), albumCoverBitmap = currentAlbumBitmap)
+        } else {
+            // Sampled-color backdrop moved here (behind the art) rather than on the Scaffold's content Box, which sits in front of the art and would otherwise paint over it.
+            Box(modifier = Modifier.fillMaxSize().background(backgroundBrush))
+        }
+
+        // Chrome's own shared/morphing album art -- the one element that moves/resizes across detents (everything else only fades) -- drawn behind the Scaffold so its content renders on top, reaching up through the header since topBar has a transparent container color.
+        if (song != null && innerArtRect != null) {
+            // Real alpha fade (BlendMode.DstIn against a gradient, not a painted-on overlay) so the art's edges genuinely reveal backgroundBrush behind them; off at Collapsed, top dissolves via artHandoffT and bottom via halfLerpT as the sheet opens, and fadePresence triangles back to 0 by Full so it doesn't stay applied on the tiny mini-row art -- fade is only visible around Half, matching the design.
+            val fadePresence = (1f - kotlin.math.abs(sheetProgress - 0.5f) * 2f).coerceIn(0f, 1f)
+            val topFadeAlpha = 1f - artHandoffT * fadePresence
+            val bottomFadeAlpha = 1f - halfLerpT * fadePresence
+            // Peak opacity at 35%, fully transparent by 80% -- more gradual than the previous 30%/65% split, still resolving before the seek bar.
+            val artFadeBrush = Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0.00f to Color.Black.copy(alpha = topFadeAlpha),
+                    0.35f to Color.Black,
+                    0.80f to Color.Black.copy(alpha = bottomFadeAlpha)
+                )
+            )
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(innerArtRect.left.roundToInt(), innerArtRect.top.roundToInt()) }
+                    .size(
+                        with(density) { innerArtRect.width.toDp() },
+                        with(density) { innerArtRect.height.toDp() }
+                    )
+                    .alpha(innerArtAlpha)
+                    .clip(RoundedCornerShape(innerArtCornerRadius))
+            ) {
+                AlbumImage(
+                    song = song,
+                    // CompositingStrategy.Offscreen is required for BlendMode.DstIn to blend against just this image's pixels instead of the whole canvas behind it.
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(brush = artFadeBrush, blendMode = BlendMode.DstIn)
+                        }
+                )
+            }
         }
 
         Scaffold(
@@ -269,7 +420,7 @@ fun MusicPlayerScreen(
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = { navController.popBackStack() }) {
+                        IconButton(onClick = onCollapse) {
                             Icon(
                                 imageVector = Icons.Filled.KeyboardArrowDown,
                                 contentDescription = "Close player",
@@ -278,7 +429,24 @@ fun MusicPlayerScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    modifier = Modifier.statusBarsPadding(),
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .alpha(topBarAlpha)
+                        // Shrinks the *reported* layout height in lockstep with topBarAlpha (measured at normal size but reported as only that fraction tall) so Scaffold's innerPadding -- and the mini-row's position -- shrinks smoothly to 0 by Half instead of snapping in one frame.
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            val height = (placeable.height * topBarAlpha).roundToInt()
+                            layout(placeable.width, height) { placeable.placeRelative(0, 0) }
+                        }
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { change, amount ->
+                                    change.consume()
+                                    onCollapseDragDelta(amount)
+                                },
+                                onDragEnd = { onCollapseDragEnd() }
+                            )
+                        },
                     actions = {
                         IconButton(onClick = {
                             try {
@@ -303,178 +471,222 @@ fun MusicPlayerScreen(
             },
             containerColor = scaffoldContainerColor
         ) { innerPadding ->
-            // persistent BottomSheetScaffold so the mini-player peek is visible and main content stays interactive
-            val bottomSheetScaffoldState = androidx.compose.material.rememberBottomSheetScaffoldState(
-                bottomSheetState = androidx.compose.material.rememberBottomSheetState(initialValue = BottomSheetValue.Collapsed)
-            )
-            val bsScope = rememberCoroutineScope()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .onGloballyPositioned { contentBoundsRoot = it.boundsInRoot() }
+            ) {
+                if (song != null) {
+                    // Invisible, exact-size placeholder standing in for the album art -- both PersistentPlayerHost (mini<->full) and this composable's inner art measure their "collapsed" endpoint from this same element for a zero-seam handoff; kept in fixed-position flow (not the bottom-pinned block below) since it must stay put regardless of the sheet's height.
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Spacer(
+                            modifier = Modifier
+                                .size(340.dp)
+                                .onGloballyPositioned {
+                                    onArtBoundsChanged(it)
+                                    collapsedArtRect = it.boundsInRoot()
+                                }
+                        )
+                    }
 
-            // Live 0f..1f collapsed->expanded fraction driven by the sheet's actual drag
-            // position (currentValue/targetValue/progress), not just the discrete settled
-            // state — so it tracks continuously while the user is mid-drag, not just at the
-            // start/end of the gesture.
-            val sheetState = bottomSheetScaffoldState.bottomSheetState
-            val sheetOpenFraction = when {
-                sheetState.currentValue == BottomSheetValue.Expanded && sheetState.targetValue == BottomSheetValue.Expanded -> 1f
-                sheetState.currentValue == BottomSheetValue.Collapsed && sheetState.targetValue == BottomSheetValue.Collapsed -> 0f
-                sheetState.targetValue == BottomSheetValue.Expanded -> sheetState.progress
-                else -> 1f - sheetState.progress
-            }.coerceIn(0f, 1f)
+                    // Title/artist/seek/full transport, bottom-pinned within the space left above the sheet (availableAboveSheetPx) so it tracks the sheet's growth instead of sitting in fixed flow -- mirrors the design's own margin-top:auto push.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(with(density) { availableAboveSheetPx.toDp() }),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                    // The art's own bottom-edge dissolve (drawWithContent + BlendMode.DstIn above) now provides the darkening this block used to paint separately, sitting directly behind and sharing the same bottom edge, so no separate scrim is needed here.
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .size(340.dp, 130.dp)
+                                .alpha(collapsedChromeAlpha)
+                                .padding(10.dp)
+                                .align(Alignment.CenterHorizontally)
+                        ) {
+                            Text(
+                                text = song.title,
+                                color = topOnBg,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = lerpUnit(24.sp, 22.sp, halfLerpT),
+                                lineHeight = 30.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .width(340.dp)
+                                    .padding(8.dp)
+                                    .basicMarquee(
+                                        iterations = Int.MAX_VALUE,
+                                        initialDelayMillis = 2000,
+                                        spacing = MarqueeSpacing(50.dp)
+                                    )
+                            )
+                            val artistLineCount = song.artist.split("\n").size
+                            Text(
+                                text = song.artist,
+                                color = topOnBg.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center,
+                                fontSize = lerpUnit(14.sp, 13.sp, halfLerpT),
+                                fontWeight = FontWeight.Medium,
+                                maxLines = if (artistLineCount > 3) Int.MAX_VALUE else 3,
+                                modifier = Modifier
+                                    .padding(10.dp)
+                                    .width(340.dp)
+                                    .then(
+                                        if (artistLineCount > 3) {
+                                            Modifier.basicMarquee(
+                                                iterations = Int.MAX_VALUE,
+                                                initialDelayMillis = 2000,
+                                                spacing = MarqueeSpacing(50.dp)
+                                            )
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                            )
+                        }
 
-            BottomSheetScaffold(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
-                scaffoldState = bottomSheetScaffoldState,
-                sheetPeekHeight = sheetPeekHeight,
-                sheetShape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
-                sheetElevation = 0.dp,
-                sheetBackgroundColor = Color.Transparent,
-                backgroundColor = Color.Transparent,
-                sheetContent = {
+                        val effectiveDuration = if (durationMs > 0L) durationMs.toFloat() else song.duration.toFloat()
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.alpha(collapsedChromeAlpha)
+                        ) {
+                            InteractiveSeekBar(
+                                value = sliderPosition.coerceIn(0f, effectiveDuration),
+                                valueRange = 0f..effectiveDuration,
+                                modifier = Modifier.width(308.dp),
+                                activeColor = Color(0xFFFFA500),
+                                inactiveColor = Color.White.copy(alpha = 0.22f),
+                                onValueChange = { isUserSeeking = true; sliderPosition = it },
+                                onValueChangeFinished = {
+                                    isUserSeeking = false
+                                    viewModel.seekTo(ctx, sliderPosition.toInt())
+                                }
+                            )
+
+                            Row(modifier = Modifier.width(308.dp)) {
+                                Text(
+                                    text = Util.converter(sliderPosition.toDouble()),
+                                    color = Color.White,
+                                    textAlign = TextAlign.Start,
+                                    fontSize = lerpUnit(12.sp, 11.5.sp, halfLerpT),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = Util.converter(effectiveDuration.toDouble()),
+                                    color = Color.White,
+                                    textAlign = TextAlign.End,
+                                    fontSize = lerpUnit(12.sp, 11.5.sp, halfLerpT),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        Box(modifier = Modifier.alpha(collapsedChromeAlpha)) {
+                            MusicControls(
+                                isPlaying = isPlaying,
+                                replayEnabled = replayEnabled,
+                                shuffleEnabled = shuffleEnabled,
+                                onPlayPause = { viewModel.togglePlayPause(ctx) },
+                                onNext = { viewModel.next(ctx) },
+                                onPrev = { viewModel.previous(ctx) },
+                                onReplayToggle = { viewModel.toggleReplay() },
+                                onShuffleToggle = { enabled -> viewModel.toggleShuffle(enabled) }
+                            )
+                        }
+                    }
+                    }
+
+                    // Compact mini-row -- art-slot placeholder (real art is the shared element via innerArtRect) + title/artist + its own fixed-size play button, fading in only past half per the "only art moves/resizes" rule; always composed (not gated on miniRowAlpha > 0) so its art-slot placeholder is measured into fullArtRect before sheetProgress crosses 0.5 and needs it.
+                    run {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .alpha(miniRowAlpha)
+                                .padding(horizontal = 22.dp)
+                                .padding(top = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Spacer(
+                                modifier = Modifier
+                                    .size(FULL_ART_SIZE)
+                                    .onGloballyPositioned { fullArtRect = it.boundsInRoot() }
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 14.dp)
+                            ) {
+                                Text(
+                                    text = song.title,
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = song.artist,
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            // Second, independent play button -- fixed 42dp, never resized/moved, only its alpha (via the parent Row) changes; see MusicControls' own button above for the collapsed/half one.
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(RoundedCornerShape(21.dp))
+                                    .background(Color.White)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { viewModel.togglePlayPause(ctx) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    modifier = Modifier.size(24.dp),
+                                    tint = Color(0xFF111111)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Sheet panel -- height driven directly by the same swipeableState offset that also drives sheetProgress, so the panel and every other progress-driven element stay in sync.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(with(density) { sheetOffsetPx.toDp() })
+                ) {
                     SongsSheetContent(
                         songs = activeSongs,
                         currentIndex = currentIndex,
                         backgroundColor = backgroundColor,
                         onSelect = { idx ->
-                            // set playlist and start playing
                             viewModel.setPlaylist(ctx, activeSongs, idx)
                             viewModel.play(ctx)
-                            bsScope.launch { bottomSheetScaffoldState.bottomSheetState.collapse() }
+                            scope.launch { try { swipeableState.animateTo(SheetDetent.Collapsed) } catch (_: Throwable) {} }
                         },
-                        onOpenSheet = {
-                            // expand the BottomSheetScaffold when a tab is clicked inside the sheet header
-                            bsScope.launch { try { bottomSheetScaffoldState.bottomSheetState.expand() } catch (_: Throwable) {} }
+                        onTabSelected = {
+                            if (swipeableState.currentValue == SheetDetent.Collapsed) {
+                                scope.launch { try { swipeableState.animateTo(SheetDetent.Half) } catch (_: Throwable) {} }
+                            }
                         },
-                        showIndicator = (bottomSheetScaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded),
-                        isExpanded = (bottomSheetScaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded),
-                        openFraction = sheetOpenFraction
+                        grabHandleModifier = grabHandleModifier,
+                        showIndicator = swipeableState.currentValue != SheetDetent.Collapsed,
+                        openFraction = sheetProgress,
+                        useAuroraBackground = useAuroraBackground
                     )
-                },
-                content = { paddingValues ->
-                    // main content — remains interactive while sheet is collapsed
-
-                    val contentModifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                        .then(if (useAuroraBackground) Modifier else Modifier.background(backgroundBrush))
-                        .padding(paddingValues)
-
-                    Column(
-                        modifier = contentModifier,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (song != null) {
-                            AnimatedContent(
-                                targetState = song.id,
-                                transitionSpec = {
-                                    (fadeIn(animationSpec = tween(500)) + scaleIn(
-                                        initialScale = 0.95f,
-                                        animationSpec = tween(500)
-                                    )) togetherWith
-                                            (fadeOut(animationSpec = tween(300)) + scaleOut(
-                                                targetScale = 1.05f,
-                                                animationSpec = tween(300)
-                                            ))
-                                },
-                                label = "Song transition"
-                            ) { songId ->
-                                val currentSong = activeSongs.find { it.id == songId } ?: songs.find { it.id == songId }
-                                if (currentSong != null) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        AlbumImage(
-                                            song = currentSong,
-                                            onDominantColor = { c: Color -> targetBackgroundColor = c },
-                                            onBitmap = { bmp -> currentAlbumBitmap = bmp }
-                                        )
-                                        Column(modifier = Modifier
-                                            .size(340.dp, 130.dp)
-                                            .padding(10.dp).align(Alignment.CenterHorizontally),) {
-                                            Text(
-                                                text = currentSong.title,
-                                                color = middleOnBg,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 24.sp,
-                                                lineHeight = 30.sp,
-                                                textAlign = TextAlign.Center,
-                                                maxLines = 1,
-                                                modifier = Modifier
-                                                    .width(340.dp)
-                                                    .padding(8.dp)
-                                                    .basicMarquee(
-                                                        iterations = Int.MAX_VALUE,
-                                                        initialDelayMillis = 2000,
-                                                        spacing = MarqueeSpacing(50.dp)
-                                                    )
-                                            )
-                                            val artistLineCount = currentSong.artist.split("\n").size
-                                            Text(
-                                                text = currentSong.artist,
-                                                color = middleOnBg.copy(alpha = 0.7f),
-                                                textAlign = TextAlign.Center,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                maxLines = if (artistLineCount > 3) Int.MAX_VALUE else 3,
-                                                modifier = Modifier
-                                                    .padding(10.dp)
-                                                    .width(340.dp)
-                                                    .then(
-                                                        if (artistLineCount > 3) {
-                                                            Modifier.basicMarquee(
-                                                                iterations = Int.MAX_VALUE,
-                                                                initialDelayMillis = 2000,
-                                                                spacing = MarqueeSpacing(50.dp)
-                                                            )
-                                                        } else {
-                                                            Modifier
-                                                        }
-                                                    )
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-
-                            val effectiveDuration = if (durationMs > 0L) durationMs.toFloat() else song.duration.toFloat()
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                InteractiveSeekBar(
-                                    value = sliderPosition.coerceIn(0f, effectiveDuration),
-                                    valueRange = 0f..effectiveDuration,
-                                    modifier = Modifier.width(308.dp),
-                                    activeColor = Color(0xFFFFA500),
-                                    inactiveColor = Color.White.copy(alpha = 0.22f),
-                                    onValueChange = { isUserSeeking = true; sliderPosition = it },
-                                    onValueChangeFinished = {
-                                        isUserSeeking = false
-                                        viewModel.seekTo(ctx, sliderPosition.toInt())
-                                    }
-                                )
-
-                                Row(modifier = Modifier.width(308.dp)) {
-                                    Text(
-                                        text = Util.converter(sliderPosition.toDouble()),
-                                        color = Color.White,
-                                        textAlign = TextAlign.Start,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        text = Util.converter(effectiveDuration.toDouble()),
-                                        color = Color.White,
-                                        textAlign = TextAlign.End,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                            }
-
-                            MusicControls(isPlaying = isPlaying, replayEnabled = replayEnabled, shuffleEnabled = shuffleEnabled, onPlayPause = { viewModel.togglePlayPause(ctx) }, onNext = { viewModel.next(ctx) }, onPrev = { viewModel.previous(ctx) }, onReplayToggle = { viewModel.toggleReplay() }, onShuffleToggle = { enabled -> viewModel.toggleShuffle(enabled) })
-                        }
-
-                        // small tappable area to expand the sheet
-                        //Box(modifier = Modifier.fillMaxWidth().height(32.dp).clickable { bsScope.launch { bottomSheetScaffoldState.bottomSheetState.expand() } })
-                    }
                 }
-            )
+            }
         }
     }
 
@@ -497,406 +709,47 @@ fun MusicPlayerScreen(
     }
 }
 
-// SongsSheetContent: sheet UI (Up Next + Lyrics + Related) without its own scaffold so it can be used inside a persistent BottomSheetScaffold.
+// Sample playlist for the previews below -- static data, matching PersistentPlayerHost's own preview pattern.
+private val chromePreviewSongs = listOf(
+    com.example.musicplayer.model.Song(1, "Afterglow", "Nova Reyes", 238000.0, "", "Neon Parallels"),
+    com.example.musicplayer.model.Song(2, "Dust & Gold", "Marla Quinn", 195000.0, "", "Dust & Gold")
+)
+
 @Composable
-fun SongsSheetContent(
-    songs: List<Song>,
-    currentIndex: Int,
-    backgroundColor: Color,
-    onSelect: (Int) -> Unit,
-    initialSelectedTab: Int = 0, // allow preview to set the starting tab
-    onOpenSheet: () -> Unit = {}, // called when a tab is clicked so parent can expand the bottom sheet
-    showIndicator: Boolean = true, // when false the tab indicator is hidden (useful when sheet is collapsed)
-    isExpanded: Boolean = true, // whether the parent bottom sheet is expanded
-    expandedHeight: Dp = 520.dp, // fixed expanded height to enforce consistent sheet size
-    openFraction: Float = if (isExpanded) 1f else 0f // live collapsed(0)->expanded(1) drag progress
-) {
-    val sheetBg = backgroundColor
-    // The tinted panel reveals in lockstep with openFraction as the sheet is dragged/animated
-    // open, rather than snapping in only once fully expanded.
-    val liveSheetAlpha = 0.80f * openFraction
-    val liveSheetBg = sheetBg.copy(alpha = liveSheetAlpha)
-    // What's actually behind the sheet: when fully collapsed this panel is invisible, so the
-    // eye sees the screen's own gradient at its darker bottom stop; as the sheet opens, this
-    // panel's own (raw, undarkened) color increasingly dominates. Composite the two so the
-    // contrast decision below tracks what's really on screen at the current drag position,
-    // not just the closed or the open extreme.
-    val behindSheet = Util.darkerColor(sheetBg, 0.25f)
-    val effectiveSheetBg = Color(
-        red = sheetBg.red * liveSheetAlpha + behindSheet.red * (1f - liveSheetAlpha),
-        green = sheetBg.green * liveSheetAlpha + behindSheet.green * (1f - liveSheetAlpha),
-        blue = sheetBg.blue * liveSheetAlpha + behindSheet.blue * (1f - liveSheetAlpha)
-    )
-    val contentOnBg by animateColorAsState(
-        targetValue = if (effectiveSheetBg.luminance() > 0.5f) Color.Black else Color.White,
-        animationSpec = tween(220),
-        label = "sheetContentOnBg"
-    )
-    val subtle = contentOnBg.copy(alpha = 0.06f)
-    val handleColor = contentOnBg.copy(alpha = 0.12f)
-
-    val isPlayingSheet by PlayerStateManager.isPlaying.collectAsState()
-    val startIndex = currentIndex.coerceAtLeast(0)
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
-
-    // Auto-scroll to current song when it changes
-    LaunchedEffect(currentIndex) {
-        listState.animateScrollToItem(startIndex)
-    }
-
-    // shared tab data/state (must be declared before we reference it in modifiers)
-    val tabs = listOf("Up Next", "Lyrics", "Related")
-    var selectedTab by remember { mutableStateOf(initialSelectedTab) }
-    val context = LocalContext.current
-    var relatedSongs by remember { mutableStateOf<List<Pair<Int, Song>>>(emptyList()) }
-
-    // Populate relatedSongs whenever the Related tab is selected or when the current index/songs change.
-    LaunchedEffect(selectedTab, currentIndex, songs) {
-        if (selectedTab == 2) {
-            try {
-                relatedSongs = Util.getRelatedSongs(songs, currentIndex)
-            } catch (e: Throwable) {
-                // On error just clear related list (avoid crashing the UI)
-                relatedSongs = emptyList()
-            }
-        } else {
-            relatedSongs = emptyList()
+private fun MusicPlayerChromePreview(detent: SheetDetent) {
+    MaterialTheme {
+        // remember (not LaunchedEffect) so the seed runs synchronously during composition -- a static preview snapshot renders before a LaunchedEffect's coroutine body gets a chance to run, leaving playlist empty and song null on first render.
+        remember {
+            PlayerStateManager.setPlaylist(chromePreviewSongs, 0)
+            PlayerStateManager.setIsPlaying(true)
         }
-    }
-
-    // accumulate drag distance between press and release so we can decide a swipe
-    var dragAccum by remember { mutableStateOf(0f) }
-    // threshold in pixels to be considered a swipe
-    val swipeThreshold = 100f
-
-    // swipe modifier: uses detectDragGestures (dragAmount is an Offset) and will switch tabs when threshold exceeded
-    val swipeModifier = Modifier.pointerInput(selectedTab) {
-        detectDragGestures(
-            onDragStart = { dragAccum = 0f },
-            onDrag = { change, dragAmount ->
-                dragAccum += dragAmount.x
-                change.consume()
-            },
-            onDragEnd = {
-                if (dragAccum > swipeThreshold) {
-                    // dragged right -> previous tab
-                    selectedTab = (selectedTab - 1).coerceAtLeast(0)
-                } else if (dragAccum < -swipeThreshold) {
-                    // dragged left -> next tab
-                    selectedTab = (selectedTab + 1).coerceAtMost(tabs.lastIndex)
-                }
-                dragAccum = 0f
-            },
-            onDragCancel = { dragAccum = 0f }
+        MusicPlayerChrome(
+            backgroundColor = Color(0xFF8A6D1F),
+            currentAlbumBitmap = null,
+            onCollapse = {},
+            onArtBoundsChanged = {},
+            previewInitialDetent = detent
         )
-    }
-
-    // Enable swipe left/right across the sheet content area to switch tabs.
-    // When collapsed the sheet should be invisible except for the handle/tab pills floating
-    // over the screen behind it (matching the redesign); the tinted panel fades in as the
-    // sheet is opened (see liveSheetBg above) rather than appearing only once fully expanded.
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(liveSheetBg)
-            .padding(bottom = 8.dp)
-            // Fixed regardless of isExpanded (which only flips true once the sheet has
-            // fully settled) so the sheet's measured content height — and therefore
-            // BottomSheetScaffold's collapsed/expanded anchors — never changes mid-gesture.
-            // Letting this toggle with isExpanded caused the content to wrap taller while
-            // dragging, then snap down to expandedHeight the instant the drag settled,
-            // which made the sheet jump and re-settle right after opening.
-            .height(expandedHeight)
-    ) {
-        // Grab handle, matching the redesign's bottom-sheet affordance.
-        Box(
-            modifier = Modifier
-                .padding(top = 10.dp, bottom = 12.dp)
-                .width(36.dp)
-                .height(4.dp)
-                .align(Alignment.CenterHorizontally)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Color.White.copy(alpha = 0.28f))
-        )
-        // Pill segmented control replaces the underline TabRow. The tab stays selected
-        // underneath while the sheet is collapsed, but the highlight tracks openFraction
-        // directly — invisible when closed, fading/sliding in exactly in step with the
-        // open drag rather than snapping in once fully expanded.
-        LibraryViewTabs(
-            labels = tabs,
-            selectedIndex = selectedTab,
-            openFraction = openFraction,
-            unselectedColor = contentOnBg.copy(alpha = 0.75f),
-            onSelected = { index ->
-                selectedTab = index
-                // Ask parent to open/expand the sheet when a tab is tapped
-                try { onOpenSheet() } catch (_: Throwable) {}
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Content area: capture horizontal swipes to switch tabs and show tab content.
-        Column(modifier = swipeModifier.fillMaxWidth()) {
-            if (selectedTab == 0) {
-                HorizontalDivider(color = subtle)
-                LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).heightIn(max = 520.dp)) {
-                    itemsIndexed(songs) { idx, s ->
-                        val isCurrent = idx == currentIndex
-                        // Build modifier on Modifier (so background/padding are applied correctly)
-                        val rowMod = Modifier
-                            .fillMaxWidth()
-                            .clickable { if (idx != currentIndex) onSelect(idx) }
-                            .background(if (isCurrent) Color(0xFFFFDAB9).copy(alpha = 0.12f) else Color.Transparent)
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-
-                        Row(modifier = rowMod, verticalAlignment = Alignment.CenterVertically) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = s.title,
-                                    color = contentOnBg,
-                                    style = if (isCurrent) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                           else MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    text = s.artist,
-                                    color = contentOnBg.copy(alpha = 0.75f),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-
-                            if (isCurrent) {
-                                Box(modifier = Modifier.width(40.dp).height(40.dp).align(Alignment.CenterVertically)) {
-                                    AudioVisualizer(audioSessionId = null, isPlaying = isPlayingSheet, modifier = Modifier.fillMaxSize(), barCount = 3, barWidth = 6.dp, heightDp = 24.dp, barColor = contentOnBg, speed = 1.6f)
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if (selectedTab == 1) {
-                val currentSong = songs.getOrNull(currentIndex)
-                LyricsTab(currentSong = currentSong, contentColor = contentOnBg)
-            } else {
-                // Related tab UI
-                HorizontalDivider(color = subtle)
-                if (relatedSongs.isEmpty()) {
-                    // show helpful message when no related songs found
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "No related songs found", color = contentOnBg.copy(alpha = 0.85f))
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).heightIn(max = 520.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        items(items = relatedSongs) { pair ->
-                            val idx = pair.first
-                            val s = pair.second
-
-                            // Reuse the same song row used in the main song list so related items look identical.
-                            SongCardRow(
-                                song = s,
-                                onClick = { onSelect(idx) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
+@Preview(showSystemUi = true, name = "MusicPlayerChrome — Collapsed", backgroundColor = 0xFF000000, showBackground = true)
 @Composable
-fun AlbumImage(
-    song: Song,
-    modifier: Modifier = Modifier,
-    onDominantColor: (Color) -> Unit = {},
-    onAccentColor: (Color) -> Unit = {},
-    onBitmap: (android.graphics.Bitmap?) -> Unit = {}
-) {
-    val context = LocalContext.current
-    var displayBitmap by remember(song.path) { mutableStateOf<ImageBitmap?>(null) }
-
-    LaunchedEffect(song.path) {
-        displayBitmap = null
-        if (song.path.isNotBlank()) {
-            displayBitmap = withContext(Dispatchers.IO) {
-                try {
-                    // First try embedded album art
-                    var bitmap = Util.getAlbumArt(context, song.path)
-
-                    // If no embedded art, fetch from web
-                    if (bitmap == null) {
-                        Log.d("AlbumImage", "No embedded artwork for '${song.title}', fetching from web...")
-                        val webUrl = Util.getAlbumArtWebUrl(song)
-                        if (webUrl != null) {
-                            bitmap = Util.loadBitmapFromUrl(webUrl)
-                            if (bitmap != null) {
-                                Log.d("AlbumImage", "✓ Loaded web album art for '${song.title}'")
-                            }
-                        }
-                    }
-                    bitmap
-                } catch (_: Throwable) {
-                    null
-                }
-            }
-        }
-    }
-
-    val imageModifier = modifier
-        .width(308.dp)
-        .height(308.dp)
-        .shadow(
-            elevation = 24.dp,
-            shape = RoundedCornerShape(8.dp),
-            ambientColor = Color.Black.copy(alpha = 0.55f),
-            spotColor = Color.Black.copy(alpha = 0.55f)
-        )
-        .clip(RoundedCornerShape(8.dp))
-
-    Crossfade(targetState = displayBitmap, animationSpec = tween(500), label = "Album art crossfade") { bitmap ->
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
-                contentDescription = "Album Art",
-                modifier = imageModifier
-            )
-
-            LaunchedEffect(bitmap) {
-                val (dominantInt, accentInt) = withContext(Dispatchers.Default) {
-                    try {
-                        val palette = Palette.from(bitmap.asAndroidBitmap()).generate()
-                        val dominant = palette.getDominantColor(android.graphics.Color.BLACK)
-                        // prefer vibrant swatch, fallback to dominant
-                        val accent = palette.vibrantSwatch?.rgb ?: palette.mutedSwatch?.rgb ?: dominant
-                        Pair(dominant, accent)
-                    } catch (_: Throwable) {
-                        Pair(android.graphics.Color.BLACK, android.graphics.Color.WHITE)
-                    }
-                }
-                onDominantColor(Color(dominantInt))
-                onAccentColor(Color(accentInt))
-                // forward the loaded android Bitmap to caller for background sampling
-                try { onBitmap(bitmap.asAndroidBitmap()) } catch (_: Throwable) { onBitmap(null) }
-            }
-        } else {
-            Box(
-                modifier = imageModifier.background(Color(0xFF2A2A2A)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Album,
-                    contentDescription = "Album Art",
-                    modifier = Modifier.size(100.dp),
-                    tint = Color(0xFF5A5A5A)
-                )
-            }
-            // no bitmap available — inform caller
-            LaunchedEffect(Unit) { onBitmap(null) }
-        }
-    }
+private fun MusicPlayerChromeCollapsedPreview() {
+    MusicPlayerChromePreview(SheetDetent.Collapsed)
 }
 
+@Preview(showSystemUi = true, name = "MusicPlayerChrome — Half open", backgroundColor = 0xFF000000, showBackground = true)
 @Composable
-fun InteractiveSeekBar(
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
-    modifier: Modifier = Modifier,
-    activeColor: Color = Color(0xFFFFA500),
-    inactiveColor: Color = Color.White.copy(alpha = 0.22f),
-    onValueChange: (Float) -> Unit,
-    onValueChangeFinished: () -> Unit
-) {
-    // Press state for thickening the track; the thumb is always visible (6dp radius,
-    // growing to 8dp while pressed) matching the redesign's always-on seek handle.
-    var pressed by remember { mutableStateOf(false) }
-    val thumbRadius by animateFloatAsState(targetValue = if (pressed) 8f else 6f, label = "thumbRadius")
-    val trackHeightDp by animateFloatAsState(targetValue = if (pressed) 4f else 2f, label = "trackHeight")
-
-    Box(modifier = modifier
-        .height(24.dp)
-        .pointerInput(Unit) {
-            detectDragGestures(
-                onDragStart = { offset ->
-                    pressed = true
-                    // update value immediately on press
-                    val w = size.width.toFloat()
-                    val x = offset.x.coerceIn(0f, w)
-                    val frac = if (w > 0f) x / w else 0f
-                    val newValue = (valueRange.start + (valueRange.endInclusive - valueRange.start) * frac)
-                    onValueChange(newValue)
-                },
-                onDrag = { change, dragAmount ->
-                    change.consume()
-                    val x = change.position.x.coerceIn(0f, size.width.toFloat())
-                    val frac = if (size.width > 0f) x / size.width else 0f
-                    val newValue = (valueRange.start + (valueRange.endInclusive - valueRange.start) * frac)
-                    onValueChange(newValue)
-                },
-                onDragEnd = {
-                    pressed = false
-                    onValueChangeFinished()
-                },
-                onDragCancel = {
-                    pressed = false
-                    onValueChangeFinished()
-                }
-            )
-        }
-        // detectDragGestures only fires once a touch moves past the system touch-slop
-        // threshold, so a plain tap (press + release, no real movement) never reached
-        // onValueChange at all — this is what let you tap a spot on the bar and have
-        // nothing happen. Handle plain taps separately so both work.
-        .pointerInput(Unit) {
-            detectTapGestures(
-                onTap = { offset ->
-                    val w = size.width.toFloat()
-                    val x = offset.x.coerceIn(0f, w)
-                    val frac = if (w > 0f) x / w else 0f
-                    val newValue = (valueRange.start + (valueRange.endInclusive - valueRange.start) * frac)
-                    onValueChange(newValue)
-                    onValueChangeFinished()
-                }
-            )
-        }
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            val trackHeightPx = trackHeightDp.dp.toPx().coerceAtLeast(1f)
-            // draw inactive track
-            drawRoundRect(
-                color = inactiveColor,
-                topLeft = androidx.compose.ui.geometry.Offset(0f, (h - trackHeightPx) / 2f),
-                size = androidx.compose.ui.geometry.Size(w, trackHeightPx),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
-            )
-
-            // draw active track
-            val frac = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
-            val activeW = w * frac
-            drawRoundRect(
-                color = activeColor,
-                topLeft = androidx.compose.ui.geometry.Offset(0f, (h - trackHeightPx) / 2f),
-                size = androidx.compose.ui.geometry.Size(activeW, trackHeightPx),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackHeightPx / 2f, trackHeightPx / 2f)
-            )
-
-            // draw thumb only when pressed (thumbRadius > 0)
-            if (thumbRadius > 0f) {
-                val cx = activeW
-                val cy = h / 2f
-                drawCircle(color = activeColor, radius = thumbRadius, center = androidx.compose.ui.geometry.Offset(cx, cy))
-            }
-        }
-    }
+private fun MusicPlayerChromeHalfPreview() {
+    MusicPlayerChromePreview(SheetDetent.Half)
 }
 
-
+@Preview(showSystemUi = true, name = "MusicPlayerChrome — Full open", backgroundColor = 0xFF000000, showBackground = true)
+@Composable
+private fun MusicPlayerChromeFullPreview() {
+    MusicPlayerChromePreview(SheetDetent.Full)
+}
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
@@ -986,109 +839,13 @@ fun SongsModalBottomSheet(
                     scope.launch { try { scaffoldState.bottomSheetState.collapse() } catch (_: Throwable) {} }
                 },
                 initialSelectedTab = initialSelectedTab,
-                onOpenSheet = { scope.launch { try { scaffoldState.bottomSheetState.expand() } catch (_: Throwable) {} } },
+                onTabSelected = { scope.launch { try { scaffoldState.bottomSheetState.expand() } catch (_: Throwable) {} } },
                 showIndicator = (scaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded),
-                isExpanded = (scaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded)
+                openFraction = if (scaffoldState.bottomSheetState.currentValue == BottomSheetValue.Expanded) 1f else 0f
             )
         }
     ) {
         Spacer(modifier = Modifier.height(0.dp))
-    }
-}
-
-@Composable
-fun LyricsTab(currentSong: Song?, modifier: Modifier = Modifier, contentColor: Color = Color.White) {
-    var loading by remember { mutableStateOf(false) }
-    // Keep lyrics in state so UI updates when cache fills
-    var lyrics by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
-
-    // Only fetch when the currentSong changes and we don't already have a cached value on the song
-    LaunchedEffect(currentSong?.id) {
-        val tag = "LyricsTab"
-        if (currentSong == null) {
-            lyrics = null
-            loading = false
-            return@LaunchedEffect
-        }
-
-        // If the Song instance already has lyricsFetched, use its cached value (may be null)
-        if (currentSong.lyricsFetched) {
-            lyrics = currentSong.lyrics
-            loading = false
-            try { Log.d(tag, "Cache hit: lyricsFetched=true length=${currentSong.lyrics?.length ?: 0} for '${currentSong.title}'") } catch (_: Throwable) {}
-            return@LaunchedEffect
-        }
-
-        loading = true
-        try { Log.d(tag, "Begin fetch lyrics for '${currentSong.title}' by '${currentSong.artist}'") } catch (_: Throwable) {}
-        // API-first: try online lyrics, then fallback to embedded file lyrics
-        val fetched: String? = withContext(Dispatchers.IO) {
-            try {
-                val apiResult = try {
-                    val result = Util.fetchLyricsOnline(currentSong)
-                    // Ensure result is a String before using it
-                    if (result is String) result else null
-                } catch (_: Throwable) {
-                    null
-                }
-                if (!apiResult.isNullOrBlank()) {
-                    try { Log.d(tag, "Loaded lyrics from API, length=${apiResult.length} title='${currentSong.title}'") } catch (_: Throwable) {}
-                    return@withContext apiResult
-                } else {
-                    try { Log.d(tag, "API returned no lyrics; attempting embedded for '${currentSong.title}'") } catch (_: Throwable) {}
-                }
-                null
-            } catch (t: Throwable) {
-                try { Log.w(tag, "Exception while fetching lyrics: ${t.message}", t) } catch (_: Throwable) {}
-                null
-            }
-        }
-        // Store on the song instance (may be null) and mark fetched
-        currentSong.lyrics = fetched
-        currentSong.lyricsFetched = true
-        lyrics = fetched
-        loading = false
-        try { Log.d(tag, "Fetch complete for '${currentSong.title}' length=${fetched?.length ?: 0}") } catch (_: Throwable) {}
-    }
-
-    val scrollState = rememberScrollState()
-
-    // Outer container matches the height available for lyrics; we will center only the spinner inside it.
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(max = 520.dp)
-            .padding(12.dp)
-    ) {
-        if (loading) {
-            // Center only the spinner
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Color(0xFFFFA500))
-            }
-        } else if (lyrics.isNullOrBlank()) {
-            // Show not-available message in normal flow (top-left within the lyrics area)
-            Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                Text(text = "Lyrics not available", color = contentColor)
-            }
-        } else {
-            // Put lyrics in a vertically-scrollable container so long lyrics are fully visible
-            Column(modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 520.dp)
-                .verticalScroll(scrollState)
-                .padding(8.dp)
-            ) {
-                // Add extra blank lines after the first N lines to improve readability on small screens
-                val spaced = Util.addSpacingToFirstLines(lyrics, firstLines = 5) ?: lyrics ?: ""
-                Text(
-                    text = spaced,
-                    color = contentColor,
-                    fontWeight = FontWeight.Bold,
-                    style = TextStyle(lineHeight = 15.sp)
-                )
-            }
-        }
     }
 }
 
@@ -1145,33 +902,6 @@ fun LyricsTab(currentSong: Song?, modifier: Modifier = Modifier, contentColor: C
 //}
 
 
-@Suppress("unused")
-@Composable
-fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val imageBitmap = try {
-        Util.getAlbumArt(context, path)
-    } catch (_: Throwable) { null }
-
-    Crossfade(targetState = imageBitmap, animationSpec = tween(500), label = "Small album art crossfade") { bitmap ->
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
-                contentDescription = null,
-                modifier = modifier.size(size),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            Image(
-                painter = painterResource(id = R.drawable.img),
-                contentDescription = null,
-                modifier = modifier.size(size),
-                contentScale = ContentScale.Crop
-            )
-        }
-    }
-}
-
 // @Preview(showBackground = true, name = "MusicScreen Preview (default)", backgroundColor = 0xFF000000)
 // @Composable
 // fun MusicScreenPreview() {
@@ -1200,30 +930,6 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
 
 
 
-
-
-@Preview(showBackground = true, showSystemUi = true, name = "MusicScreen (full) Preview", backgroundColor = 0xFF000000,
-    device = "id:pixel_6"
-)
-@Composable
-fun MusicPlayerScreenFullPreview() {
-    MaterialTheme {
-        val context = LocalContext.current
-        val navController = remember { androidx.navigation.NavController(context) }
-        // create a sample playlist
-        val sampleSongs = listOf(
-            // Use constructor (id, title, artist, duration, path, cover, album?) — omit year in preview
-            Song(0, "First Song", "Artist A", 180000.0, "", null, null),
-            Song(1, "Second Song", "Artist B", 210000.0, "", null, null),
-            Song(2, "Third Song", "Artist C", 240000.0, "", null, null)
-        )
-        // create a plain VM instance for preview; methods may no-op but it's okay for preview
-        val vm = remember { MusicPlayerViewModel() }
-
-        // call the real MusicScreen with a sample start song id of 0
-        MusicPlayerScreen(songId = 0, songs = sampleSongs, navController = navController, viewModel = vm)
-    }
-}
 
 
 @Preview(showBackground = true, showSystemUi = true, name = "SongsModalBottomSheet - Collapsed", backgroundColor = 0xFF000000,

@@ -49,6 +49,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import com.example.musicplayer.BuildConfig
+import com.example.musicplayer.navigation.NavRoutes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.musicplayer.songlist.SongListViewModel
@@ -77,9 +78,18 @@ fun SettingsScreen(navController: NavHostController) {
     val useAlbumPalette by viewModel.useAlbumPalette.collectAsState(initial = false)
     var showPaletteDialog by remember { mutableStateOf(false) }
 
-    // Background drawn full-screen behind the whole Scaffold (including the top bar), not
-    // just the content area below it — otherwise a "transparent" bar just shows the
-    // Scaffold's own flat containerColor instead of this blur.
+    val navidromeConnected by com.example.musicplayer.preferences.PreferencesManager
+        .getNavidromeConnectedFlow(context)
+        .collectAsState(initial = false)
+    val navidromeStatus = remember(navidromeConnected) {
+        if (navidromeConnected) {
+            com.example.musicplayer.navidrome.NavidromeCredentialsStore.get(context)?.serverUrl ?: "Connected"
+        } else {
+            "Not connected"
+        }
+    }
+
+    // Background drawn full-screen behind the whole Scaffold (including the top bar), not just the content area below it -- otherwise a "transparent" bar just shows the Scaffold's own flat containerColor instead of this blur.
     Box(modifier = Modifier.fillMaxSize()) {
     AuroraRibbonBackground()
     Scaffold(
@@ -149,6 +159,14 @@ fun SettingsScreen(navController: NavHostController) {
                         title = "Use album art colors in song list",
                         checked = useAlbumPalette,
                         onCheckedChange = { enabled -> viewModel.setUseAlbumPalette(enabled) }
+                    )
+                }
+
+                SettingsGroup(title = "STREAMING") {
+                    SettingsValueRow(
+                        title = "Navidrome server",
+                        value = navidromeStatus,
+                        onClick = { navController.navigate(NavRoutes.Navidrome.route) }
                     )
                 }
 
@@ -238,8 +256,7 @@ private fun SettingsSwitchRow(
     }
 }
 
-/** Value-and-chevron settings row (e.g. "Stream quality" in the redesign spec) — a small
- * color swatch stands in for a value icon when the row picks a color palette. */
+// Value-and-chevron settings row (e.g. "Stream quality"); a small color swatch stands in for a value icon when the row picks a color palette.
 @Composable
 private fun SettingsValueRow(
     title: String,
@@ -332,8 +349,7 @@ private fun AuroraPaletteDialog(
     )
 }
 
-/** Custom 44x26 pill switch matching the redesign — Material3's Switch is a different
- * size/shape entirely, so this is drawn directly rather than restyled from it. */
+// Custom 44x26 pill switch matching the redesign -- Material3's Switch is a different size/shape entirely, so this is drawn directly rather than restyled from it.
 @Composable
 private fun PillSwitch(checked: Boolean) {
     val trackColor = if (checked) Color(0xFFFFA500).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.10f)

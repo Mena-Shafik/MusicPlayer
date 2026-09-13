@@ -58,16 +58,33 @@ import androidx.navigation.compose.rememberNavController
 import com.example.musicplayer.model.Playlist
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.music.MusicPlayerViewModel
+import com.example.musicplayer.navidrome.NavidromeRepository
 import com.example.musicplayer.navigation.NavRoutes
+import com.example.musicplayer.preferences.PreferencesManager
 import com.example.musicplayer.service.PlayerStateManager
+import com.example.musicplayer.service.PlayerDockController
 import com.example.musicplayer.ui.components.background.AuroraRibbonBackground
 import com.example.musicplayer.ui.components.common.MainBackground
 import com.example.musicplayer.ui.components.common.dashedBorder
 import com.example.musicplayer.ui.components.song.SongCardRow
 import com.example.musicplayer.util.Util
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+// Local device songs plus the Navidrome catalogue (if connected), so playlists can resolve/display remote songIds the same way the song list's "All" tab does.
+private suspend fun loadAllSongsIncludingCatalogue(context: android.content.Context): List<Song> {
+    val local = withContext(Dispatchers.IO) { Util.getAllAudioFromDevice(context) }
+    val connected = PreferencesManager.getNavidromeConnectedFlow(context).first()
+    if (!connected) return local
+    val remote = try {
+        NavidromeRepository(context).listCatalogueSongs()
+    } catch (e: Exception) {
+        emptyList()
+    }
+    return local + remote
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,17 +116,14 @@ fun PlaylistDetailScreen(
     // Load all songs on first composition
     LaunchedEffect(context) {
         scope.launch {
-            val all = withContext(Dispatchers.IO) { Util.getAllAudioFromDevice(context) }
-            songs = all
+            songs = loadAllSongsIncludingCatalogue(context)
         }
     }
 
     val shuffleEnabled by PlayerStateManager.shuffleEnabled.collectAsState()
     val totalMinutes = remember(playlistSongs) { (playlistSongs.sumOf { it.duration } / 60000).toInt() }
 
-    // Background drawn full-screen behind the whole Scaffold (including the top bar), not
-    // just the content area below it — otherwise a "transparent" bar just shows the
-    // Scaffold's own flat containerColor instead of this blur.
+    // Background drawn full-screen behind the whole Scaffold (including the top bar), not just the content area below it -- otherwise a "transparent" bar just shows the Scaffold's own flat containerColor instead of this blur.
     Box(modifier = Modifier.fillMaxSize()) {
     AuroraRibbonBackground()
     Scaffold(
@@ -316,7 +330,7 @@ fun PlaylistDetailScreen(
                                     playerVm.setPlaylist(context, playlistSongs, index)
                                     PlayerStateManager.setCurrentIndex(index)
                                     playerVm.play(context)
-                                    navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                                    PlayerDockController.requestExpand()
                                 },
                                 isInPlaylist = true,
                                 onRemoveFromPlaylist = { songId ->
@@ -394,8 +408,7 @@ fun PlaylistAddSongsScreen(
     // Load all songs on first composition
     LaunchedEffect(context) {
         scope.launch {
-            val all = withContext(Dispatchers.IO) { Util.getAllAudioFromDevice(context) }
-            songs = all
+            songs = loadAllSongsIncludingCatalogue(context)
             // Initialize with songs already in playlist
             currentPlaylist?.let {
                 selectedSongs = it.songIds.toSet()
@@ -403,9 +416,7 @@ fun PlaylistAddSongsScreen(
         }
     }
 
-    // Background drawn full-screen behind the whole Scaffold (including the top bar), not
-    // just the content area below it — otherwise a "transparent" bar just shows the
-    // Scaffold's own flat containerColor instead of this blur.
+    // Background drawn full-screen behind the whole Scaffold (including the top bar), not just the content area below it -- otherwise a "transparent" bar just shows the Scaffold's own flat containerColor instead of this blur.
     Box(modifier = Modifier.fillMaxSize()) {
     AuroraRibbonBackground()
     Scaffold(

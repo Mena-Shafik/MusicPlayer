@@ -194,12 +194,9 @@ fun RadioPlayerScreen(
         }
     }
 
-    // Background drawn full-screen behind the whole Scaffold (including the top app bar),
-    // not just the content area below it — otherwise a "transparent" app bar just shows the
-    // Scaffold's own flat containerColor instead of this blur/wash.
+    // Background drawn full-screen behind the whole Scaffold (including the top app bar), not just the content area below it -- otherwise a "transparent" app bar just shows the Scaffold's own flat containerColor instead of this blur/wash.
     Box(modifier = Modifier.fillMaxSize()) {
-        // Fixed dark gradient + soft station-wash glow (not derived per-station — the
-        // favicon palette extraction below is a stub that always returns black/white).
+        // Fixed dark gradient + soft station-wash glow (not derived per-station -- the favicon palette extraction below is a stub that always returns black/white).
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -257,9 +254,7 @@ fun RadioPlayerScreen(
         ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
-                // Use the raw station-provided favicon exactly as supplied by the API, but
-                // normalize protocol-relative URLs ("//host/...") to "https://host/..." so Coil can load them.
-                // StationImage will display the bundled fallback if the favicon is blank or fails to load.
+                // Uses the raw station favicon as supplied by the API, normalizing protocol-relative URLs ("//host/...") to "https://host/..." so Coil can load them; StationImage falls back to the bundled placeholder if blank/failed.
                 val favRaw = currentStationFavicon
                 val favUrl = when {
                     favRaw.startsWith("//") -> "https:$favRaw"
@@ -284,9 +279,7 @@ fun RadioPlayerScreen(
                         chipContentColor = Color.LightGray
                     )
 
-                    // Show current song metadata as an "ON AIR NOW" block when the service has
-                    // some (only rendered once — this used to also render again via a separate
-                    // RadioNowPlayingInfo call below the controls, showing the same text twice).
+                    // "ON AIR NOW" block, rendered once -- this used to also render again via a separate RadioNowPlayingInfo call below the controls, showing the same text twice.
                     if (!playingTitle.isNullOrBlank()) {
                         Text(
                             text = "ON AIR NOW",
@@ -336,8 +329,7 @@ fun RadioPlayerScreen(
                 )
             }
 
-            // Show the raw stream/service status as plain text at the bottom center of the screen
-            // Keep service status separate from title/artist — always show svcStatus here.
+            // Raw stream/service status, shown separately from title/artist -- always svcStatus here.
             val statusText = svcStatus.ifBlank { "IDLE" }
 
             Text(
@@ -361,11 +353,10 @@ fun StationImage(
     onAccentColor: (Color) -> Unit = {}
 ) {
     val context = LocalContext.current
-    // Station logos are typically white/light artwork, so — unlike album art — the tile
-    // itself is white with a muted glyph, not a dark placeholder.
+    // Station logos are typically white/light artwork, so unlike album art the tile itself is white with a muted glyph, not a dark placeholder.
     val tileModifier = modifier
-        .width(308.dp)
-        .height(308.dp)
+        .width(340.dp)
+        .height(340.dp)
         .shadow(
             elevation = 24.dp,
             shape = RoundedCornerShape(8.dp),

@@ -19,12 +19,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * Horizontal pill row for filtering the radio station list by genre — "All" plus
- * the distinct genres seen across the current station list. Selected pill is
- * white/black to match the library filter chips; unselected pills sit at 10%
- * white on the aurora background.
- */
+// Horizontal pill row for filtering radio stations by genre ("All" plus distinct genres seen); selected pill is white/black to match library filter chips, unselected sit at 10% white on the aurora background.
 @Composable
 fun RadioGenreFilterRow(
     genres: List<String>,

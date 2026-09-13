@@ -35,6 +35,7 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import com.example.musicplayer.model.RadioStation
+import com.example.musicplayer.service.PlayerIntentBuilder
 
 @UnstableApi
 class RadioPlayerService : Service() {
@@ -45,8 +46,7 @@ class RadioPlayerService : Service() {
     private var androidPlayer: MediaPlayer? = null
     private var stationList: List<RadioStation>? = null
     private var currentIndex: Int = -1
-    // Feature flag: disable ICY metadata polling while it's not working on device.
-    // Set to `true` to re-enable polling later.
+    // Feature flag: disable ICY metadata polling while it's not working on device; set true to re-enable.
     private val enableIcyMetadataPolling = false
 
     // Coroutine scope for metadata polling
@@ -187,6 +187,7 @@ class RadioPlayerService : Service() {
             ACTION_PLAY -> {
                 Log.d("RadioPlayerService", "ACTION_PLAY: play() called")
                 lastStatus = "play_request"
+                ensureLocalMusicPaused()
                 try {
                     if (androidPlayer != null) {
                         // If Android fallback is active, start it on the main thread
@@ -260,8 +261,16 @@ class RadioPlayerService : Service() {
                     lastStationName = title ?: lastStationName
                     lastStationFavicon = fav ?: lastStationFavicon
                     lastStationTags = tags ?: lastStationTags
-                    playUrl(url)
-                    startMetadataPolling(url)
+                    // Re-selecting the already-playing station shouldn't reconnect the stream from scratch.
+                    val alreadyPlayingThisStation = url == currentUrl &&
+                        (try { player.isPlaying } catch (_: Throwable) { false } ||
+                            try { androidPlayer?.isPlaying == true } catch (_: Throwable) { false })
+                    if (alreadyPlayingThisStation) {
+                        Log.d("RadioPlayerService", "ACTION_PLAY_STATION: already playing $url, ignoring restart")
+                    } else {
+                        playUrl(url)
+                        startMetadataPolling(url)
+                    }
                 } else if (!stationList.isNullOrEmpty()) {
                     // fallback to current index from list
                     playCurrentFromList(startPlaying = true)
@@ -290,9 +299,13 @@ class RadioPlayerService : Service() {
         return START_NOT_STICKY
     }
 
+    // Explicitly pauses local playback so song/radio never sound at once, regardless of audio-focus timing.
+    private fun ensureLocalMusicPaused() {
+        try { PlayerIntentBuilder.startPause(this) } catch (_: Throwable) {}
+    }
+
     private fun playUrl(url: String) {
-        // ExoPlayer must be accessed on the main thread. If called from a background
-        // dispatcher, forward the work to the main dispatcher.
+        // ExoPlayer must be accessed on the main thread; forward to it if called from a background dispatcher.
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
             serviceScope.launch(Dispatchers.Main) {
                 playUrlInternal(url)
@@ -302,10 +315,10 @@ class RadioPlayerService : Service() {
         }
     }
 
-    // This function contains the actual ExoPlayer/MediaPlayer interactions and must
-    // always be executed on the main thread.
+    // Contains the actual ExoPlayer/MediaPlayer interactions; must always run on the main thread.
     private fun playUrlInternal(url: String) {
         try {
+            ensureLocalMusicPaused()
             lastStatus = "preparing"
             Log.d("RadioPlayerService", "════════════════════════════════════════")
             Log.d("RadioPlayerService", "playUrl: ATTEMPTING TO PLAY")
@@ -387,8 +400,7 @@ class RadioPlayerService : Service() {
 
     // Start a background coroutine that polls ICY metadata from the stream URL periodically.
     private fun startMetadataPolling(url: String) {
-        // ICY metadata polling is disabled by default because it caused failures on some devices.
-        // Keep the function in place so UI can continue to read `lastMetadata` if it's set from elsewhere.
+        // Disabled by default because it caused failures on some devices; kept in place so UI can still read `lastMetadata` if set elsewhere.
         if (!enableIcyMetadataPolling) {
             Log.d("RadioPlayerService", "startMetadataPolling: ICY polling disabled by feature flag")
             metadataPollingJob?.cancel()
@@ -426,8 +438,7 @@ class RadioPlayerService : Service() {
         metadataPollingJob = null
     }
 
-    // Fetch ICY metadata from the provided stream URL. This makes a short HTTP request
-    // that asks for ICY metadata and reads the first metadata block.
+    // Makes a short HTTP request asking for ICY metadata and reads the first metadata block.
     private fun fetchIcyMetadata(streamUrl: String): String? {
         var conn: HttpURLConnection? = null
         var input: InputStream? = null

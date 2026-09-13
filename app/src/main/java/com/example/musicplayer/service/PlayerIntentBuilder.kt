@@ -14,12 +14,7 @@ object PlayerIntentBuilder {
     private var lastStartPrevMs: Long = 0L
     private fun intent(context: Context, action: String) = Intent(context, PlayerForegroundService::class.java).apply { this.action = action }
 
-    /**
-     * Start the playback service. If [foreground] is true, use startForegroundService on O+ so
-     * the service can promote to a foreground service; otherwise use startService which is
-     * appropriate for short control messages (pause/next/prev/seek) that shouldn't trigger
-     * the system watchdog requiring an immediate startForeground() call.
-     */
+    // If foreground is true, use startForegroundService on O+ so the service can promote to foreground; otherwise startService, appropriate for short control messages that shouldn't trigger the watchdog requiring an immediate startForeground() call.
     private fun startServiceCompat(context: Context, intent: Intent, foreground: Boolean = false) {
         try {
             val appCtx = context.applicationContext
@@ -49,8 +44,7 @@ object PlayerIntentBuilder {
     }
 
     fun startPause(context: Context) {
-        // Pause is a quick control message; don't use startForegroundService for pause to avoid
-        // the watchdog if the service doesn't call startForeground immediately.
+        // Pause is a quick control message; avoid startForegroundService here so a missing immediate startForeground() doesn't trigger the watchdog.
         startServiceCompat(context, intent(context, PlayerActions.ACTION_PAUSE), foreground = false)
     }
 
@@ -88,10 +82,7 @@ object PlayerIntentBuilder {
         startServiceCompat(context, i, foreground = false)
     }
 
-    /**
-     * Request the service to prepare (and optionally start) a specific index from the playlist.
-     * This is more explicit than startPlay and ensures the requested index is prepared by the service.
-     */
+    // More explicit than startPlay -- ensures the requested index is prepared by the service.
     fun startPrepare(context: Context, index: Int, startPlaying: Boolean = false) {
         val i = intent(context, PlayerActions.ACTION_PREPARE)
         try { i.putExtra(PlayerActions.EXTRA_CURRENT_INDEX, index) } catch (_: Throwable) {}

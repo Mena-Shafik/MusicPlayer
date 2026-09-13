@@ -24,6 +24,7 @@ import com.example.musicplayer.util.Util
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
 import android.widget.Toast
+import com.example.musicplayer.radio.RadioPlayerService
 
 class PlayerForegroundService : Service() {
     private val TAG = "PlayerFgService"
@@ -198,8 +199,7 @@ class PlayerForegroundService : Service() {
                 try {
                     val d = try { mp.duration.toLong() } catch (_: Throwable) { 0L }
                     Log.d(TAG, "onPrepared: mp duration=$d currentPreparedIndex=$currentPreparedIndex currentPreparedPath=$currentPreparedPath repositoryIndex=${PlayerStateManager.currentIndex.value}")
-                    // Mark repository prepared with a safe duration so callers don't call
-                    // MediaPlayer.getDuration() directly (which can throw if player state is wrong).
+                    // Marks repository prepared with a safe duration so callers don't call MediaPlayer.getDuration() directly, which can throw if player state is wrong.
                     PlayerStateManager.markPrepared(d)
                     // Check that the prepared path is still the desired one in the repository.
                     val desiredPath = PlayerStateManager.playlist.value.getOrNull(PlayerStateManager.currentIndex.value)?.path
@@ -242,8 +242,7 @@ class PlayerForegroundService : Service() {
             }
         }
 
-        // Ensure we enter foreground promptly to satisfy startForegroundService timing.
-        // Use a lightweight notification here; it will be updated later when playback starts.
+        // Enter foreground promptly to satisfy startForegroundService timing, with a lightweight notification updated later once playback starts.
         try {
             if (!isForegroundStarted) {
                 Log.d(TAG, "onCreate: starting lightweight foreground notification")
@@ -261,8 +260,7 @@ class PlayerForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Ensure we call startForeground as early as possible when service is started via startForegroundService.
-        // If for any reason onCreate didn't start foreground, do it immediately here (fast and minimal).
+        // Call startForeground as early as possible when started via startForegroundService; if onCreate didn't for some reason, do it immediately here.
         if (!isForegroundStarted) {
             try {
                 startMinimalForegroundNow()
@@ -274,8 +272,7 @@ class PlayerForegroundService : Service() {
         val action = i.action
         Log.d(TAG, "onStartCommand action=$action | currentIndex=${PlayerStateManager.currentIndex.value} preparedIndex=$currentPreparedIndex isPlaying=${PlayerStateManager.isPlaying.value}")
 
-        // If this service was started with startForegroundService(), we must call startForeground() quickly.
-        // Call a lightweight notification immediately on play/prepare/update so the system won't kill the service.
+        // If started via startForegroundService(), startForeground() must be called quickly -- fire a lightweight notification immediately on play/prepare/update so the system won't kill the service.
         try {
             if (!isForegroundStarted && (action == PlayerActions.ACTION_PLAY || action == PlayerActions.ACTION_PREPARE || action == PlayerActions.ACTION_UPDATE)) {
                 Log.d(TAG, "Starting foreground with a lightweight notification to satisfy startForegroundService timing")
@@ -292,9 +289,7 @@ class PlayerForegroundService : Service() {
 
         when (action) {
             PlayerActions.ACTION_PLAY -> {
-                // If the Play intent included a requested index, update repository and ensure
-                // the requested item is prepared and started. This guarantees a selection
-                // from the UI will cause the requested index to play even if intents are coalesced.
+                // If the Play intent included a requested index, ensure that item is prepared and started -- guarantees a UI selection plays even if intents are coalesced.
                 val requestedIdx = try { i.getIntExtra(PlayerActions.EXTRA_CURRENT_INDEX, Int.MIN_VALUE) } catch (_: Throwable) { Int.MIN_VALUE }
                 if (requestedIdx != Int.MIN_VALUE) {
                     try { PlayerStateManager.setCurrentIndex(requestedIdx) } catch (_: Throwable) {}
@@ -364,8 +359,7 @@ class PlayerForegroundService : Service() {
         val idx = PlayerStateManager.currentIndex.value.coerceIn(0, songs.size - 1)
         val song = songs.getOrNull(idx) ?: return
         Log.d(TAG, "prepareCurrent requested idx=$idx startPlaying=$startPlaying")
-        // If the requested index is already prepared (or currently preparing), avoid resetting the MediaPlayer
-        // which can cause unnecessary reloads / onPrepared races leading to cycling.
+        // If the requested index is already prepared/preparing, avoid resetting the MediaPlayer -- that causes unnecessary reloads/onPrepared races leading to cycling.
         if (currentPreparedIndex == idx) {
             // if we're already preparing, nothing to do (onPrepared will handle start)
             if (isPreparing) {
@@ -379,6 +373,7 @@ class PlayerForegroundService : Service() {
                 if (startPlaying) {
                     try {
                         if (mediaPlayer?.isPlaying != true) {
+                            ensureRadioPaused()
                             mediaPlayer?.start()
                             PlayerStateManager.setIsPlaying(true)
                             updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
@@ -444,8 +439,7 @@ class PlayerForegroundService : Service() {
             Log.d(TAG, "prepareCurrent: marked currentPreparedIndex=$currentPreparedIndex currentPreparedPath=$currentPreparedPath isPreparing=$isPreparing")
 
 
-            // prepare async and start when prepared
-            // prevent overlapping prepares
+            // Prepare async and start when prepared; prevent overlapping prepares.
             if (!isPreparing) {
                 isPreparing = true
                 Log.d(TAG, "prepareCurrent: calling prepareAsync for idx=$idx")
@@ -467,9 +461,7 @@ class PlayerForegroundService : Service() {
                 Log.d(TAG, "prepareCurrent: already preparing, ignoring duplicate request for idx=$idx")
             }
             if (!startPlaying) {
-                // onPrepared will not auto-start in this branch; we can pause after prepared
-                // but simpler: we'll let onPrepared start, then pause if !startPlaying
-                // So schedule a short job to pause once prepared if necessary
+                // onPrepared won't auto-start in this branch; simpler to let it start then pause if !startPlaying, so schedule a short job to pause once prepared.
                 scope.launch {
                     // wait until prepared (duration > 0) or timeout
                     var waited = 0
@@ -651,9 +643,18 @@ class PlayerForegroundService : Service() {
         updateNotificationFromSession()
     }
 
+    // Explicitly pauses radio so song/radio never sound at once, regardless of audio-focus timing.
+    private fun ensureRadioPaused() {
+        try {
+            val intent = Intent(this, RadioPlayerService::class.java).apply { action = RadioPlayerService.ACTION_PAUSE }
+            startService(intent)
+        } catch (_: Throwable) {}
+    }
+
     // Request audio focus before starting playback. Returns true if focus granted (or unavailable).
     private fun requestAudioFocus(): Boolean {
         try {
+            ensureRadioPaused()
             val res = audioFocusRequest?.let { audioManager?.requestAudioFocus(it) }
                 ?: AudioManager.AUDIOFOCUS_REQUEST_GRANTED
             return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED || res == AudioManager.AUDIOFOCUS_REQUEST_DELAYED
@@ -679,10 +680,7 @@ class PlayerForegroundService : Service() {
         pollJob = scope.launch {
             while (isActive) {
                 try {
-                    // Use repository helpers that safely read MediaPlayer state to avoid
-                    // IllegalStateException when MediaPlayer isn't prepared. updatePositionFromPlayerSafe
-                    // wraps currentPosition access in try/catch. Duration is sourced from the repo's
-                    // last-known prepared duration (set in onPrepared via markPrepared).
+                    // updatePositionFromPlayerSafe wraps currentPosition access in try/catch to avoid IllegalStateException when MediaPlayer isn't prepared; duration comes from the repo's last-known prepared duration (markPrepared).
                     PlayerStateManager.updatePositionFromPlayerSafe(mediaPlayer)
                     val dur = PlayerStateManager.getSafeDuration()
                     // reflect into the repo flows (position already updated). Keep duration if known.
