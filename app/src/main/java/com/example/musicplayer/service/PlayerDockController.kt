@@ -3,14 +3,17 @@ package com.example.musicplayer.service
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-// One-shot event channel letting any screen ask PersistentPlayerHost to expand, without holding a reference to it or a NavController -- mirrors PlayerStateManager's plain-singleton style; expandRequests is a monotonic counter (not a boolean) so repeated requests each still trigger the collecting LaunchedEffect; deliberately a StateFlow, not a zero-replay SharedFlow, so the first request of a session (which usually fires synchronously before PersistentPlayerHost starts collecting) isn't dropped -- the corresponding stale-replay-on-later-resubscribe risk is avoided by keeping PersistentPlayerHost mounted at all times and gating only its rendering (hideContent) rather than conditionally composing it per route.
+// Lets any screen ask PersistentPlayerHost to expand; a pending flag the host consumes, so a request survives until handled but is never replayed to a recreated host.
 object PlayerDockController {
-    private val _expandRequests = MutableStateFlow(0)
-    val expandRequests: StateFlow<Int> = _expandRequests
+    private val _pendingExpand = MutableStateFlow(false)
+    val pendingExpand: StateFlow<Boolean> = _pendingExpand
 
     fun requestExpand() {
-        _expandRequests.value++
+        _pendingExpand.value = true
     }
+
+    // True only for the one caller that actually takes the pending request.
+    fun consumeExpand(): Boolean = _pendingExpand.compareAndSet(expect = true, update = false)
 
     // The mini bar's actual measured height in px, reported by PersistentPlayerHost (onGloballyPositioned) rather than guessed by every screen; kept as a raw Float (not Dp) so this plain service object needs no Compose UI dependency -- callers convert with LocalDensity.
     private val _miniBarHeightPx = MutableStateFlow(0f)
@@ -18,5 +21,13 @@ object PlayerDockController {
 
     fun reportMiniBarHeightPx(px: Float) {
         _miniBarHeightPx.value = px
+    }
+
+    // Live 0 (docked) -> 1 (full) player progress, so each screen's BottomNav can slide out of the way as the player expands.
+    private val _dockProgress = MutableStateFlow(0f)
+    val dockProgress: StateFlow<Float> = _dockProgress
+
+    fun reportDockProgress(progress: Float) {
+        _dockProgress.value = progress
     }
 }

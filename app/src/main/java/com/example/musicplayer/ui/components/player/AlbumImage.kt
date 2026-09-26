@@ -1,5 +1,7 @@
 package com.example.musicplayer.ui.components.player
 
+import android.graphics.Bitmap
+import android.content.Context
 import android.util.Log
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -36,45 +38,47 @@ import com.example.musicplayer.util.Util
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+// Loads a song's cover (embedded, then web), keeping the previous cover until the new one is ready so track changes crossfade instead of flashing the placeholder.
 @Composable
-fun AlbumImage(
-    song: Song,
-    modifier: Modifier = Modifier,
-    onDominantColor: (Color) -> Unit = {},
-    onAccentColor: (Color) -> Unit = {},
-    onBitmap: (android.graphics.Bitmap?) -> Unit = {}
-) {
+fun rememberAlbumBitmap(song: Song?): ImageBitmap? {
     val context = LocalContext.current
-    var displayBitmap by remember(song.path) { mutableStateOf<ImageBitmap?>(null) }
+    var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(song?.path) {
+        bitmap = if (song == null || song.path.isBlank()) null else withContext(Dispatchers.IO) { loadAlbumBitmap(context, song) }
+    }
+    return bitmap
+}
 
-    LaunchedEffect(song.path) {
-        displayBitmap = null
-        if (song.path.isNotBlank()) {
-            displayBitmap = withContext(Dispatchers.IO) {
-                try {
-                    // First try embedded album art
-                    var bitmap = Util.getAlbumArt(context, song.path)
-
-                    // If no embedded art, fetch from web
-                    if (bitmap == null) {
-                        Log.d("AlbumImage", "No embedded artwork for '${song.title}', fetching from web...")
-                        val webUrl = Util.getAlbumArtWebUrl(song)
-                        if (webUrl != null) {
-                            bitmap = Util.loadBitmapFromUrl(webUrl)
-                            if (bitmap != null) {
-                                Log.d("AlbumImage", "✓ Loaded web album art for '${song.title}'")
-                            }
-                        }
-                    }
-                    bitmap
-                } catch (_: Throwable) {
-                    null
-                }
-            }
+private suspend fun loadAlbumBitmap(context: Context, song: Song): ImageBitmap? = try {
+    var bitmap = Util.getAlbumArt(context, song.path)
+    if (bitmap == null) {
+        Log.d("AlbumImage", "No embedded artwork for '${song.title}', fetching from web...")
+        val webUrl = Util.getAlbumArtWebUrl(song)
+        if (webUrl != null) {
+            bitmap = Util.loadBitmapFromUrl(webUrl)
+            if (bitmap != null) Log.d("AlbumImage", "✓ Loaded web album art for '${song.title}'")
         }
     }
+    bitmap
+} catch (_: Throwable) {
+    null
+}
 
-    // Size comes entirely from the caller's `modifier` now -- PersistentPlayerHost lerps it between the mini bar's 44dp thumb and the full player's 340dp cover -- rather than being fixed here.
+// Dominant and accent (vibrant, else muted, else dominant) colors, computed off the main thread.
+suspend fun albumPaletteColors(bitmap: ImageBitmap): Pair<Color, Color> = withContext(Dispatchers.Default) {
+    try {
+        val palette = Palette.from(bitmap.asAndroidBitmap()).generate()
+        val dominant = palette.getDominantColor(android.graphics.Color.BLACK)
+        val accent = palette.vibrantSwatch?.rgb ?: palette.mutedSwatch?.rgb ?: dominant
+        Pair(Color(dominant), Color(accent))
+    } catch (_: Throwable) {
+        Pair(Color.Black, Color.White)
+    }
+}
+
+// Draws an already-loaded cover (or the placeholder); size comes entirely from `modifier`, and it only crossfades when the bitmap changes, never on first composition.
+@Composable
+fun AlbumArt(bitmap: ImageBitmap?, modifier: Modifier = Modifier) {
     val imageModifier = modifier
         .shadow(
             elevation = 24.dp,
@@ -84,33 +88,15 @@ fun AlbumImage(
         )
         .clip(RoundedCornerShape(8.dp))
 
-    Crossfade(targetState = displayBitmap, animationSpec = tween(500), label = "Album art crossfade") { bitmap ->
-        if (bitmap != null) {
+    Crossfade(targetState = bitmap, animationSpec = tween(500), label = "Album art crossfade") { b ->
+        if (b != null) {
             Image(
-                bitmap = bitmap,
+                bitmap = b,
                 contentDescription = "Album Art",
-                // Crop rather than the default Fit -- most covers are square but the half-bleed art rect (360x448) isn't, so Fit would letterbox it instead of filling edge to edge.
+                // Crop, since the half-bleed art rect isn't square and Fit would letterbox it.
                 contentScale = ContentScale.Crop,
                 modifier = imageModifier
             )
-
-            LaunchedEffect(bitmap) {
-                val (dominantInt, accentInt) = withContext(Dispatchers.Default) {
-                    try {
-                        val palette = Palette.from(bitmap.asAndroidBitmap()).generate()
-                        val dominant = palette.getDominantColor(android.graphics.Color.BLACK)
-                        // prefer vibrant swatch, fallback to dominant
-                        val accent = palette.vibrantSwatch?.rgb ?: palette.mutedSwatch?.rgb ?: dominant
-                        Pair(dominant, accent)
-                    } catch (_: Throwable) {
-                        Pair(android.graphics.Color.BLACK, android.graphics.Color.WHITE)
-                    }
-                }
-                onDominantColor(Color(dominantInt))
-                onAccentColor(Color(accentInt))
-                // forward the loaded android Bitmap to caller for background sampling
-                try { onBitmap(bitmap.asAndroidBitmap()) } catch (_: Throwable) { onBitmap(null) }
-            }
         } else {
             Box(
                 modifier = imageModifier.background(Color(0xFF2A2A2A)),
@@ -123,9 +109,29 @@ fun AlbumImage(
                     tint = Color(0xFF5A5A5A)
                 )
             }
-            // no bitmap available — inform caller
-            LaunchedEffect(Unit) { onBitmap(null) }
         }
+    }
+}
+
+@Composable
+fun AlbumImage(
+    song: Song,
+    modifier: Modifier = Modifier,
+    onDominantColor: (Color) -> Unit = {},
+    onAccentColor: (Color) -> Unit = {},
+    onBitmap: (Bitmap?) -> Unit = {}
+) {
+    val bitmap = rememberAlbumBitmap(song)
+    AlbumArt(bitmap = bitmap, modifier = modifier)
+    LaunchedEffect(bitmap) {
+        if (bitmap == null) {
+            onBitmap(null)
+            return@LaunchedEffect
+        }
+        val (dominant, accent) = albumPaletteColors(bitmap)
+        onDominantColor(dominant)
+        onAccentColor(accent)
+        try { onBitmap(bitmap.asAndroidBitmap()) } catch (_: Throwable) { onBitmap(null) }
     }
 }
 

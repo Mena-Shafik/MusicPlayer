@@ -1,5 +1,16 @@
 package com.example.musicplayer
 
+import com.example.musicplayer.service.PlayerForegroundService
+import androidx.activity.compose.BackHandler
+import java.net.URLDecoder
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.example.musicplayer.playlist.PlaylistViewModel
+import com.example.musicplayer.navidrome.NavidromeScreen
+import com.example.musicplayer.songlist.RadioScreen
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.musicplayer.util.LibraryPreloadCache
+import android.os.SystemClock
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -11,6 +22,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.EaseInCubic
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.collectAsState
@@ -76,10 +89,10 @@ class MainActivity : ComponentActivity() {
             keepSplashOn = loading == true
         }
         // Hold for at least one full icon rotation (matches rotate_icon.xml's 3600ms cycle) even if the media scan finishes almost instantly, otherwise a fast/empty library dismisses the splash mid-spin.
-        val splashStartElapsedMs = android.os.SystemClock.elapsedRealtime()
+        val splashStartElapsedMs = SystemClock.elapsedRealtime()
         val minSplashDurationMs = 1500L
         splash.setKeepOnScreenCondition {
-            keepSplashOn || (android.os.SystemClock.elapsedRealtime() - splashStartElapsedMs) < minSplashDurationMs
+            keepSplashOn || (SystemClock.elapsedRealtime() - splashStartElapsedMs) < minSplashDurationMs
         }
 
         // Preloads songs on a background thread; result shared via LibraryPreloadCache so ListSongsScreen doesn't re-scan MediaStore the moment the splash dismisses.
@@ -90,7 +103,7 @@ class MainActivity : ComponentActivity() {
                 Log.w("MainActivity", "Failed to preload songs: ${e.message}")
                 emptyList()
             }
-            com.example.musicplayer.util.LibraryPreloadCache.set(loaded)
+            LibraryPreloadCache.set(loaded)
             withContext(Dispatchers.Main) {
                 viewModel.setLoadingComplete()
             }
@@ -113,11 +126,11 @@ class MainActivity : ComponentActivity() {
                     NavHost(
                         navController = navController,
                         startDestination = NavRoutes.Home.route,
-                        // Smooth crossfade between destinations (tab switching plus any pushed screen) instead of the previous instant cut.
-                        enterTransition = { fadeIn(animationSpec = tween(220)) },
-                        exitTransition = { fadeOut(animationSpec = tween(180)) },
-                        popEnterTransition = { fadeIn(animationSpec = tween(220)) },
-                        popExitTransition = { fadeOut(animationSpec = tween(180)) }
+                        // Old screen fades out ease-in (stays mostly opaque until the new one has mostly faded in), avoiding both a dark mid-fade dip and a ghosting old screen that pops away at the end.
+                        enterTransition = { fadeIn(animationSpec = tween(320, easing = FastOutSlowInEasing)) },
+                        exitTransition = { fadeOut(animationSpec = tween(320, easing = EaseInCubic)) },
+                        popEnterTransition = { fadeIn(animationSpec = tween(320, easing = FastOutSlowInEasing)) },
+                        popExitTransition = { fadeOut(animationSpec = tween(320, easing = EaseInCubic)) }
                     ) {
                     // Home route shows the songs list directly
                     composable(NavRoutes.Home.route) {
@@ -144,7 +157,7 @@ class MainActivity : ComponentActivity() {
                             }
                             songs = local + remote
                         }
-                        val playerVm: MusicPlayerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+                        val playerVm: MusicPlayerViewModel = viewModel()
                         HistoryScreen(
                             navController = navController,
                             onSongClick = { song ->
@@ -164,11 +177,11 @@ class MainActivity : ComponentActivity() {
                     }
 
                     composable(NavRoutes.Radio.route) {
-                        com.example.musicplayer.songlist.RadioScreen(navController = navController)
+                        RadioScreen(navController = navController)
                     }
 
                     composable(NavRoutes.Navidrome.route) {
-                        com.example.musicplayer.navidrome.NavidromeScreen(navController = navController)
+                        NavidromeScreen(navController = navController)
                     }
 
                     composable(
@@ -180,11 +193,11 @@ class MainActivity : ComponentActivity() {
                         val songs: List<Song> = remember(context) { Util.getAllAudioFromDevice(context) }
 
                         // Find the playlist from PlaylistRepository
-                        val playlistVm: com.example.musicplayer.playlist.PlaylistViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-                            factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                        val playlistVm: PlaylistViewModel = viewModel(
+                            factory = object : ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")
-                                override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                                    return com.example.musicplayer.playlist.PlaylistViewModel(context) as T
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    return PlaylistViewModel(context) as T
                                 }
                             }
                         )
@@ -207,11 +220,11 @@ class MainActivity : ComponentActivity() {
                         val songs: List<Song> = remember(context) { Util.getAllAudioFromDevice(context) }
 
                         // Find the playlist from PlaylistRepository
-                        val playlistVm: com.example.musicplayer.playlist.PlaylistViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-                            factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                        val playlistVm: PlaylistViewModel = viewModel(
+                            factory = object : ViewModelProvider.Factory {
                                 @Suppress("UNCHECKED_CAST")
-                                override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                                    return com.example.musicplayer.playlist.PlaylistViewModel(context) as T
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    return PlaylistViewModel(context) as T
                                 }
                             }
                         )
@@ -252,8 +265,8 @@ class MainActivity : ComponentActivity() {
                     ) { backStackEntry ->
                         val nameEnc = backStackEntry.arguments?.getString("name")
                         val urlEnc = backStackEntry.arguments?.getString("url")
-                        val decodedName = try { if (nameEnc != null) java.net.URLDecoder.decode(nameEnc, "UTF-8") else "Unknown" } catch (_: Exception) { nameEnc ?: "Unknown" }
-                        val decodedUrl = try { if (urlEnc != null) java.net.URLDecoder.decode(urlEnc, "UTF-8") else null } catch (_: Exception) { urlEnc }
+                        val decodedName = try { if (nameEnc != null) URLDecoder.decode(nameEnc, "UTF-8") else "Unknown" } catch (_: Exception) { nameEnc ?: "Unknown" }
+                        val decodedUrl = try { if (urlEnc != null) URLDecoder.decode(urlEnc, "UTF-8") else null } catch (_: Exception) { urlEnc }
                         try { Log.d("MainActivity", "Decoded radio args: name=$decodedName url=$decodedUrl") } catch (_: Throwable) {}
                         val stationFromPath = RadioStation(stationuuid = null, name = decodedName, url = decodedUrl)
                         RadioPlayerScreen(radioStation = stationFromPath, navController = navController)
@@ -263,7 +276,7 @@ class MainActivity : ComponentActivity() {
                     // Only shown on the Home tab; stays mounted (hideContent) so it reappears instantly on return.
                     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
                     // Root tabs (Home stays as the permanent nav-stack anchor for saveState/restoreState) exit the app on back instead of popping to a previous tab; registered before PersistentPlayerHost so its own collapse-on-back still wins while the full player is open.
-                    androidx.activity.compose.BackHandler(
+                    BackHandler(
                         enabled = currentRoute == NavRoutes.Home.route || currentRoute == NavRoutes.Radio.route || currentRoute == NavRoutes.Playlists.route
                     ) {
                         (this@MainActivity).finish()
@@ -273,22 +286,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    /*private fun setupPermissions() {
-        // Use READ_MEDIA_AUDIO (Android 13+) for this project; the project's min sdk ensures availability.
-        val readPermission = Manifest.permission.READ_MEDIA_AUDIO
-
-        val permRead = ContextCompat.checkSelfPermission(this, readPermission)
-        val permNotify = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-
-        if (permRead != PackageManager.PERMISSION_GRANTED || permNotify != PackageManager.PERMISSION_GRANTED) {
-            Log.i("MainActivity", "Requesting required permissions")
-            makeRequest()
-        } else {
-            Log.i("MainActivity", "All required permissions already granted")
-        }
-    }*/
-
 
     private fun setupPermissions() {
         val required = mutableListOf<String>()
@@ -306,15 +303,6 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.i("MainActivity", "All required permissions already granted")
         }
-    }
-
-    private fun makeRequest() {
-        val perms = arrayOf(
-            Manifest.permission.READ_MEDIA_AUDIO,
-            Manifest.permission.POST_NOTIFICATIONS,
-            Manifest.permission.RECORD_AUDIO // include only if you use microphone/song recognition
-        )
-        ActivityCompat.requestPermissions(this, perms, REQUESTCODE)
     }
 
     override fun onPause() {
@@ -335,7 +323,7 @@ class MainActivity : ComponentActivity() {
         // If the activity is finishing (user closed the app), stop the playback service so audio stops.
         try {
             if (isFinishing) {
-                stopService(Intent(this, com.example.musicplayer.service.PlayerForegroundService::class.java))
+                stopService(Intent(this, PlayerForegroundService::class.java))
                 // Clear cache on app exit
                 ArtistUtil.clearCache()
                 Log.d("MainActivity", "onDestroy: Cache cleared on app exit")

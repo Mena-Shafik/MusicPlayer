@@ -1,49 +1,44 @@
 // kotlin
 package com.example.musicplayer.music
 
+import androidx.compose.material.rememberBottomSheetState
+import androidx.compose.material.rememberBottomSheetScaffoldState
+import com.example.musicplayer.preferences.PreferencesManager
+import com.example.musicplayer.util.LibraryPreloadCache
+import android.graphics.Bitmap
+import kotlin.math.sqrt
+import kotlin.math.abs
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.alpha
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.BottomSheetValue
 import androidx.compose.material.BottomSheetScaffold
 import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.SwipeableState
 import androidx.compose.material.rememberSwipeableState
 import androidx.compose.material.swipeable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.lerp as lerpRect
@@ -56,46 +51,34 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-// Slider replaced by custom InteractiveSeekBar
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material.Tab
-import androidx.compose.material.TabPosition
-import androidx.compose.material.TabRowDefaults
 import androidx.compose.runtime.*
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-// interaction imports no longer needed for Slider
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.foundation.MarqueeSpacing
 import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -105,35 +88,28 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.navigation.NavController
-import androidx.palette.graphics.Palette
 import com.example.musicplayer.model.Song
-import com.example.musicplayer.R
 import com.example.musicplayer.util.Util
 import com.example.musicplayer.service.PlayerStateManager
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material.Icon
-import androidx.compose.material.TabRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import com.example.musicplayer.ui.components.background.AuroraBackground
-import com.example.musicplayer.ui.components.common.LibraryViewTabs
 import com.example.musicplayer.ui.components.common.MusicControls
-import com.example.musicplayer.ui.components.player.AlbumImage
+import com.example.musicplayer.ui.components.player.AlbumArt
 import com.example.musicplayer.ui.components.player.InteractiveSeekBar
 import com.example.musicplayer.ui.components.player.SongsSheetContent
-import com.example.musicplayer.ui.components.song.SongCardRow
+import com.example.musicplayer.ui.components.song.MiniPlayerArtInset
+import com.example.musicplayer.ui.components.song.MiniPlayerArtSize
 import com.example.musicplayer.ui.components.playlist.AddToPlaylistDialog
 
 
@@ -142,13 +118,14 @@ import com.example.musicplayer.ui.components.playlist.AddToPlaylistDialog
 // The Up Next/Lyrics/Related sheet's three resting stops (see MusicPlayerChrome); not private since previewInitialDetent exposes this type across a public function signature.
 enum class SheetDetent { Collapsed, Half, Full }
 
-// Same easing family as PersistentPlayerHost's DockTween/DockEasing (kept identical for motion consistency), but 420ms rather than the outer dock's 900ms since this is a shorter, single-screen transition per the Aura 2.0 design spec.
 private val SheetEasing = CubicBezierEasing(0.22f, 0.9f, 0.24f, 1f)
 private val SheetTween = tween<Float>(durationMillis = 420, easing = SheetEasing)
 
 private val SHEET_COLLAPSED_HEIGHT = 87.dp
+// The title/artist block's original fixed height; whatever it no longer uses goes below the controls instead.
+private val TITLE_BLOCK_HEIGHT = 130.dp
 private val SHEET_HALF_HEIGHT = 332.dp
-// Design's own 612dp is sized for its 780dp mockup canvas; scaled up so the sheet reaches close to the mini-row on taller real devices instead of leaving a dead gap, and bumped further after the top bar stopped reserving space at Full (mini-row sits ~80dp higher now).
+// Fallback only, before the content area is measured; the real Full height is derived from the mini-row's position.
 private val SHEET_FULL_HEIGHT = 750.dp
 
 // Half/full-detent geometry for the shared album art (see MusicPlayerChrome's sheetProgress doc); the collapsed rect is measured at runtime instead since it must match the collapsed content column's own 340dp placeholder.
@@ -157,29 +134,30 @@ private val FULL_ART_SIZE = 58.dp
 private val FULL_ART_CORNER_RADIUS = 8.dp
 private val COLLAPSED_ART_CORNER_RADIUS = 14.dp
 
-// The full-player "chrome" -- everything about Now Playing except the album art/title/artist/play-pause, which PersistentPlayerHost renders as shared elements morphing between this and the mini bar, so this composable leaves an invisible same-size placeholder for the art (onArtBoundsChanged) purely for layout/measurement; previously a NavHost destination reached via navigate()/popBackStack(), it's now mounted permanently by the host, so it no longer takes a songId/song list/NavController -- the active queue comes from viewModel/PlayerStateManager the same way SongsSheetContent always has.
+// The full Now Playing screen, mounted by PersistentPlayerHost only while expanded; the mini bar is a separate component (MiniPlayer).
 @SuppressLint("ContextCastToActivity")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun MusicPlayerChrome(
     backgroundColor: Color,
-    currentAlbumBitmap: android.graphics.Bitmap?,
+    currentAlbumBitmap: Bitmap?,
     onCollapse: () -> Unit,
-    onArtBoundsChanged: (LayoutCoordinates) -> Unit,
     // Drag-down-to-collapse on the top bar, mirroring the mini bar's own drag-up-to-expand in PersistentPlayerHost (which owns dockProgress); delta is raw pointer movement in px (positive = finger moved down).
     onCollapseDragDelta: (Float) -> Unit = {},
-    onCollapseDragEnd: () -> Unit = {},
-    // The sheet's own live collapsed(0)->expanded(1) drag progress, reported up so the host can fade the shared album art in step with it since the art is drawn by the host and doesn't automatically pick up this screen's own underlayAlpha fade.
-    onSheetOpenFractionChanged: (Float) -> Unit = {},
+    onCollapseDragEnd: (velocity: Float) -> Unit = {},
+    // Loaded once by the host and shared with the mini bar, so opening the player never reloads or crossfades it.
+    artBitmap: ImageBitmap? = null,
     // Bumped by PersistentPlayerHost on every collapse-to-mini -- snaps the inner sheet back to peek immediately instead of co-fading fully expanded as dockProgress falls, which otherwise reads as "the sheet didn't close".
     collapseSignal: Int = 0,
+    // PersistentPlayerHost's 0 (docked) -> 1 (full) progress; morphs the art from the mini bar thumbnail and fades everything else in.
+    dockProgress: Float = 1f,
     viewModel: MusicPlayerViewModel = viewModel(),
     // @Preview-only: real callers always start at Collapsed and reach Half/Full via the grab handle; lets previews show each detent directly.
     previewInitialDetent: SheetDetent = SheetDetent.Collapsed
 ) {
     val ctx = LocalContext.current
     // Reads MainActivity's startup preload (LibraryPreloadCache) rather than an independent MediaStore re-scan, which used to block during this composable's first-expand mount and make the mini bar appear to hang; used only as the Related tab's candidate pool -- the actual queue is viewModel.playlist/PlayerStateManager.
-    val songs: List<Song> by com.example.musicplayer.util.LibraryPreloadCache.songs.collectAsState()
+    val songs: List<Song> by LibraryPreloadCache.songs.collectAsState()
 
     val currentIndex by viewModel.currentIndex.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
@@ -189,7 +167,7 @@ fun MusicPlayerChrome(
     val durationMs by viewModel.durationMs.collectAsState()
 
     // collect preference early so we can make Scaffold and system bars transparent when Aurora is enabled
-    val useAuroraBackground by com.example.musicplayer.preferences.PreferencesManager.getUseAuroraBackgroundFlow(ctx).collectAsState(initial = false)
+    val useAuroraBackground by PreferencesManager.getUseAuroraBackgroundFlow(ctx).collectAsState(initial = false)
 
     val backgroundBrush = remember(backgroundColor) {
         Brush.verticalGradient(listOf(backgroundColor, Util.darkerColor(backgroundColor, 0.25f)))
@@ -236,7 +214,21 @@ fun MusicPlayerChrome(
     )
     val collapsedAnchorPx = with(density) { SHEET_COLLAPSED_HEIGHT.toPx() }
     val halfAnchorPx = with(density) { SHEET_HALF_HEIGHT.toPx() }
-    val fullAnchorPx = with(density) { SHEET_FULL_HEIGHT.toPx() }
+    // Root-window bounds of this composable's outermost Box; the album art is positioned in this same coordinate space.
+    var screenBoundsRoot by remember { mutableStateOf<Rect?>(null) }
+    // Measured root-relative bounds of the collapsed content column's 340dp art slot and the mini-row's 58dp slot.
+    var collapsedArtRect by remember { mutableStateOf<Rect?>(null) }
+    var fullArtRect by remember { mutableStateOf<Rect?>(null) }
+    // Height of the content area below the top bar (root px), so the title/seek/transport block can be bottom-pinned to the space left above the sheet instead of sitting in fixed flow where the sheet would grow into it.
+    var contentBoundsRoot by remember { mutableStateOf<Rect?>(null) }
+    // At Full the top bar collapses to just the status bar, so the mini-row sits at statusBar + 6dp; the sheet stops a small gap below it on any screen height.
+    val statusBarTopPx = WindowInsets.statusBars.getTop(density)
+    val fullAnchorPx = contentBoundsRoot?.let { content ->
+        with(density) {
+            val miniRowBottom = (screenBoundsRoot?.top ?: 0f) + statusBarTopPx + 6.dp.toPx() + FULL_ART_SIZE.toPx()
+            content.bottom - miniRowBottom - 8.dp.toPx()
+        }
+    } ?: with(density) { SHEET_FULL_HEIGHT.toPx() }
     val sheetAnchors = mapOf(
         collapsedAnchorPx to SheetDetent.Collapsed,
         halfAnchorPx to SheetDetent.Half,
@@ -250,9 +242,8 @@ fun MusicPlayerChrome(
         0.5f + 0.5f * ((sheetOffsetPx - halfAnchorPx) / (fullAnchorPx - halfAnchorPx)).coerceIn(0f, 1f)
     }
 
-    // The outer host's shared art is fixed at the collapsed rect (only this composable's inner art moves), so a linear crossfade across the whole sheetProgress range would show both at once as a ghosted double image; saturate the handoff over a short initial window instead so the outer art is fully faded before the inner one moves noticeably.
+    // Top-edge dissolve ramps in over a short initial window so it's already on once the art starts growing.
     val artHandoffT = (sheetProgress / 0.08f).coerceIn(0f, 1f)
-    LaunchedEffect(artHandoffT) { onSheetOpenFractionChanged(artHandoffT) }
 
     // True as soon as a transition toward Half/Full is underway (keyed off the swipe's target, not sheetProgress) so the window's edge-to-edge property change gets a head start against the 420ms sheet animation instead of lagging visibly behind it.
     val edgeToEdgeForArt = swipeableState.targetValue != SheetDetent.Collapsed
@@ -287,33 +278,82 @@ fun MusicPlayerChrome(
         }
     }
 
-    // Tapping the grab handle steps Collapsed -> Half -> Full -> Collapsed; dragging settles to the nearest anchor on release (Modifier.swipeable below), with tap layered on top the same way PersistentPlayerHost's mini bar disambiguates tap-vs-drag.
+    // Tap only ever toggles Collapsed <-> Half; Half is never a drag target.
     fun stepSheetDetent() {
         val next = when (swipeableState.currentValue) {
             SheetDetent.Collapsed -> SheetDetent.Half
-            SheetDetent.Half -> SheetDetent.Full
-            SheetDetent.Full -> SheetDetent.Collapsed
+            SheetDetent.Half -> SheetDetent.Collapsed
+            SheetDetent.Full -> SheetDetent.Half
         }
         scope.launch { try { swipeableState.animateTo(next) } catch (_: Throwable) {} }
     }
+    // Drag settles to the nearest detent (Half included); a fast flick moves to the next detent in its direction.
+    val sheetFlingThresholdPx = with(density) { 400.dp.toPx() }
+    val sheetDragState = rememberDraggableState { delta -> swipeableState.performDrag(-delta) }
+    // Velocity is px/s, positive = finger moving down.
+    suspend fun settleSheet(velocity: Float) {
+        val offset = swipeableState.offset.value
+        val ordered = listOf(
+            collapsedAnchorPx to SheetDetent.Collapsed,
+            halfAnchorPx to SheetDetent.Half,
+            fullAnchorPx to SheetDetent.Full
+        )
+        val target = when {
+            velocity < -sheetFlingThresholdPx -> ordered.firstOrNull { it.first > offset + 1f }?.second ?: SheetDetent.Full
+            velocity > sheetFlingThresholdPx -> ordered.lastOrNull { it.first < offset - 1f }?.second ?: SheetDetent.Collapsed
+            else -> ordered.minByOrNull { abs(it.first - offset) }!!.second
+        }
+        try { swipeableState.animateTo(target) } catch (_: Throwable) {}
+    }
+    // Lets a list scrolled to its top keep dragging the sheet closed, instead of the drag dying at the list's edge.
+    val sheetNestedScroll = remember(swipeableState, collapsedAnchorPx, halfAnchorPx, fullAnchorPx) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput || available.y <= 0f) return Offset.Zero
+                return Offset(0f, -swipeableState.performDrag(-available.y))
+            }
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // Once the sheet is mid-close, an upward drag re-opens it before the list starts scrolling again.
+                if (source != NestedScrollSource.UserInput || available.y >= 0f) return Offset.Zero
+                if (swipeableState.offset.value >= swipeableState.targetValue.let { sheetAnchors.entries.first { e -> e.value == it }.key } - 1f) return Offset.Zero
+                return Offset(0f, -swipeableState.performDrag(-available.y))
+            }
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                val offset = swipeableState.offset.value
+                val atAnchor = sheetAnchors.keys.any { abs(it - offset) < 1f }
+                if (atAnchor) return Velocity.Zero
+                settleSheet(available.y)
+                return available
+            }
+        }
+    }
+    // Whole-sheet drag (handle, tabs, non-scrolling tab content); scrolling lists hand off through sheetNestedScroll instead.
+    val sheetDragModifier = Modifier
+        .nestedScroll(sheetNestedScroll)
+        .draggable(
+            state = sheetDragState,
+            orientation = Orientation.Vertical,
+            onDragStopped = { velocity -> settleSheet(velocity) }
+        )
     val grabHandleModifier = Modifier
+        // enabled = false: swipeable only supplies anchors/offset here, sheetDragModifier owns the gesture.
         .swipeable(
             state = swipeableState,
             anchors = sheetAnchors,
             orientation = Orientation.Vertical,
+            enabled = false,
             reverseDirection = true
         )
-        .pointerInput(Unit) {
-            detectTapGestures(onTap = { stepSheetDetent() })
-        }
+        .clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null
+        ) { stepSheetDetent() }
 
-    // Root-window bounds of this composable's outermost Box; the shared album art is positioned in this same coordinate space, matching PersistentPlayerHost's mini<->full art, so the two hand off seamlessly.
-    var screenBoundsRoot by remember { mutableStateOf<Rect?>(null) }
-    // Measured bounds of the collapsed content column's 340dp art placeholder and the mini-row's 58dp placeholder, both root-relative, captured the same way PersistentPlayerHost captures its own.
-    var collapsedArtRect by remember { mutableStateOf<Rect?>(null) }
-    var fullArtRect by remember { mutableStateOf<Rect?>(null) }
-    // Height of the content area below the top bar (root px), so the title/seek/transport block can be bottom-pinned to the space left above the sheet instead of sitting in fixed flow where the sheet would grow into it.
-    var contentBoundsRoot by remember { mutableStateOf<Rect?>(null) }
+    // One shared drag state for every drag-to-minimize surface (top bar, collapsed art area).
+    val currentOnCollapseDragDelta by rememberUpdatedState(onCollapseDragDelta)
+    val currentOnCollapseDragEnd by rememberUpdatedState(onCollapseDragEnd)
+    val collapseDragState = rememberDraggableState { currentOnCollapseDragDelta(it) }
+
 
     // Bottom edge pinned to exactly where the sheet's top edge sits at Half (not the design's literal 448dp, sized for its own 780dp mockup) so they line up on taller real devices and the art's dissolve-to-background fade is visible right at the seam instead of hidden behind the sheet; falls back to 448dp only before contentBoundsRoot is measured.
     val halfArtRect = screenBoundsRoot?.let { screen ->
@@ -326,7 +366,7 @@ fun MusicPlayerChrome(
         Rect(screen.left, screen.top, screen.right, bottom)
     }
 
-    // Piecewise lerp across the two sub-ranges, like PersistentPlayerHost's own dockProgress-driven art rect but with three keyframes; fullArtRect isn't measured until the mini-row has mounted once, which shouldn't block the [0, 0.5] sub-range.
+    // Piecewise lerp across three keyframes; fullArtRect isn't measured until the mini-row has mounted once, which shouldn't block the [0, 0.5] sub-range.
     val innerArtRect = if (sheetProgress <= 0.5f) {
         val c = collapsedArtRect
         val h = halfArtRect
@@ -342,8 +382,26 @@ fun MusicPlayerChrome(
         lerpUnit(0.dp, FULL_ART_CORNER_RADIUS, (sheetProgress - 0.5f) / 0.5f)
     }
 
-    // Fades in over the same short window as the outer host's art fades out (artHandoffT) so exactly one of the two shared-art copies is visible at any point.
-    val innerArtAlpha = artHandoffT
+    // Docked endpoint is the mini bar's thumbnail, which rides the top edge of the sliding panel.
+    val dockedArtRect = with(density) {
+        val origin = screenBoundsRoot?.topLeft ?: Offset.Zero
+        val left = origin.x + MiniPlayerArtInset.x.toPx()
+        val top = origin.y + MiniPlayerArtInset.y.toPx()
+        Rect(left, top, left + MiniPlayerArtSize.toPx(), top + MiniPlayerArtSize.toPx())
+    }
+    // Before the detent rects are measured (first frame after mounting), hold the art on the thumbnail rather than dropping it.
+    val artRect = when {
+        // Eased (p^1.5) so the art is already on the thumbnail spot by the time the mini bar row fades back in.
+        dockProgress < 1f && innerArtRect != null -> lerpRect(dockedArtRect, innerArtRect, dockProgress * sqrt(dockProgress))
+        innerArtRect != null -> innerArtRect
+        else -> dockedArtRect
+    }
+    val artCornerRadius = lerpUnit(8.dp, innerArtCornerRadius, dockProgress)
+    // Starts late so the top bar and text never fade in over the still-small art.
+    val dockContentAlpha = ((dockProgress - 0.35f) / 0.5f).coerceIn(0f, 1f)
+    // Top bar waits until the art has mostly cleared it; the seek bar is the very last thing to appear.
+    val dockTopBarAlpha = ((dockProgress - 0.6f) / 0.4f).coerceIn(0f, 1f)
+    val dockSeekAlpha = ((dockProgress - 0.85f) / 0.15f).coerceIn(0f, 1f)
 
     // Collapsed content stays fully visible across [0, 0.5] (half doesn't drop it, matching the design) and only fades (no resizing) across [0.5, 1]; doesn't collide with the sheet since it's bottom-pinned within the shrinking space above it (availableAboveSheetPx) rather than fixed flow.
     val collapsedChromeAlpha = 1f - ((sheetProgress - 0.5f) / 0.5f).coerceIn(0f, 1f)
@@ -362,16 +420,16 @@ fun MusicPlayerChrome(
             .onGloballyPositioned { screenBoundsRoot = it.boundsInRoot() }
     ) {
         if (useAuroraBackground) {
-            AuroraBackground(modifier = Modifier.fillMaxSize(), albumCoverBitmap = currentAlbumBitmap)
+            AuroraBackground(modifier = Modifier.fillMaxSize().alpha(dockContentAlpha), albumCoverBitmap = currentAlbumBitmap)
         } else {
             // Sampled-color backdrop moved here (behind the art) rather than on the Scaffold's content Box, which sits in front of the art and would otherwise paint over it.
-            Box(modifier = Modifier.fillMaxSize().background(backgroundBrush))
+            Box(modifier = Modifier.fillMaxSize().alpha(dockContentAlpha).background(backgroundBrush))
         }
 
         // Chrome's own shared/morphing album art -- the one element that moves/resizes across detents (everything else only fades) -- drawn behind the Scaffold so its content renders on top, reaching up through the header since topBar has a transparent container color.
-        if (song != null && innerArtRect != null) {
+        if (song != null) {
             // Real alpha fade (BlendMode.DstIn against a gradient, not a painted-on overlay) so the art's edges genuinely reveal backgroundBrush behind them; off at Collapsed, top dissolves via artHandoffT and bottom via halfLerpT as the sheet opens, and fadePresence triangles back to 0 by Full so it doesn't stay applied on the tiny mini-row art -- fade is only visible around Half, matching the design.
-            val fadePresence = (1f - kotlin.math.abs(sheetProgress - 0.5f) * 2f).coerceIn(0f, 1f)
+            val fadePresence = (1f - abs(sheetProgress - 0.5f) * 2f).coerceIn(0f, 1f)
             val topFadeAlpha = 1f - artHandoffT * fadePresence
             val bottomFadeAlpha = 1f - halfLerpT * fadePresence
             // Peak opacity at 35%, fully transparent by 80% -- more gradual than the previous 30%/65% split, still resolving before the seek bar.
@@ -384,16 +442,15 @@ fun MusicPlayerChrome(
             )
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(innerArtRect.left.roundToInt(), innerArtRect.top.roundToInt()) }
+                    .offset { IntOffset(artRect.left.roundToInt(), artRect.top.roundToInt()) }
                     .size(
-                        with(density) { innerArtRect.width.toDp() },
-                        with(density) { innerArtRect.height.toDp() }
+                        with(density) { artRect.width.toDp() },
+                        with(density) { artRect.height.toDp() }
                     )
-                    .alpha(innerArtAlpha)
-                    .clip(RoundedCornerShape(innerArtCornerRadius))
+                    .clip(RoundedCornerShape(artCornerRadius))
             ) {
-                AlbumImage(
-                    song = song,
+                AlbumArt(
+                    bitmap = artBitmap,
                     // CompositingStrategy.Offscreen is required for BlendMode.DstIn to blend against just this image's pixels instead of the whole canvas behind it.
                     modifier = Modifier
                         .fillMaxSize()
@@ -407,7 +464,7 @@ fun MusicPlayerChrome(
         }
 
         Scaffold(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().alpha(dockContentAlpha),
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
@@ -431,22 +488,18 @@ fun MusicPlayerChrome(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                     modifier = Modifier
                         .statusBarsPadding()
-                        .alpha(topBarAlpha)
+                        .alpha(topBarAlpha * dockTopBarAlpha)
                         // Shrinks the *reported* layout height in lockstep with topBarAlpha (measured at normal size but reported as only that fraction tall) so Scaffold's innerPadding -- and the mini-row's position -- shrinks smoothly to 0 by Half instead of snapping in one frame.
                         .layout { measurable, constraints ->
                             val placeable = measurable.measure(constraints)
                             val height = (placeable.height * topBarAlpha).roundToInt()
                             layout(placeable.width, height) { placeable.placeRelative(0, 0) }
                         }
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures(
-                                onVerticalDrag = { change, amount ->
-                                    change.consume()
-                                    onCollapseDragDelta(amount)
-                                },
-                                onDragEnd = { onCollapseDragEnd() }
-                            )
-                        },
+                        .draggable(
+                            state = collapseDragState,
+                            orientation = Orientation.Vertical,
+                            onDragStopped = { velocity -> currentOnCollapseDragEnd(velocity) }
+                        ),
                     actions = {
                         IconButton(onClick = {
                             try {
@@ -478,15 +531,19 @@ fun MusicPlayerChrome(
                     .onGloballyPositioned { contentBoundsRoot = it.boundsInRoot() }
             ) {
                 if (song != null) {
-                    // Invisible, exact-size placeholder standing in for the album art -- both PersistentPlayerHost (mini<->full) and this composable's inner art measure their "collapsed" endpoint from this same element for a zero-seam handoff; kept in fixed-position flow (not the bottom-pinned block below) since it must stay put regardless of the sheet's height.
+                    // Invisible slot the album art measures its collapsed-detent rect from; fixed flow so it stays put regardless of the sheet's height.
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                         Spacer(
                             modifier = Modifier
                                 .size(340.dp)
-                                .onGloballyPositioned {
-                                    onArtBoundsChanged(it)
-                                    collapsedArtRect = it.boundsInRoot()
-                                }
+                                .onGloballyPositioned { collapsedArtRect = it.boundsInRoot() }
+                                // Big drag-to-minimize target; off once the sheet opens so it can't fight the sheet's own swipe.
+                                .draggable(
+                                    state = collapseDragState,
+                                    orientation = Orientation.Vertical,
+                                    enabled = swipeableState.currentValue == SheetDetent.Collapsed,
+                                    onDragStopped = { velocity -> currentOnCollapseDragEnd(velocity) }
+                                )
                         )
                     }
 
@@ -498,13 +555,18 @@ fun MusicPlayerChrome(
                         contentAlignment = Alignment.BottomCenter
                     ) {
                     // The art's own bottom-edge dissolve (drawWithContent + BlendMode.DstIn above) now provides the darkening this block used to paint separately, sitting directly behind and sharing the same bottom edge, so no separate scrim is needed here.
+                    var titleBlockHeightPx by remember { mutableIntStateOf(0) }
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        // Wraps its content so title/artist/seek/controls sit tight; the title keeps its old 18dp top inset and the saved height moves below the controls, so the art-to-title gap is unchanged.
                         Column(
                             modifier = Modifier
-                                .size(340.dp, 130.dp)
-                                .alpha(collapsedChromeAlpha)
-                                .padding(10.dp)
                                 .align(Alignment.CenterHorizontally)
+                                .width(340.dp)
+                                // Before the padding so the measured height includes it, matching how the old fixed 130dp block was sized.
+                                .onSizeChanged { titleBlockHeightPx = it.height }
+                                .alpha(collapsedChromeAlpha)
+                                .padding(horizontal = 10.dp)
+                                .padding(top = 18.dp, bottom = 10.dp)
                         ) {
                             Text(
                                 text = song.title,
@@ -516,7 +578,7 @@ fun MusicPlayerChrome(
                                 maxLines = 1,
                                 modifier = Modifier
                                     .width(340.dp)
-                                    .padding(8.dp)
+                                    .padding(horizontal = 8.dp)
                                     .basicMarquee(
                                         iterations = Int.MAX_VALUE,
                                         initialDelayMillis = 2000,
@@ -532,7 +594,8 @@ fun MusicPlayerChrome(
                                 fontWeight = FontWeight.Medium,
                                 maxLines = if (artistLineCount > 3) Int.MAX_VALUE else 3,
                                 modifier = Modifier
-                                    .padding(10.dp)
+                                    .padding(horizontal = 10.dp)
+                                    .padding(top = 2.dp)
                                     .width(340.dp)
                                     .then(
                                         if (artistLineCount > 3) {
@@ -551,7 +614,7 @@ fun MusicPlayerChrome(
                         val effectiveDuration = if (durationMs > 0L) durationMs.toFloat() else song.duration.toFloat()
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.alpha(collapsedChromeAlpha)
+                            modifier = Modifier.alpha(collapsedChromeAlpha * dockSeekAlpha)
                         ) {
                             InteractiveSeekBar(
                                 value = sliderPosition.coerceIn(0f, effectiveDuration),
@@ -596,6 +659,8 @@ fun MusicPlayerChrome(
                                 onShuffleToggle = { enabled -> viewModel.toggleShuffle(enabled) }
                             )
                         }
+                        // Collapses to nothing as the sheet opens, so at Half the controls sit right on the sheet.
+                        Spacer(Modifier.height((TITLE_BLOCK_HEIGHT - with(density) { titleBlockHeightPx.toDp() }).coerceAtLeast(0.dp) * (1f - halfLerpT)))
                     }
                     }
 
@@ -665,6 +730,7 @@ fun MusicPlayerChrome(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(with(density) { sheetOffsetPx.toDp() })
+                        .then(sheetDragModifier)
                 ) {
                     SongsSheetContent(
                         songs = activeSongs,
@@ -709,10 +775,10 @@ fun MusicPlayerChrome(
     }
 }
 
-// Sample playlist for the previews below -- static data, matching PersistentPlayerHost's own preview pattern.
+// Static sample playlist so the previews below render standalone.
 private val chromePreviewSongs = listOf(
-    com.example.musicplayer.model.Song(1, "Afterglow", "Nova Reyes", 238000.0, "", "Neon Parallels"),
-    com.example.musicplayer.model.Song(2, "Dust & Gold", "Marla Quinn", 195000.0, "", "Dust & Gold")
+    Song(1, "Afterglow", "Nova Reyes", 238000.0, "", "Neon Parallels"),
+    Song(2, "Dust & Gold", "Marla Quinn", 195000.0, "", "Dust & Gold")
 )
 
 @Composable
@@ -727,7 +793,6 @@ private fun MusicPlayerChromePreview(detent: SheetDetent) {
             backgroundColor = Color(0xFF8A6D1F),
             currentAlbumBitmap = null,
             onCollapse = {},
-            onArtBoundsChanged = {},
             previewInitialDetent = detent
         )
     }
@@ -763,15 +828,14 @@ fun SongsModalBottomSheet(
     peekHeight: Dp,
     initialSelectedTab: Int = 0 // allow preview to start with a specific tab
 ) {
-    val scaffoldState = androidx.compose.material.rememberBottomSheetScaffoldState(
-        bottomSheetState = androidx.compose.material.rememberBottomSheetState(
+    val scaffoldState = rememberBottomSheetScaffoldState(
+        bottomSheetState = rememberBottomSheetState(
             initialValue = if (visible) BottomSheetValue.Expanded else BottomSheetValue.Collapsed
         )
     )
 
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = currentIndex.coerceAtLeast(0))
     val scope = rememberCoroutineScope()
-    val selectionInProgress = remember { mutableStateOf(false) }
 
     LaunchedEffect(scaffoldState.bottomSheetState.currentValue) {
         if (scaffoldState.bottomSheetState.currentValue == BottomSheetValue.Collapsed && visible) onDismiss()
@@ -782,12 +846,8 @@ fun SongsModalBottomSheet(
     LaunchedEffect(visible) { if (visible) scaffoldState.bottomSheetState.expand() else scaffoldState.bottomSheetState.collapse() }
 
     val sheetBg = backgroundColor
-    val contentOnBg = if (sheetBg.luminance() > 0.5f) Color.Black else Color.White
-    val subtle = contentOnBg.copy(alpha = 0.06f)
-
     var selectedTab by remember { mutableStateOf(initialSelectedTab) }
     var related by remember { mutableStateOf<List<Pair<Int, Song>>>(emptyList()) }
-    val context = LocalContext.current
 
     LaunchedEffect(selectedTab, currentIndex, songs) {
         if (selectedTab == 2) {

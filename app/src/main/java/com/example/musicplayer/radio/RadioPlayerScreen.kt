@@ -1,11 +1,12 @@
 package com.example.musicplayer.radio
 
+import android.os.Build
+import androidx.compose.ui.unit.Dp
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -61,6 +62,8 @@ import com.example.musicplayer.model.RadioStation
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.musicplayer.ui.components.common.RadioControls
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @SuppressLint("ContextCastToActivity")
@@ -75,7 +78,6 @@ fun RadioPlayerScreen(
 
     // background brush
     var backgroundColor by remember { mutableStateOf(Color.Black) }
-    val backgroundBrush = remember(backgroundColor) { Brush.verticalGradient(listOf(backgroundColor, Util.darkerColor(backgroundColor, 0.25f))) }
 
     val activity = LocalContext.current as? Activity
     LaunchedEffect(backgroundColor) {
@@ -85,8 +87,6 @@ fun RadioPlayerScreen(
             controller.isAppearanceLightStatusBars = backgroundColor.luminance() > 0.5f
         }
     }
-
-    BackHandler { navController.popBackStack() }
 
     DisposableEffect(Unit) { onDispose { } }
 
@@ -137,7 +137,7 @@ fun RadioPlayerScreen(
                 currentStationFavicon = RadioPlayerService.lastStationFavicon ?: currentStationFavicon
                 currentStationTags = RadioPlayerService.lastStationTags ?: currentStationTags
             } catch (_: Throwable) {}
-            kotlinx.coroutines.delay(300L)
+            delay(300L.milliseconds)
         }
     }
 
@@ -160,7 +160,7 @@ fun RadioPlayerScreen(
                     putExtra(RadioPlayerService.EXTRA_STATION_TAGS, radioStation.tags)
                     setClassName(ctx.packageName, "com.example.musicplayer.radio.RadioPlayerService")
                 }
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     ContextCompat.startForegroundService(ctx, intent)
                 } else {
                     ctx.startService(intent)
@@ -184,7 +184,7 @@ fun RadioPlayerScreen(
                                 return@launch
                             }
                         }
-                        kotlinx.coroutines.delay(500)
+                        delay(500)
                     }
                     if (!seen) Toast.makeText(context, "Radio service started, check logs if no audio", Toast.LENGTH_SHORT).show()
                 }
@@ -443,7 +443,7 @@ fun RadioNowPlayingInfo(title: String?, artist: String?, modifier: Modifier = Mo
 
 @Suppress("unused")
 @Composable
-fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+fun SmallAlbumImage(path: String?, size: Dp, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val imageBitmap = try {
         Util.getAlbumArt(context, path)
@@ -474,7 +474,7 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
 fun RadioScreenPreview() {
     MaterialTheme {
         val context = LocalContext.current
-        val navController = remember { androidx.navigation.NavController(context) }
+        val navController = remember { NavController(context) }
         // single valid sample RadioStation (matches model.RadioStation constructor)
         val sampleStation = RadioStation(
             stationuuid = "custom-virgin-999",

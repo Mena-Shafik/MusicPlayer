@@ -16,16 +16,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.musicplayer.R
+import com.example.musicplayer.service.PlayerDockController
 
 private data class NavTab(val selectedIcon: Int, val unselectedIcon: Int, val label: String)
 
@@ -44,7 +48,19 @@ fun BottomNav(
     contentColor: Color = Color.White.copy(alpha = 0.7f),
     selectedColor: Color = Color(0xFFFFA500)
 ) {
-    Column(modifier = Modifier.fillMaxWidth().background(containerColor)) {
+    val dockProgress by PlayerDockController.dockProgress.collectAsState()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            // Slides fully off-screen by the time the player is half expanded, like YouTube Music; read in the layer lambda so only drawing updates per frame.
+            .graphicsLayer {
+                val out = (dockProgress * 2f).coerceIn(0f, 1f)
+                translationY = size.height * out
+                // Fades as it slides so its icons never visibly cross the system navigation buttons.
+                alpha = 1f - out
+            }
+            .background(containerColor)
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()

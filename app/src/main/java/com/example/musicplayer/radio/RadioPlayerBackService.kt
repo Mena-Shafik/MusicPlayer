@@ -1,5 +1,7 @@
 package com.example.musicplayer.radio
 
+import com.example.musicplayer.R
+import android.os.Looper
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
@@ -7,6 +9,11 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -53,10 +60,17 @@ class RadioPlayerService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var metadataPollingJob: Job? = null
 
+    // Lets the system show this as a media player (lock screen, quick settings) and routes its buttons back here.
+    private lateinit var mediaSession: MediaSessionCompat
+    private var notificationArtUrl: String? = null
+    private var notificationArt: Bitmap? = null
+    private var lastNotifiedPlaying = false
+
     // New: latest parsed metadata (artist - title or raw stream title)
     companion object {
         private const val CHANNEL_ID = "radio_playback_channel"
-        private const val NOTIFICATION_ID = 1001
+        // Must differ from PlayerNotificationManager.NOTIFICATION_ID (1001), or the two players' notifications replace each other.
+        private const val NOTIFICATION_ID = 2001
 
         const val ACTION_PLAY = "com.example.musicplayer.action.PLAY"
         const val ACTION_PAUSE = "com.example.musicplayer.action.PAUSE"
@@ -173,10 +187,21 @@ class RadioPlayerService : Service() {
             }
         })
 
+        mediaSession = MediaSessionCompat(this, "RadioPlayerService").apply {
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() = sendSelf(ACTION_PLAY)
+                override fun onPause() = sendSelf(ACTION_PAUSE)
+                override fun onStop() = sendSelf(ACTION_STOP)
+                override fun onSkipToNext() = sendSelf(ACTION_NEXT_STATION)
+                override fun onSkipToPrevious() = sendSelf(ACTION_PREV_STATION)
+            })
+            isActive = true
+        }
+
         createNotificationChannel()
 
         // Start with a foreground notification so the service isn't killed immediately
-        val initial = buildNotification(currentTitle ?: getString(com.example.musicplayer.R.string.app_name), false)
+        val initial = buildNotification(currentTitle ?: getString(R.string.app_name), false)
         startForeground(NOTIFICATION_ID, initial)
     }
 
@@ -306,7 +331,7 @@ class RadioPlayerService : Service() {
 
     private fun playUrl(url: String) {
         // ExoPlayer must be accessed on the main thread; forward to it if called from a background dispatcher.
-        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
             serviceScope.launch(Dispatchers.Main) {
                 playUrlInternal(url)
             }
@@ -325,7 +350,7 @@ class RadioPlayerService : Service() {
             Log.d("RadioPlayerService", "URL: $url")
             Log.d("RadioPlayerService", "URL Length: ${url.length}")
             Log.d("RadioPlayerService", "URL Protocol: ${url.substringBefore("://")}")
-            Log.d("RadioPlayerService", "URL Host: ${try { java.net.URL(url).host } catch (e: Exception) { "INVALID_URL: ${e.message}" }}")
+            Log.d("RadioPlayerService", "URL Host: ${try { URL(url).host } catch (e: Exception) { "INVALID_URL: ${e.message}" }}")
             Log.d("RadioPlayerService", "════════════════════════════════════════")
 
             currentUrl = url
@@ -340,7 +365,7 @@ class RadioPlayerService : Service() {
             // Check if URL is reachable (optional HEAD request)
             serviceScope.launch(Dispatchers.IO) {
                 try {
-                    val testUrl = java.net.URL(url)
+                    val testUrl = URL(url)
                     val conn = testUrl.openConnection() as? HttpURLConnection
                     conn?.apply {
                         requestMethod = "HEAD"
@@ -524,7 +549,7 @@ class RadioPlayerService : Service() {
     // Start android.media.MediaPlayer as a fallback for streams ExoPlayer can't handle
     private fun startAndroidMediaPlayer(url: String) {
         // Ensure ExoPlayer is stopped on the main thread before starting the Android fallback
-        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
             serviceScope.launch(Dispatchers.Main) { startAndroidMediaPlayer(url) }
             return
         }
@@ -635,11 +660,67 @@ class RadioPlayerService : Service() {
         androidPlayer = null
     }
 
+    private fun sendSelf(action: String) {
+        try { startService(Intent(this, RadioPlayerService::class.java).setAction(action)) } catch (_: Throwable) {}
+    }
+
     private fun updateNotification(isPlaying: Boolean) {
-        val title = currentTitle ?: getString(com.example.musicplayer.R.string.app_name)
+        lastNotifiedPlaying = isPlaying
+        val title = currentTitle ?: getString(R.string.app_name)
+        loadNotificationArtIfNeeded()
         val notif = buildNotification(title, isPlaying)
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFICATION_ID, notif)
+    }
+
+    // Station logo for the notification/session artwork; fetched once per favicon URL, then the notification is re-posted with it.
+    private fun loadNotificationArtIfNeeded() {
+        val raw = lastStationFavicon
+        if (raw == notificationArtUrl) return
+        notificationArtUrl = raw
+        notificationArt = null
+        if (raw.isNullOrBlank()) return
+        val url = if (raw.startsWith("//")) "https:$raw" else raw
+        serviceScope.launch {
+            val bitmap = try {
+                (URL(url).openConnection() as HttpURLConnection).run {
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                    instanceFollowRedirects = true
+                    inputStream.use { BitmapFactory.decodeStream(it) }
+                }
+            } catch (_: Throwable) { null }
+            if (bitmap != null && notificationArtUrl == raw) {
+                notificationArt = bitmap
+                runOnMain { updateNotification(lastNotifiedPlaying) }
+            }
+        }
+    }
+
+    private fun updateMediaSession(stationName: String, subtitle: String, isPlaying: Boolean, canSkip: Boolean) {
+        if (!::mediaSession.isInitialized) return
+        var actions = PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or
+            PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_STOP
+        if (canSkip) actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_NEXT or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+        try {
+            mediaSession.setPlaybackState(
+                PlaybackStateCompat.Builder()
+                    .setActions(actions)
+                    .setState(
+                        if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
+                        PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
+                        1f
+                    )
+                    .build()
+            )
+            mediaSession.setMetadata(
+                MediaMetadataCompat.Builder()
+                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, stationName)
+                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, subtitle)
+                    .apply { notificationArt?.let { putBitmap(MediaMetadataCompat.METADATA_KEY_ART, it) } }
+                    .build()
+            )
+        } catch (_: Throwable) {}
     }
 
     private fun buildNotification(title: String, isPlaying: Boolean): Notification {
@@ -663,24 +744,37 @@ class RadioPlayerService : Service() {
         val nextIntent = Intent(this, RadioPlayerService::class.java).apply { action = ACTION_NEXT_STATION }
         val nextPi = PendingIntent.getService(this, 5, nextIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
+        // Station name as the title; the live stream's now-playing text (when known) as the subtitle.
+        val stationName = lastStationName?.takeIf { it.isNotBlank() } ?: title
+        val subtitle = lastMetadata?.takeIf { it.isNotBlank() && it != stationName } ?: "Live radio"
+        val canSkip = (stationList?.size ?: 0) > 1
+        updateMediaSession(stationName, subtitle, isPlaying, canSkip)
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(com.example.musicplayer.R.drawable.ic_music_note)
-            .setContentTitle(title)
-            .setContentText(if (isPlaying) "Playing" else "Paused")
+            .setSmallIcon(R.drawable.ic_music_note)
+            .setContentTitle(stationName)
+            .setContentText(subtitle)
             .setContentIntent(contentIntent)
+            .setDeleteIntent(stopPi)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(if (isPlaying) NotificationCompat.Action(0, "Pause", pausePi) else NotificationCompat.Action(0, "Play", playPi))
-            .addAction(NotificationCompat.Action(0, "Stop", stopPi))
-        if ((stationList?.size ?: 0) > 1) {
-            builder.addAction(NotificationCompat.Action(0, "Prev", prevPi))
-            builder.addAction(NotificationCompat.Action(0, "Next", nextPi))
-        }
+        notificationArt?.let { builder.setLargeIcon(it) }
 
+        // Order: prev, play/pause, next, stop; the compact view shows the first three (or just play/pause without a station list).
+        if (canSkip) builder.addAction(NotificationCompat.Action(android.R.drawable.ic_media_previous, "Previous station", prevPi))
+        builder.addAction(
+            if (isPlaying) NotificationCompat.Action(android.R.drawable.ic_media_pause, "Pause", pausePi)
+            else NotificationCompat.Action(android.R.drawable.ic_media_play, "Play", playPi)
+        )
+        if (canSkip) builder.addAction(NotificationCompat.Action(android.R.drawable.ic_media_next, "Next station", nextPi))
+        builder.addAction(NotificationCompat.Action(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPi))
+
+        val compact = if (canSkip) intArrayOf(0, 1, 2) else intArrayOf(0)
         val style = MediaAppNotificationCompat.MediaStyle()
-            .setShowActionsInCompactView(0)
+            .setMediaSession(mediaSession.sessionToken)
+            .setShowActionsInCompactView(*compact)
 
         builder.setStyle(style)
 
@@ -688,6 +782,7 @@ class RadioPlayerService : Service() {
     }
 
     override fun onDestroy() {
+        try { mediaSession.isActive = false; mediaSession.release() } catch (_: Throwable) {}
         try { player.release() } catch (_: Throwable) {}
         try { stopAndroidMediaPlayer() } catch (_: Throwable) {}
         try { stopMetadataPolling() } catch (_: Throwable) {}
@@ -706,7 +801,7 @@ class RadioPlayerService : Service() {
 
     // Helper function to ensure code runs on the main thread
     private fun runOnMain(block: () -> Unit) {
-        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
             serviceScope.launch(Dispatchers.Main) {
                 block()
             }

@@ -3,15 +3,15 @@ package com.example.musicplayer.ui.components.player
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,7 +35,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.ui.components.common.LibraryViewTabs
@@ -75,7 +74,6 @@ fun SongsSheetContent(
         label = "sheetContentOnBg"
     )
     val subtle = contentOnBg.copy(alpha = 0.06f)
-    val handleColor = contentOnBg.copy(alpha = 0.12f)
 
     val startIndex = currentIndex.coerceAtLeast(0)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
@@ -88,7 +86,6 @@ fun SongsSheetContent(
     // shared tab data/state (must be declared before we reference it in modifiers)
     val tabs = listOf("Up Next", "Lyrics", "Related")
     var selectedTab by remember { mutableStateOf(initialSelectedTab) }
-    val context = LocalContext.current
     var relatedSongs by remember { mutableStateOf<List<Pair<Int, Song>>>(emptyList()) }
 
     // Populate relatedSongs whenever the Related tab is selected or when the current index/songs change.
@@ -110,12 +107,12 @@ fun SongsSheetContent(
     // threshold in pixels to be considered a swipe
     val swipeThreshold = 100f
 
-    // swipe modifier: uses detectDragGestures (dragAmount is an Offset) and will switch tabs when threshold exceeded
+    // Horizontal-only so vertical drags reach the sheet/list instead of being swallowed as a tab swipe.
     val swipeModifier = Modifier.pointerInput(selectedTab) {
-        detectDragGestures(
+        detectHorizontalDragGestures(
             onDragStart = { dragAccum = 0f },
-            onDrag = { change, dragAmount ->
-                dragAccum += dragAmount.x
+            onHorizontalDrag = { change, dragAmount ->
+                dragAccum += dragAmount
                 change.consume()
             },
             onDragEnd = {
@@ -175,10 +172,11 @@ fun SongsSheetContent(
         Spacer(modifier = Modifier.height(10.dp))
 
         // Content area: capture horizontal swipes to switch tabs and show tab content.
-        Column(modifier = swipeModifier.fillMaxWidth()) {
+        // Takes all remaining sheet height so lists run to the sheet's bottom instead of stopping at a fixed cap.
+        Column(modifier = swipeModifier.fillMaxWidth().weight(1f)) {
             if (selectedTab == 0) {
                 HorizontalDivider(color = subtle)
-                LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).heightIn(max = 520.dp)) {
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(vertical = 4.dp)) {
                     itemsIndexed(songs) { idx, s ->
                         val isCurrent = idx == currentIndex
                         // Reuses the app's standard song row instead of a bespoke one; trailingIcon is the design's drag_handle glyph, non-interactive (visual affordance only, no functional reordering).
@@ -206,7 +204,7 @@ fun SongsSheetContent(
                     }
                 } else {
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).heightIn(max = 520.dp),
+                        modifier = Modifier.fillMaxSize().padding(vertical = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         items(items = relatedSongs) { pair ->
