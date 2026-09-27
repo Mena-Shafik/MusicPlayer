@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.WindowCompat
+import com.example.musicplayer.ui.theme.restoreDefaultSystemBars
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -248,10 +249,16 @@ fun MusicPlayerChrome(
     // True as soon as a transition toward Half/Full is underway (keyed off the swipe's target, not sheetProgress) so the window's edge-to-edge property change gets a head start against the 420ms sheet animation instead of lagging visibly behind it.
     val edgeToEdgeForArt = swipeableState.targetValue != SheetDetent.Collapsed
 
-    LaunchedEffect(backgroundColor, useAuroraBackground, edgeToEdgeForArt) {
+    // This stays composed while docked as the mini bar, so it only tints the status bar while the full player is actually open.
+    val playerOpen = dockProgress > 0.5f
+    LaunchedEffect(backgroundColor, useAuroraBackground, edgeToEdgeForArt, playerOpen) {
         // Edge-to-edge whenever Aurora is enabled, or whenever this sheet's shared art has gone full-bleed and needs to extend under the status bar too.
         try {
             activity?.window?.let { win ->
+                if (!playerOpen) {
+                    restoreDefaultSystemBars(win)
+                    return@let
+                }
                 if (useAuroraBackground || edgeToEdgeForArt) {
                     try { WindowCompat.setDecorFitsSystemWindows(win, false) } catch (_: Throwable) {}
                     try { win.statusBarColor = android.graphics.Color.TRANSPARENT } catch (_: Throwable) {}
@@ -269,6 +276,10 @@ fun MusicPlayerChrome(
                 // Do not modify navigation bar icon appearance here to avoid changing system nav bar visuals
             }
         } catch (_: Throwable) {}
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { activity?.window?.let { restoreDefaultSystemBars(it) } }
     }
 
     // Snap the sheet closed the instant the host starts collapsing, instead of letting it co-fade at full size.

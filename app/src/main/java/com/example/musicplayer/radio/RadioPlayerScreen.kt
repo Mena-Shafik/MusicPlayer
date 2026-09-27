@@ -49,6 +49,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsControllerCompat
+import com.example.musicplayer.ui.theme.restoreDefaultSystemBars
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
@@ -88,7 +89,7 @@ fun RadioPlayerScreen(
         }
     }
 
-    DisposableEffect(Unit) { onDispose { } }
+    DisposableEffect(Unit) { onDispose { activity?.window?.let { restoreDefaultSystemBars(it) } } }
 
     // Track service status and derive playing state based on strings
     var svcStatus by remember { mutableStateOf(RadioPlayerService.lastStatus) }

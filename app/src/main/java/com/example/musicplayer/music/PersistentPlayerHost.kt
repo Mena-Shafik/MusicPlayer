@@ -91,7 +91,7 @@ fun PersistentPlayerHost(
     modifier: Modifier = Modifier,
     // @Preview-only; real callers start docked and expand via PlayerDockController.requestExpand().
     initialDockProgress: Float = 0f,
-    // True on routes that shouldn't show the player; stays mounted so state survives and it reappears instantly.
+    // True on routes that shouldn't show the docked mini bar; the full player can still be expanded over them.
     hideContent: Boolean = false
 ) {
     val playlist by PlayerStateManager.playlist.collectAsState()
@@ -145,7 +145,7 @@ fun PersistentPlayerHost(
         scope.launch { dockProgress.animateTo(0f, DockTween) }
     }
 
-    BackHandler(enabled = !hideContent && dockProgress.value > 0.5f) {
+    BackHandler(enabled = dockProgress.value > 0.5f) {
         collapseToMini()
     }
 
@@ -202,9 +202,9 @@ fun PersistentPlayerHost(
     )
 
     val p = if (dragging) dragFraction else dockProgress.value
-    SideEffect { PlayerDockController.reportDockProgress(if (hideContent) 0f else p) }
+    SideEffect { PlayerDockController.reportDockProgress(p) }
 
-    if (hideContent) return
+    if (hideContent && p == 0f) return
 
     Box(
         modifier = modifier

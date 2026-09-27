@@ -49,6 +49,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import com.example.musicplayer.BuildConfig
+import com.example.musicplayer.R
+import androidx.compose.ui.res.stringResource
 import com.example.musicplayer.navigation.NavRoutes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -183,7 +185,7 @@ fun SettingsScreen(navController: NavHostController) {
             val osVersion = "Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})"
             val appVersion = BuildConfig.APP_VERSION_NAME
             Text(
-                text = "MusicPlayer $appVersion · $osVersion",
+                text = "${stringResource(R.string.app_name)} $appVersion · $osVersion",
                 color = Color.White.copy(alpha = 0.35f),
                 fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)

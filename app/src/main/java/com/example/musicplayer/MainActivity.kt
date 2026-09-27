@@ -262,7 +262,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                     }
-                    // Only shown on the Home tab; stays mounted (hideContent) so it reappears instantly on return.
+                    // Mini bar only on the Home tab; stays mounted (hideContent) so it reappears instantly, and a song picked on any screen can still expand the full player.
                     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
                     // Root tabs (Home stays as the permanent nav-stack anchor for saveState/restoreState) exit the app on back instead of popping to a previous tab; registered before PersistentPlayerHost so its own collapse-on-back still wins while the full player is open.
                     BackHandler(
