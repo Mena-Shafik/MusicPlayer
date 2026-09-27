@@ -9,8 +9,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** A dashed rounded-rect outline — used for "empty" placeholder tiles in the redesign
- * (no playlist cover yet, no playlists yet) instead of a solid border. */
+// Dashed rounded-rect outline used for "empty" placeholder tiles (no playlist cover yet, no playlists yet) instead of a solid border.
 fun Modifier.dashedBorder(
     widthDp: Dp,
     color: Color,

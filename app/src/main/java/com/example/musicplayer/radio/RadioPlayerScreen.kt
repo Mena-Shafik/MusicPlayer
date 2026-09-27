@@ -1,11 +1,12 @@
 package com.example.musicplayer.radio
 
+import android.os.Build
+import androidx.compose.ui.unit.Dp
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -48,6 +49,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsControllerCompat
+import com.example.musicplayer.ui.theme.restoreDefaultSystemBars
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
@@ -61,6 +63,8 @@ import com.example.musicplayer.model.RadioStation
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.musicplayer.ui.components.common.RadioControls
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @SuppressLint("ContextCastToActivity")
@@ -75,7 +79,6 @@ fun RadioPlayerScreen(
 
     // background brush
     var backgroundColor by remember { mutableStateOf(Color.Black) }
-    val backgroundBrush = remember(backgroundColor) { Brush.verticalGradient(listOf(backgroundColor, Util.darkerColor(backgroundColor, 0.25f))) }
 
     val activity = LocalContext.current as? Activity
     LaunchedEffect(backgroundColor) {
@@ -86,9 +89,7 @@ fun RadioPlayerScreen(
         }
     }
 
-    BackHandler { navController.popBackStack() }
-
-    DisposableEffect(Unit) { onDispose { } }
+    DisposableEffect(Unit) { onDispose { activity?.window?.let { restoreDefaultSystemBars(it) } } }
 
     // Track service status and derive playing state based on strings
     var svcStatus by remember { mutableStateOf(RadioPlayerService.lastStatus) }
@@ -137,7 +138,7 @@ fun RadioPlayerScreen(
                 currentStationFavicon = RadioPlayerService.lastStationFavicon ?: currentStationFavicon
                 currentStationTags = RadioPlayerService.lastStationTags ?: currentStationTags
             } catch (_: Throwable) {}
-            kotlinx.coroutines.delay(300L)
+            delay(300L.milliseconds)
         }
     }
 
@@ -160,7 +161,7 @@ fun RadioPlayerScreen(
                     putExtra(RadioPlayerService.EXTRA_STATION_TAGS, radioStation.tags)
                     setClassName(ctx.packageName, "com.example.musicplayer.radio.RadioPlayerService")
                 }
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     ContextCompat.startForegroundService(ctx, intent)
                 } else {
                     ctx.startService(intent)
@@ -184,7 +185,7 @@ fun RadioPlayerScreen(
                                 return@launch
                             }
                         }
-                        kotlinx.coroutines.delay(500)
+                        delay(500)
                     }
                     if (!seen) Toast.makeText(context, "Radio service started, check logs if no audio", Toast.LENGTH_SHORT).show()
                 }
@@ -194,12 +195,9 @@ fun RadioPlayerScreen(
         }
     }
 
-    // Background drawn full-screen behind the whole Scaffold (including the top app bar),
-    // not just the content area below it — otherwise a "transparent" app bar just shows the
-    // Scaffold's own flat containerColor instead of this blur/wash.
+    // Background drawn full-screen behind the whole Scaffold (including the top app bar), not just the content area below it -- otherwise a "transparent" app bar just shows the Scaffold's own flat containerColor instead of this blur/wash.
     Box(modifier = Modifier.fillMaxSize()) {
-        // Fixed dark gradient + soft station-wash glow (not derived per-station — the
-        // favicon palette extraction below is a stub that always returns black/white).
+        // Fixed dark gradient + soft station-wash glow (not derived per-station -- the favicon palette extraction below is a stub that always returns black/white).
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -257,9 +255,7 @@ fun RadioPlayerScreen(
         ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
-                // Use the raw station-provided favicon exactly as supplied by the API, but
-                // normalize protocol-relative URLs ("//host/...") to "https://host/..." so Coil can load them.
-                // StationImage will display the bundled fallback if the favicon is blank or fails to load.
+                // Uses the raw station favicon as supplied by the API, normalizing protocol-relative URLs ("//host/...") to "https://host/..." so Coil can load them; StationImage falls back to the bundled placeholder if blank/failed.
                 val favRaw = currentStationFavicon
                 val favUrl = when {
                     favRaw.startsWith("//") -> "https:$favRaw"
@@ -284,9 +280,7 @@ fun RadioPlayerScreen(
                         chipContentColor = Color.LightGray
                     )
 
-                    // Show current song metadata as an "ON AIR NOW" block when the service has
-                    // some (only rendered once — this used to also render again via a separate
-                    // RadioNowPlayingInfo call below the controls, showing the same text twice).
+                    // "ON AIR NOW" block, rendered once -- this used to also render again via a separate RadioNowPlayingInfo call below the controls, showing the same text twice.
                     if (!playingTitle.isNullOrBlank()) {
                         Text(
                             text = "ON AIR NOW",
@@ -336,8 +330,7 @@ fun RadioPlayerScreen(
                 )
             }
 
-            // Show the raw stream/service status as plain text at the bottom center of the screen
-            // Keep service status separate from title/artist — always show svcStatus here.
+            // Raw stream/service status, shown separately from title/artist -- always svcStatus here.
             val statusText = svcStatus.ifBlank { "IDLE" }
 
             Text(
@@ -361,11 +354,10 @@ fun StationImage(
     onAccentColor: (Color) -> Unit = {}
 ) {
     val context = LocalContext.current
-    // Station logos are typically white/light artwork, so — unlike album art — the tile
-    // itself is white with a muted glyph, not a dark placeholder.
+    // Station logos are typically white/light artwork, so unlike album art the tile itself is white with a muted glyph, not a dark placeholder.
     val tileModifier = modifier
-        .width(308.dp)
-        .height(308.dp)
+        .width(340.dp)
+        .height(340.dp)
         .shadow(
             elevation = 24.dp,
             shape = RoundedCornerShape(8.dp),
@@ -452,7 +444,7 @@ fun RadioNowPlayingInfo(title: String?, artist: String?, modifier: Modifier = Mo
 
 @Suppress("unused")
 @Composable
-fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+fun SmallAlbumImage(path: String?, size: Dp, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val imageBitmap = try {
         Util.getAlbumArt(context, path)
@@ -483,7 +475,7 @@ fun SmallAlbumImage(path: String?, size: androidx.compose.ui.unit.Dp, modifier: 
 fun RadioScreenPreview() {
     MaterialTheme {
         val context = LocalContext.current
-        val navController = remember { androidx.navigation.NavController(context) }
+        val navController = remember { NavController(context) }
         // single valid sample RadioStation (matches model.RadioStation constructor)
         val sampleStation = RadioStation(
             stationuuid = "custom-virgin-999",

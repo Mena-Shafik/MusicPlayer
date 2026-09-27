@@ -32,10 +32,7 @@ object PlayerNotificationManager {
         nm.createNotificationChannel(channel)
     }
 
-    /**
-     * Build a media notification. progressMs and durationMs are in milliseconds.
-     * This converts to seconds internally to keep Notification progress ints small and avoid overflow.
-     */
+    // progressMs/durationMs are in milliseconds; converted to seconds internally to keep Notification progress ints small and avoid overflow.
     fun buildNotification(
         context: Context,
         title: String,
@@ -113,8 +110,7 @@ object PlayerNotificationManager {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
-        // Create MediaStyle and attach support MediaSessionCompat.Token when available
-        // Keep compact view showing Previous, Play/Pause, Next (indices 0,2,4)
+        // MediaStyle with compact view showing Previous, Play/Pause, Next (indices 0,2,4); attaches the compat MediaSessionCompat.Token when available.
         val style = MediaAppNotificationCompat.MediaStyle().setShowActionsInCompactView(0, 2, 4)
         if (mediaSessionToken is android.support.v4.media.session.MediaSessionCompat.Token) {
             // attach the compat token directly
@@ -145,8 +141,7 @@ object PlayerNotificationManager {
 
     @Suppress("MissingPermission")
     fun postNotification(context: Context, notification: Notification) {
-        // Runtime permission check for POST_NOTIFICATIONS (Android 13+). Project minSdk >= 33,
-        // so perform the check unconditionally to be explicit.
+        // Runtime permission check for POST_NOTIFICATIONS (Android 13+); project minSdk >= 33, so this always applies.
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             return
         }

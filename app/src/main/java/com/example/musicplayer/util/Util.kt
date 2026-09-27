@@ -94,10 +94,7 @@ class Util {
             return if (str.length <= width) str.padEnd(width) else str.take(width - 3) + "..."
         }
 
-        // Return the first quoted substring (double or single quotes) if present, otherwise return trimmed original.
-        // Examples:
-        //  - "Z103.5 \"CIDC-FM\" Live" -> CIDC-FM
-        //  - "Some Station 'Nickname' Extra" -> Nickname
+        // Returns the first quoted substring (double or single quotes) if present, e.g. "Z103.5 \"CIDC-FM\" Live" -> CIDC-FM, otherwise the trimmed original.
         fun extractQuotedOrOriginal(s: String?): String {
              if (s.isNullOrBlank()) return ""
              val regex = Regex("\"([^\"]+)\"|'([^']+)'")
@@ -109,10 +106,7 @@ class Util {
              }
          }
 
-        /**
-         * Format a station name for storage/display.
-         * Rules: prefer quoted substring (via extractQuotedOrOriginal), fallback to the raw name trimmed.
-         */
+        // Prefers a quoted substring (extractQuotedOrOriginal), falls back to the raw name trimmed.
         fun formatStation(st: RadioStation?): String {
             if (st == null) return ""
             val raw = st.name ?: ""
@@ -122,7 +116,6 @@ class Util {
 
         fun formatSongTableHeader(): String {
             // Columns: ID, Title, Artist, Album, Track, Year, Path, Duration
-            // %-10s = ID, %-30s = Title, %-20s = Artist, %-20s = Album, %-6s = Track, %-6s = Year, %-40s = Path, %8s = Duration
             return String.format(
                 Locale.US, "%-10s %-30s %-20s %-20s %-6s %-6s %-40s %8s",
                 "ID", "Title", "Artist", "Album", "Track", "Year", "Path", "Duration")
@@ -191,10 +184,7 @@ class Util {
             }
         }
 
-        /**
-         * Fetch album artwork URL from the web using iTunes Search API.
-         * Returns image URL for the album cover if found.
-         */
+        // Fetches album artwork URL from the web via iTunes Search API.
         suspend fun getAlbumArtWebUrl(song: Song?): String? {
             if (song == null || song.title.isBlank() || song.artist.isBlank()) return null
 
@@ -246,10 +236,7 @@ class Util {
             }
         }
 
-        /**
-         * Get album artwork as ImageBitmap from URL string.
-         * Downloads and decodes the image.
-         */
+        // Downloads and decodes album artwork from a URL string.
         suspend fun loadBitmapFromUrl(url: String): ImageBitmap? {
             return withContext(Dispatchers.IO) {
                 try {
@@ -325,11 +312,7 @@ class Util {
             }
         }
 
-        /**
-         * Test a radio station URL to see if it's reachable and what format it returns.
-         * Returns a diagnostic string with details about the URL.
-         * This is a suspend function for background testing.
-         */
+        // Tests a radio station URL's reachability/format, returning a diagnostic string.
         suspend fun testRadioUrl(url: String): String {
             return withContext(Dispatchers.IO) {
                 try {
@@ -454,17 +437,7 @@ class Util {
         }
 
 
-        /**
-         * Extract all artist names from a collaboration string.
-         * Splits on: ",", "feat.", "featuring", "ft.", "&", "+", "and", "with", "x"
-         * Normalizes each artist (removes "The" prefix, trims, lowercases).
-         * Examples:
-         * - "Black Eyed Peas, Shakira + David Guetta" -> ["black eyed peas", "shakira", "david guetta"]
-         * - "Black Eyed Peas feat. Shakira" -> ["black eyed peas", "shakira"]
-         * - "Shakira + David Guetta" -> ["shakira", "david guetta"]
-         * - "The Beatles & Paul McCartney" -> ["beatles", "paul mccartney"]
-         * - "David Guetta x Sia x Diplo" -> ["david guetta", "sia", "diplo"]
-         */
+        // Splits a collaboration string on ",", "feat.", "featuring", "ft.", "&", "+", "and", "with", "x" and normalizes each artist (strips "The" prefix, trims, lowercases), e.g. "Black Eyed Peas feat. Shakira" -> ["black eyed peas", "shakira"].
         private fun extractAllArtists(artist: String?): List<String> {
             if (artist.isNullOrBlank()) return emptyList()
 
@@ -505,15 +478,7 @@ class Util {
             return result
         }
 
-        /**
-         * Return a list of related songs that share the same album or artist as the song at [currentIndex].
-         * Shows songs from the same album first, then songs from the same artist or any collaborating artist.
-         * Artist names are normalized and all collaborators are extracted.
-         * Examples:
-         * - "Black Eyed Peas feat. Shakira" finds songs by both artists
-         * - "The Beatles & Paul McCartney" finds songs by both
-         * This is a suspend function and should be called from a coroutine (it runs IO work).
-         */
+        // Songs sharing the same album or artist as songs[currentIndex] (same album first, then same artist or any collaborator, via extractAllArtists); suspend, runs IO work.
         suspend fun getRelatedSongs(songs: List<Song>, currentIndex: Int): List<Pair<Int, Song>> {
             return withContext(Dispatchers.IO) {
                 if (currentIndex < 0 || currentIndex >= songs.size) return@withContext emptyList()
@@ -534,9 +499,7 @@ class Util {
                     // Extract all artists from the song being compared
                     val songArtists = extractAllArtists(s.artist)
 
-                    // Check if any artist matches bidirectionally:
-                    // - Any of current song's artists appear in the other song's artists
-                    // - OR any of the other song's artists appear in current song's artists
+                    // Bidirectional match: either song's artists can appear in the other's.
                     val isSameArtist = currentArtists.isNotEmpty() && songArtists.isNotEmpty() &&
                         (songArtists.any { it in currentArtists } ||
                          currentArtists.any { it in songArtists })
@@ -557,14 +520,10 @@ class Util {
         }
 
 
-        /**
-         * Parse tags from Radio Browser's tags field (space or comma separated).
-         * Keep quoted segments intact if provided (e.g. "classic rock").
-         */
+        // Parses tags from Radio Browser's tags field (space or comma separated), keeping quoted segments intact (e.g. "classic rock").
         fun parseTags(raw: String?): List<String> {
             if (raw.isNullOrBlank()) return emptyList()
-            // radio-browser tags often are space-separated or comma-separated
-            // Normalize commas to spaces, then split on whitespace, but keep quoted groups
+            // radio-browser tags are often space- or comma-separated; normalize commas to spaces then split on whitespace, keeping quoted groups intact.
             val regex = Regex("\"([^\"]+)\"|'([^']+)'|([^,\\s]+)")
             val matches = regex.findAll(raw)
             val out = matches.mapNotNull { m ->
@@ -606,11 +565,7 @@ class Util {
             )
         }
 
-        /**
-         * Insert an extra blank line after each of the first [firstLines] lines in the lyrics text.
-         * Preserves existing newline style and is robust to shorter inputs.
-         * Returns null if the input is null.
-         */
+        // Inserts an extra blank line after each of the first firstLines lines of lyrics text, preserving newline style; returns null if the input is null.
         fun addSpacingToFirstLines(lyrics: String?, firstLines: Int = 5): String? {
             if (lyrics == null) return null
             if (lyrics.isBlank()) return lyrics
@@ -669,12 +624,7 @@ class Util {
         //    Snackbar.make(view,text,Snackbar.LENGTH_LONG).show()
         //}
 
-        // New radio API helpers
-        /**
-         * Suspend function that searches radio stations by name using the Radio Browser API.
-         * Returns an empty list on error.
-         * New: optional country and state filters are supported.
-         */
+        // Searches radio stations by name via the Radio Browser API, with optional country/state filters; returns an empty list on error.
         suspend fun fetchRadioStations(query: String = "", limit: Int = 50, country: String? = null, state: String? = null): List<RadioStation> {
             return try {
                 // Log the exact query parameters used to call the Radio Browser API
@@ -701,14 +651,7 @@ class Util {
             }
         }
 
-        /**
-         * Filter to identify real FM/AM broadcast radio stations.
-         * Excludes internet-only streaming services.
-         * Real stations typically have:
-         * - Call letters (e.g., CHUM, KISS, CIDC)
-         * - FM/AM frequency in name (e.g., "104.5", "92.5")
-         * - Known broadcast networks
-         */
+        // Identifies real FM/AM broadcast stations (excludes internet-only streams) by call letters (CHUM, KISS, CIDC), FM/AM frequency in name (e.g. "104.5"), or known broadcast networks.
         private fun isRealBroadcastStation(station: RadioStation): Boolean {
             val name = station.name?.uppercase() ?: return false
             val tags = station.tags?.uppercase() ?: ""
@@ -746,15 +689,9 @@ class Util {
             return isReal
         }
 
-        /**
-         * Convenience helper: fetch stations near the Greater Toronto Area (GTA).
-         * Focus on music stations and preferentially return well-known music stations
-         * such as CHUM 104.5, KISS 92.5, VIRGIN 99.9 and Z103.5.
-         * Filters to real FM/AM broadcast stations only.
-         */
+        // Fetches stations near the GTA, preferring well-known music stations (CHUM 104.5, KISS 92.5, VIRGIN 99.9, Z103.5), filtered to real FM/AM broadcast stations only.
         suspend fun fetchStationsNearGTA(limit: Int = 50): List<RadioStation> {
-            // Simplified version: prefer geo-nearby endpoint and fall back to a general search.
-            // This avoids heavy heuristic filtering and complex deduping logic which was brittle.
+            // Simplified: prefer the geo-nearby endpoint, fall back to a general search -- avoids the brittle heavy heuristic filtering/deduping this used to do.
             val GTA_LAT = 43.6532
             val GTA_LON = -79.3832
             return try {
@@ -784,14 +721,7 @@ class Util {
             }
         }
 
-        /**
-         * Choose the best image URL for a RadioStation.
-         * Order of preference:
-         * 1) station.favicon (https preferred)
-         * 2) construct https://<host>/favicon.ico from station.url
-         * 3) Google's favicon helper: https://www.google.com/s2/favicons?sz=64&domain_url=<host>
-         * Returns empty string when no candidate is available (caller should use local placeholder).
-         */
+        // Best image URL for a RadioStation, in order: station.favicon (https preferred), https://<host>/favicon.ico from station.url, then Google's favicon helper; empty string if no candidate (caller should use a local placeholder).
         fun getStationImageUrl(st: RadioStation?): String {
             if (st == null) return ""
 
@@ -819,8 +749,7 @@ class Util {
 
         /** Return the saved user stations (empty list when none or on error). */
         fun getUserStations(context: Context): List<RadioStation> {
-            // Per user request: always use hard-coded defaults.
-            // This makes the app reliably return the built-in station list (Z103.5, Virgin 99.9, etc.).
+            // Per user request: always use hard-coded defaults (Z103.5, Virgin 99.9, etc.) rather than any saved/dynamic list.
             return getDefaultUserStations(context)
          }
 
@@ -840,9 +769,7 @@ class Util {
             }
         }
 
-        /**
-         * Load radio stations from JSON file in res/raw/radio_stations.json
-         */
+        // Loads radio stations from res/raw/radio_stations.json.
         fun getDefaultUserStations(context: Context): List<RadioStation> {
             return try {
                 val inputStream = context.resources.openRawResource(R.raw.radio_stations)
@@ -876,9 +803,7 @@ class Util {
             }
         }
 
-        /**
-         * Fallback stations in case JSON loading fails
-         */
+        // Fallback stations in case JSON loading fails.
         private fun getFallbackStations(): List<RadioStation> {
             return listOf(
                 RadioStation(

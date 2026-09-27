@@ -4,14 +4,11 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-/**
- * Route definitions for the app navigation.
- *
- * This sealed class defines all navigation routes with type-safe helpers.
- */
 sealed class NavRoutes(val route: String) {
     object Splash : NavRoutes("splash")
     object Home : NavRoutes("home")
@@ -21,10 +18,9 @@ sealed class NavRoutes(val route: String) {
     object Settings : NavRoutes("settings")
     object Radio : NavRoutes("radio")
     object History : NavRoutes("history")
+    object Navidrome : NavRoutes("navidrome")
 
-    object MusicPlayer : NavRoutes("musicScreen/{songId}") {
-        fun createRoute(songId: Int) = "musicScreen/$songId"
-    }
+    // Now Playing is no longer a pushed destination -- it's PersistentPlayerHost, mounted once as a NavHost sibling; call PlayerDockController.requestExpand() instead of navigating here.
 
     object RadioPlayer : NavRoutes("radioPlayer/{name}/{url}") {
         fun createRoute(name: String, url: String): String {
@@ -57,9 +53,17 @@ sealed class NavRoutes(val route: String) {
     }
 }
 
-/**
- * Navigation preferences to persist the current route across app restarts.
- */
+// Standard bottom-nav recipe (non-inclusive popUpTo keeps Home as a permanent anchor, so saveState/restoreState reliably finds it every time); back-exits-app for the root tabs is handled separately by MainActivity's BackHandler, not by popping here.
+fun NavHostController.navigateToTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
 private val Context.navDataStore by preferencesDataStore(name = "nav_preferences")
 
 object NavigationPreferences {

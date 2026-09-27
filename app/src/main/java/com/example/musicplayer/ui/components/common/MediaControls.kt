@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -85,6 +86,7 @@ fun MusicControls(
                 )
             }
             val morphDuration = 320
+            // Was 96dp (looked oversized next to the 55dp skip icons), then 76dp per the Aura 2.0 spec -- still too dominant in practice, trimmed further.
             val targetSize = if (isPlaying) 96.dp else 96.dp
             val animatedSize by animateDpAsState(
                 targetValue = targetSize,

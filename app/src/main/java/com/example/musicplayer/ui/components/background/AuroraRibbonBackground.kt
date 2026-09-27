@@ -39,17 +39,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import kotlin.math.tan
 
-/**
- * "2.0" redesign background: a band of drifting, skewed color ribbons anchored to the
- * top of the screen, blurred and faded out under a dark scrim. Ported from the
- * "MusicPlayer 2.0 UI" design mockup (its `auroraRibbons()` generator and the
- * aurA/aurB/aurC CSS keyframes).
- *
- * This is a lighter-weight companion to the mesh-gradient [AuroraBackground] used on the
- * Now Playing screen, not a replacement for it — [AuroraBackground] is untouched and still
- * drives that screen. This one is meant for list-style screens (library, albums, artists,
- * history, search, playlists, settings, ...).
- */
+// "2.0" redesign background: drifting, skewed color ribbons anchored to the top, blurred and faded under a dark scrim, ported from the "MusicPlayer 2.0 UI" mockup's auroraRibbons() generator; a lighter-weight companion to the mesh-gradient AuroraBackground (unchanged, still drives Now Playing) meant for list-style screens instead.
 object AuroraRibbonPalette {
     private fun rgb(r: Int, g: Int, b: Int) = Color(r, g, b)
 
@@ -209,9 +199,7 @@ val AuroraRibbonDefaultBaseColor = Color(0xFF03050C)
 
 private enum class RibbonMotion { A, B, C }
 
-// Position/motion only — deliberately palette-independent so a palette switch (Settings, or
-// the scroll-driven sampler) never rebuilds this and restarts each ribbon's phase, which is
-// what caused ribbons to visibly jump to a new location on every palette change.
+// Position/motion only -- deliberately palette-independent so a palette switch (Settings or the scroll-driven sampler) never rebuilds this and restarts each ribbon's phase, which used to make ribbons visibly jump to a new location on every palette change.
 private data class RibbonSpec(
     val leftFraction: Float,
     val widthFraction: Float,
@@ -222,8 +210,7 @@ private data class RibbonSpec(
 
 private data class RibbonKeyState(val translateXFraction: Float, val skewDeg: Float, val scaleY: Float, val alpha: Float)
 
-// Ported from the mockup's aurA/aurB/aurC @keyframes: each motion oscillates between its
-// 0%/100% state and its 50% (peak) state.
+// Ported from the mockup's aurA/aurB/aurC @keyframes: each motion oscillates between its 0%/100% state and its 50% (peak) state.
 private val motionKeyStates: Map<RibbonMotion, Pair<RibbonKeyState, RibbonKeyState>> = mapOf(
     RibbonMotion.A to (RibbonKeyState(-0.08f, -14f, 1.00f, 0.75f) to RibbonKeyState(0.10f, 6f, 1.18f, 1.00f)),
     RibbonMotion.B to (RibbonKeyState(0.06f, 10f, 1.12f, 0.90f) to RibbonKeyState(-0.09f, -8f, 0.94f, 0.60f)),
@@ -232,8 +219,7 @@ private val motionKeyStates: Map<RibbonMotion, Pair<RibbonKeyState, RibbonKeySta
 
 private fun lerp(a: Float, b: Float, p: Float) = a + (b - a) * p
 
-/** See the comment in [AuroraRibbonBackground]'s palette resolution — this just remembers
- * the last palette name any screen has read from DataStore, across screen instances. */
+// Remembers the last palette name any screen has read from DataStore, across screen instances.
 private object AuroraPaletteCache {
     @Volatile var lastKnown: String = "Northern"
 }
@@ -242,8 +228,7 @@ private object AuroraPaletteCache {
 fun AuroraRibbonBackground(
     modifier: Modifier = Modifier,
     ribbonCount: Int = 6,
-    // null = read the user's chosen palette from Settings; pass an explicit list (e.g. one
-    // sampled live from album art) to override it for this call site only.
+    // null = read the user's chosen palette from Settings; pass an explicit list (e.g. one sampled live from album art) to override it for this call site only.
     palette: List<Color>? = null,
     speed: Float = 1f,
     intensity: Float = 1f,
@@ -252,12 +237,7 @@ fun AuroraRibbonBackground(
 ) {
     val resolvedPalette = palette ?: run {
         val context = LocalContext.current
-        // Screen navigation currently recreates this composable from scratch on every
-        // switch (no back-stack saveState), so a hardcoded collectAsState(initial =
-        // "Northern") would flash that placeholder before the real DataStore value (e.g.
-        // "Aura") arrives a beat later, on every single navigation. Seed instead from the
-        // last value any screen has already read, so only the very first cold read of the
-        // whole app can show that placeholder.
+        // Seeded from the last value any screen has already read (AuroraPaletteCache) rather than a hardcoded collectAsState(initial = "Northern"), so only the very first cold read of the whole app can flash that placeholder before the real DataStore value arrives.
         var paletteName by remember { mutableStateOf(AuroraPaletteCache.lastKnown) }
         LaunchedEffect(context) {
             com.example.musicplayer.preferences.PreferencesManager.getAuroraPaletteFlow(context).collect { name ->
@@ -272,9 +252,7 @@ fun AuroraRibbonBackground(
     val step = 380f / n
     val blurDp = (22 + n * 1.6f).roundToInt().dp
 
-    // Keyed only on n/speed — a palette change (Settings, or the scroll-driven sampler)
-    // must never recreate this list, or each ribbon's animateFloat phase restarts and the
-    // ribbon visibly jumps to a new location instead of just recoloring.
+    // Keyed only on n/speed -- a palette change must never recreate this list, or each ribbon's animateFloat phase restarts and it visibly jumps location instead of just recoloring.
     val specs = remember(n, speed) {
         List(n) { i ->
             val width = (step * 1.5f + (i % 3) * 14f) / 360f
@@ -292,9 +270,7 @@ fun AuroraRibbonBackground(
             colors = resolvedPalette,
             intensity = intensity,
             bandHeightFraction = bandHeightFraction,
-            // Fill the whole area (not just the band) so the blur has room to dissipate
-            // smoothly instead of getting a hard cutoff at the band's own edge — each
-            // ribbon already fades to transparent internally before reaching that edge.
+            // Fills the whole area (not just the band) so the blur dissipates smoothly instead of a hard cutoff at the band's edge -- each ribbon already fades to transparent internally before reaching it.
             modifier = Modifier
                 .fillMaxSize()
                 .blur(blurDp)
@@ -314,16 +290,7 @@ fun AuroraRibbonBackground(
     }
 }
 
-/**
- * [AuroraRibbonBackground] variant for scrollable song lists: instead of a fixed named
- * palette, colors are sampled from the album art of the song sitting [sampleOffset] rows
- * below the top of the visible viewport, and re-sampled every time scrolling brings a new
- * song to that position — so the background drifts through the list's actual artwork as
- * the user scrolls, rather than staying static.
- *
- * Falls back to the user's chosen Settings palette (via [AuroraRibbonBackground]'s own
- * preference read) until the first sample has loaded.
- */
+// AuroraRibbonBackground variant for scrollable song lists: colors sampled from the album art of the song sampleOffset rows below the viewport top, re-sampled as scrolling brings a new song there, falling back to the user's Settings palette until the first sample loads.
 @Composable
 fun DynamicAuroraRibbonBackground(
     listState: LazyListState,
@@ -345,8 +312,7 @@ fun DynamicAuroraRibbonBackground(
         }
     }
 
-    // Keep the previous sample visible (rather than snapping back to the fallback palette)
-    // while the next one loads, so the background doesn't flicker between songs.
+    // Keeps the previous sample visible (rather than snapping back to the fallback palette) while the next one loads, so the background doesn't flicker between songs.
     var samplePalette by remember { mutableStateOf<List<Color>?>(null) }
 
     LaunchedEffect(targetIndex, songs) {
@@ -388,10 +354,7 @@ private fun RibbonBand(
     bandHeightFraction: Float,
     modifier: Modifier = Modifier
 ) {
-    // Animate each ribbon's color toward its current target rather than snapping — palette
-    // switches (Settings picker, or the scroll-driven sampler re-sampling a new song) then
-    // crossfade instead of popping. Deliberately keyed on `specs.indices`/colors only, not on
-    // `specs` itself, so this stays independent of the position/motion state below.
+    // Animates each ribbon's color toward its target rather than snapping, so palette switches crossfade instead of popping; keyed on `specs.indices`/colors only (not `specs` itself) to stay independent of the position/motion state below.
     val animatedColors = specs.indices.map { i ->
         animateColorAsState(
             targetValue = colors[i % colors.size],
@@ -417,8 +380,7 @@ private fun RibbonBand(
 
     Canvas(modifier = modifier) {
         val w = size.width
-        // Logical band height the ribbons taper within; the canvas itself is full-size so
-        // blur can bleed past that point without hitting a clipped edge.
+        // Logical band height the ribbons taper within; the canvas itself is full-size so blur can bleed past that point without hitting a clipped edge.
         val bandH = size.height * bandHeightFraction
         specs.forEachIndexed { i, spec ->
             val (state0, state1) = motionKeyStates.getValue(spec.motion)

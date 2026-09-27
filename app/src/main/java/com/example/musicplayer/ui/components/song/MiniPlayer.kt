@@ -1,19 +1,20 @@
 package com.example.musicplayer.ui.components.song
 
-import android.util.Log
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -22,122 +23,82 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.musicplayer.R
-import com.example.musicplayer.util.Util
 import com.example.musicplayer.model.Song
-import com.example.musicplayer.service.PlayerIntentBuilder
-import com.example.musicplayer.service.PlayerStateManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.ImageBitmap
+import com.example.musicplayer.ui.components.player.AlbumArt
 
+// Thumbnail geometry, shared with MusicPlayerChrome so its art can morph out of this exact spot.
+val MiniPlayerArtInset = DpOffset(14.dp, 6.dp)
+val MiniPlayerArtSize = 44.dp
+
+// Stateless docked bar; tap or drag up expands; drag deltas and release velocity are px (positive = downward).
 @Composable
 fun MiniPlayer(
+    song: Song,
+    isPlaying: Boolean,
+    progress: Float,
+    onPlayPause: () -> Unit,
+    onExpand: () -> Unit,
     modifier: Modifier = Modifier,
-    onOpenPlayer: (Song?) -> Unit = {}
+    onDrag: (Float) -> Unit = {},
+    onDragStopped: (velocity: Float) -> Unit = {},
+    // Loaded once by the host and shared with the full player, so neither reloads it.
+    artBitmap: ImageBitmap? = null,
+    // Hidden while the full player's own art is morphing out of this spot.
+    artAlpha: Float = 1f,
+    // Dropped to 0 while the host's panel (same color) is drawn behind it, so the morphing art isn't dimmed through the bar.
+    backgroundAlpha: Float = 1f
 ) {
-    val playlist by PlayerStateManager.playlist.collectAsState()
-    val currentIndex by PlayerStateManager.currentIndex.collectAsState()
-    val isPlaying by PlayerStateManager.isPlaying.collectAsState()
-    val positionMs by PlayerStateManager.positionMs.collectAsState()
-    val durationMs by PlayerStateManager.durationMs.collectAsState()
-    val current = playlist.getOrNull(currentIndex)
-    val context = LocalContext.current
-    // read preview mode inside a composable context
-    val isPreviewMode = LocalInspectionMode.current
-
-    // If there's no playlist and no current song, don't show the mini player
-    if (playlist.isEmpty() && current == null) return
-
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragStopped by rememberUpdatedState(onDragStopped)
+    // draggable + clickable arbitrate with each other (a drag past slop cancels the click), unlike two raw pointerInput detectors.
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.45f))
+            .background(Color.Black.copy(alpha = 0.94f * backgroundAlpha))
+            .draggable(
+                state = rememberDraggableState { currentOnDrag(it) },
+                orientation = Orientation.Vertical,
+                onDragStopped = { velocity -> currentOnDragStopped(velocity) }
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onExpand
+            )
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .padding(horizontal = MiniPlayerArtInset.x, vertical = MiniPlayerArtInset.y)
+                .height(MiniPlayerArtSize),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // album art (left) - tappable to open full player
-            var displayArt by remember(current?.path) { mutableStateOf<ImageBitmap?>(null) }
-
-            LaunchedEffect(current?.path) {
-                displayArt = null
-                if (current?.path?.isNotBlank() == true) {
-                    displayArt = withContext(Dispatchers.IO) {
-                        try {
-                            // First try embedded album art
-                            var bitmap = Util.getAlbumArt(context, current.path)
-
-                            // If no embedded art, fetch from web
-                            if (bitmap == null) {
-                                Log.d("MiniPlayer", "No embedded artwork for '${current.title}', fetching from web...")
-                                val webUrl = Util.getAlbumArtWebUrl(current)
-                                if (webUrl != null) {
-                                    bitmap = Util.loadBitmapFromUrl(webUrl)
-                                    if (bitmap != null) {
-                                        Log.d("MiniPlayer", "✓ Loaded web album art for '${current.title}'")
-                                    }
-                                }
-                            }
-                            bitmap
-                        } catch (_: Throwable) {
-                            null
-                        }
-                    }
-                }
-            }
-
-            val imageModifier = Modifier
-                .width(44.dp)
-                .height(44.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF2A2A2A))
-                .clickable { onOpenPlayer(current) }
-
-            if (displayArt != null) {
-                Image(
-                    bitmap = displayArt!!,
-                    contentDescription = "Album art",
-                    modifier = imageModifier,
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_album),
-                    contentDescription = "Album art",
-                    modifier = imageModifier.padding(10.dp),
-                    contentScale = ContentScale.Crop,
-                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF5A5A5A))
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
+            AlbumArt(
+                bitmap = artBitmap,
+                modifier = Modifier.size(MiniPlayerArtSize).graphicsLayer { alpha = artAlpha }
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp, end = 8.dp)
+            ) {
                 Text(
-                    text = current?.title ?: "",
+                    text = song.title,
                     color = Color.White,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -145,33 +106,19 @@ fun MiniPlayer(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = current?.artist ?: "",
+                    text = song.artist,
                     color = Color.White.copy(alpha = 0.6f),
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
             Box(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(Color.White)
-                    .clickable {
-                        val appCtx = context.applicationContext
-                        Log.d("MiniPlayer", "play/pause clicked isPlaying=$isPlaying appCtx=$appCtx")
-                        if (isPreviewMode) {
-                            // in preview toggle repository state only
-                            PlayerStateManager.setIsPlaying(!PlayerStateManager.isPlaying.value)
-                        } else {
-                            // Optimistically update UI state so the button feels responsive, then send intent to service.
-                            PlayerStateManager.setIsPlaying(!isPlaying)
-                            if (isPlaying) PlayerIntentBuilder.startPause(appCtx) else PlayerIntentBuilder.startPlay(appCtx)
-                        }
-                    },
+                    .clickable { onPlayPause() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -181,16 +128,6 @@ fun MiniPlayer(
                     tint = Color(0xFF111111)
                 )
             }
-        }
-
-        // Thin progress bar matching the redesign (track + orange fill), not Material's
-        // default LinearProgressIndicator styling.
-        val duration = durationMs
-        val position = positionMs.coerceAtMost(duration)
-        val progress = remember(position, duration) {
-            if (duration > 0L) {
-                (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-            } else 0f
         }
 
         Box(
@@ -204,36 +141,27 @@ fun MiniPlayer(
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(fraction = progress)
+                    .fillMaxWidth(fraction = progress.coerceIn(0f, 1f))
                     .background(Color(0xFFFFA500))
             )
         }
-
-        Spacer(modifier = Modifier.height(10.dp))
+        Box(Modifier.height(6.dp))
     }
 }
 
-
-@Preview(showBackground = true, name = "MiniPlayer Preview", backgroundColor = 0xFF000000)
+@Preview(name = "MiniPlayer", backgroundColor = 0xFF14261C, showBackground = true, widthDp = 400)
 @Composable
 private fun MiniPlayerPreview() {
-    // Prepare a small sample playlist with empty paths so placeholder art is used in preview
-    val sampleSongs = listOf(
-        Song(id = 1, null, title = "Preview Song", artist = "Preview Artist", duration = 180000.0, path = "",album = null,2000),
-        Song(id = 2, null, title = "Another Track", artist = "Artist Two", duration = 200000.0, path = "",album = null,2000)
-    )
-
-    // populate PlayerRepository with sample data for preview
-    LaunchedEffect(Unit) {
-        PlayerStateManager.setPlaylist(sampleSongs, 0)
-        PlayerStateManager.setIsPlaying(false)
-    }
-
     MaterialTheme {
-        Box(modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.Black)) {
-            MiniPlayer(modifier = Modifier.align(Alignment.Center))
+        Box(Modifier.fillMaxSize()) {
+            MiniPlayer(
+                song = Song(1, "Afterglow", "Nova Reyes", 238000.0, "", "Neon Parallels"),
+                isPlaying = true,
+                progress = 0.4f,
+                onPlayPause = {},
+                onExpand = {},
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 }

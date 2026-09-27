@@ -10,12 +10,16 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.ExperimentalMaterialApi
@@ -28,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -38,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
@@ -48,15 +54,16 @@ import com.example.musicplayer.ui.components.song.ArtistSongList
 import com.example.musicplayer.ui.components.common.MainAppBar
 import com.example.musicplayer.ui.components.common.MainBackground
 import com.example.musicplayer.ui.components.background.AuroraRibbonBackground
-import com.example.musicplayer.ui.components.song.MiniPlayer
 import com.example.musicplayer.ui.components.radio.RadioCardRow
 import com.example.musicplayer.ui.components.song.SongCardRow
 import com.example.musicplayer.ui.components.playlist.AddToPlaylistDialog
 import com.example.musicplayer.model.Song
 import com.example.musicplayer.music.MusicPlayerViewModel
 import com.example.musicplayer.navigation.NavRoutes
+import com.example.musicplayer.navigation.navigateToTab
 import com.example.musicplayer.radio.RadioPlayerService
 import com.example.musicplayer.service.PlayerStateManager
+import com.example.musicplayer.service.PlayerDockController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -65,7 +72,9 @@ import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import kotlin.collections.getOrNull
 import com.example.musicplayer.ui.components.common.BottomNav
+import com.example.musicplayer.ui.components.common.LibraryViewTabs
 import com.example.musicplayer.ui.components.song.EraSongList
+import com.example.musicplayer.preferences.PreferencesManager
 
 @SuppressLint("UnusedContentLambdaTargetStateParameter")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
@@ -82,9 +91,7 @@ fun ListSongsScreen(
 ) {
     // Get context first for passing to ViewModel
     val context = LocalContext.current
-    // Seed from whatever MainActivity's startup preload has already fetched (it runs
-    // purely to gate the splash screen, but the result is worth reusing) so this screen's
-    // very first frame can already show songs instead of an empty list.
+    // Seeds from MainActivity's startup preload (it runs purely to gate the splash screen, but the result is worth reusing) so this screen's very first frame can already show songs.
     val viewModel: SongListViewModel = viewModel(
         factory = object : androidx.lifecycle.ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -103,8 +110,7 @@ fun ListSongsScreen(
         try { onToggleSearch() } catch (_: Throwable) {}
         searchVisible = !searchVisible
     }
-    // We'll use the NavController's savedStateHandle to persist a "pendingClearSearch"
-    // flag across navigation (the ListSongsScreen may be recomposed when returning).
+    // Uses the NavController's savedStateHandle to persist a "pendingClearSearch" flag across navigation (this screen may recompose when returning).
     val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
     LaunchedEffect(savedStateHandle) {
         val pending = savedStateHandle?.get<Boolean>("pendingClearSearch") ?: false
@@ -116,14 +122,27 @@ fun ListSongsScreen(
     }
     // album view state comes from viewModel
 
-    // Use persistent radio selection stored in the SongListViewModel so selection
-    // survives navigation (e.g., returning from RadioPlayerScreen)
+    // Persistent radio selection stored in the ViewModel so it survives navigation (e.g. returning from RadioPlayerScreen).
     val isRadioSelected by viewModel.isRadioSelected.collectAsState()
     val toggleRadio: () -> Unit = { viewModel.toggleRadioSelected() }
     val isAlbumView by viewModel.isAlbumView.collectAsState()
     val isArtistView by viewModel.isArtistView.collectAsState()
     val isEraView by viewModel.isEraView.collectAsState()
     val useAlbumPalette by viewModel.useAlbumPalette.collectAsState()
+
+    // Navidrome "All / On device / Catalogue" source tab -- only visible/active once a server is connected; otherwise this screen behaves exactly as before this feature existed.
+    val navidromeConnected by PreferencesManager.getNavidromeConnectedFlow(context).collectAsState(initial = false)
+    var librarySourceTab by remember { mutableStateOf(0) } // 0 = All, 1 = On device, 2 = Catalogue
+    LaunchedEffect(navidromeConnected) {
+        if (!navidromeConnected) librarySourceTab = 0
+    }
+    val catalogueSongsRaw by viewModel.catalogueSongs.collectAsState()
+    val filteredCatalogueSongs by viewModel.filteredCatalogueSongs.collectAsState()
+    val catalogueLoading by viewModel.catalogueLoading.collectAsState()
+    val catalogueError by viewModel.catalogueError.collectAsState()
+    LaunchedEffect(librarySourceTab, navidromeConnected) {
+        if (navidromeConnected && librarySourceTab != 1) viewModel.loadCatalogueIfNeeded()
+    }
 
     // load and filter songs
     /*val view = LocalView.current
@@ -139,9 +158,7 @@ fun ListSongsScreen(
         }
     }*/
 
-    // Follow the shared preload cache rather than independently re-scanning MediaStore:
-    // the ViewModel was already seeded from its current value above, and this picks up
-    // the real result if this screen composed before MainActivity's startup scan finished.
+    // Follows the shared preload cache rather than independently re-scanning MediaStore -- the ViewModel was already seeded above; this picks up the real result if this screen composed before the startup scan finished.
     LaunchedEffect(Unit) {
         com.example.musicplayer.util.LibraryPreloadCache.songs.collect { cached ->
             viewModel.load(cached)
@@ -149,6 +166,14 @@ fun ListSongsScreen(
     }
 
     val songs by viewModel.filteredSongs.collectAsState()
+
+    // What the flat song list renders: local-only unless connected, in which case the tab above picks the source; Album/Artist/Era grouped views below always use `songs` (local-only), unaffected by this tab.
+    val displayedSongs = if (!navidromeConnected) songs else when (librarySourceTab) {
+        1 -> songs
+        2 -> filteredCatalogueSongs
+        else -> (songs + filteredCatalogueSongs).sortedBy { it.title.lowercase() }
+    }
+
     val queryLocal by viewModel.query.collectAsState()
     // prefer external query if provided (keeps parent and vm in sync)
     val query = queryExternal ?: queryLocal
@@ -161,6 +186,16 @@ fun ListSongsScreen(
     val onSearchedClicked: (String) -> Unit = { text ->
         try { onSearchedClickedExternal(text) } catch (_: Throwable) {}
         viewModel.setQuery(text)
+    }
+    val closeSearch: () -> Unit = {
+        onQueryChange("")
+        viewModel.setLibraryViewMode(SongListViewModel.LibraryViewMode.SONGS)
+        toggleSearch()
+    }
+    // Composed only while searching so it's registered after MainActivity's exit-app handler and wins; yields to the full player's own collapse-on-back.
+    val dockProgress by PlayerDockController.dockProgress.collectAsState()
+    if (searchVisible) {
+        BackHandler(enabled = dockProgress < 0.5f) { closeSearch() }
     }
 
     // playback state used to decide whether to show the mini player
@@ -196,14 +231,10 @@ fun ListSongsScreen(
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
     var selectedSongIdForPlaylist by remember { mutableStateOf<Int?>(null) }
 
-    // Hoisted so the background (above) and the flat song list (below) share the same
-    // scroll position — the background samples album art from the song currently ~6 rows
-    // below the top of the viewport, and re-samples as the list scrolls.
+    // Hoisted so the background and the flat song list share the same scroll position -- the background samples album art from the song ~6 rows below the viewport top and re-samples as the list scrolls.
     val songListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-    // Background drawn full-screen behind the whole Scaffold (including the top/bottom bars),
-    // not just the content area between them — otherwise a "transparent" bar just shows the
-    // Scaffold's own flat containerColor instead of this blur.
+    // Background drawn full-screen behind the whole Scaffold (including the top/bottom bars), not just the content area between them -- otherwise a "transparent" bar just shows the Scaffold's own flat containerColor instead of this blur.
     Box(modifier = Modifier.fillMaxSize()) {
     if (useAlbumPalette && !isEraView && !isAlbumView && !isArtistView && !searchVisible && songs.isNotEmpty()) {
         com.example.musicplayer.ui.components.background.DynamicAuroraRibbonBackground(
@@ -215,8 +246,7 @@ fun ListSongsScreen(
     }
     Scaffold(
         topBar = {
-            // The dedicated SearchResultsScreen draws its own header when active, replacing
-            // the normal app bar entirely (matching the mockup's full-screen search takeover).
+            // SearchResultsScreen draws its own header when active, replacing the normal app bar entirely (matching the mockup's full-screen search takeover).
             if (showTopBar && !searchVisible) {
                 Column {
                     MainAppBar(
@@ -227,7 +257,8 @@ fun ListSongsScreen(
                         onSearchedClicked = { onSearchedClicked(it) },
                         onOpenHistory = { navController.navigate(NavRoutes.History.route) },
                         onOpenSettings = { navController.navigate(NavRoutes.Settings.route) },
-                        onOpenPlaylists = { navController.navigate(NavRoutes.Playlists.route) }
+                        onOpenPlaylists = { navController.navigate(NavRoutes.Playlists.route) },
+                        title = if (navidromeConnected && librarySourceTab == 2) "Catalogue" else "Songs"
                     )
                 }
             }
@@ -238,8 +269,8 @@ fun ListSongsScreen(
                 onSelected = { idx ->
                     when (idx) {
                         0 -> { /* already here */ }
-                        1 -> navController.navigate(NavRoutes.Radio.route) { launchSingleTop = true }
-                        2 -> navController.navigate(NavRoutes.Playlists.route) { launchSingleTop = true }
+                        1 -> navController.navigateToTab(NavRoutes.Radio.route)
+                        2 -> navController.navigateToTab(NavRoutes.Playlists.route)
                     }
                 },
             )
@@ -263,11 +294,7 @@ fun ListSongsScreen(
                     SearchResultsScreen(
                         query = query,
                         onQueryChange = { onQueryChange(it) },
-                        onCancel = {
-                            onQueryChange("")
-                            viewModel.setLibraryViewMode(SongListViewModel.LibraryViewMode.SONGS)
-                            toggleSearch()
-                        },
+                        onCancel = closeSearch,
                         allSongs = allSongs,
                         matchedSongs = songs,
                         onSongClick = { selected ->
@@ -280,11 +307,10 @@ fun ListSongsScreen(
                                 PlayerStateManager.setCurrentIndex(0)
                             }
                             playerVm.play(context)
-                            navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
+                            PlayerDockController.requestExpand()
                         },
                         onArtistClick = { artistName ->
-                            // Land on that artist's songs via the flat Songs sort (not Artist
-                            // view) — search always defaults back to sort-by-song on exit.
+                            // Lands on that artist's songs via the flat Songs sort (not Artist view) -- search always defaults back to sort-by-song on exit.
                             viewModel.setLibraryViewMode(SongListViewModel.LibraryViewMode.SONGS)
                             onQueryChange(artistName)
                             toggleSearch()
@@ -294,12 +320,42 @@ fun ListSongsScreen(
                     return@Column
                 }
 
-                // Song list takes remaining space above mini player
+                // Source tab only exists once a server is connected, and only applies to the flat list mode -- Album/Artist/Era grouped views don't use it.
+                if (navidromeConnected && !isEraView && !isAlbumView && !isArtistView) {
+                    LibraryViewTabs(
+                        labels = listOf("All", "On device", "Catalogue"),
+                        selectedIndex = librarySourceTab,
+                        onSelected = { librarySourceTab = it },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    if (catalogueError != null) {
+                        Text(
+                            text = "$catalogueError — tap to retry",
+                            color = Color(0xFFFF7D6A),
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .clickable { viewModel.retryCatalogueLoad() }
+                        )
+                    } else if (librarySourceTab != 1 && catalogueLoading && catalogueSongsRaw.isEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFFFFA500))
+                        }
+                    }
+                }
+
+                // Song list takes remaining space above mini player; the bottom padding shrinks this Box's height so its content stops above PersistentPlayerHost's mini bar instead of running the last row underneath it -- the host is a screen-agnostic overlay, not a Scaffold slot any screen reserves room for.
                 Box(modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()) {
-                    // Songs content (album/artist/default) — crossfade between view modes
-                    // instead of an abrupt swap.
+                    .fillMaxWidth()
+                    .padding(bottom = com.example.musicplayer.ui.components.common.miniPlayerBottomPadding())) {
+                    // Crossfade between view modes instead of an abrupt swap.
                     val contentKey = when {
                         isEraView -> "era"
                         isAlbumView -> "album"
@@ -322,9 +378,7 @@ fun ListSongsScreen(
                                     onSongClick = { song ->
                                         val index = songs.indexOfFirst { it.id == song.id }
                                         if (index >= 0) {
-                                            // If user is currently performing a search, avoid replacing the global
-                                            // playlist with the filtered search results. Instead play only the
-                                            // selected song so a "search playlist" is not created.
+                                            // While searching, avoid replacing the global playlist with filtered search results -- play only the selected song so no "search playlist" is created.
                                             if (query.isBlank()) {
                                                 playerVm.setPlaylist(context, songs, index)
                                                 PlayerStateManager.setCurrentIndex(index)
@@ -339,14 +393,7 @@ fun ListSongsScreen(
                                                     }
                                                 }
                                             playerVm.play(context)
-                                                    // Mark the home entry's savedState so the search will be
-                                                    // cleared when the user returns from the player.
-                                                    navController.currentBackStackEntry?.savedStateHandle?.set("pendingClearSearch", true)
-                                                    navController.navigate(
-                                                NavRoutes.MusicPlayer.createRoute(
-                                                    song.id
-                                                )
-                                            )
+                                                    PlayerDockController.requestExpand()
                                         }
                                     }
                             )
@@ -376,8 +423,7 @@ fun ListSongsScreen(
                                                 playerVm.play(context)
                                             }
                                         }
-                                        navController.currentBackStackEntry?.savedStateHandle?.set("pendingClearSearch", true)
-                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                                        PlayerDockController.requestExpand()
                                     }
                                 }
                             )
@@ -407,26 +453,25 @@ fun ListSongsScreen(
                                                 playerVm.play(context)
                                             }
                                         }
-                                        navController.currentBackStackEntry?.savedStateHandle?.set("pendingClearSearch", true)
-                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(song.id))
+                                        PlayerDockController.requestExpand()
                                     }
                                 }
                             )
                         }
                         else -> {
                             SongList(
-                                songs = songs,
+                                songs = displayedSongs,
                                 modifier = Modifier.fillMaxSize(),
                                 listState = songListState,
                                 onSongClicked = { index ->
-                                    val selected = songs.getOrNull(index)
+                                    val selected = displayedSongs.getOrNull(index)
                                     if (selected != null) {
-                                        if (query.isBlank()) {
-                                            playerVm.setPlaylist(context, songs, index)
+                                        // A remote (Catalogue/All-tab) song isn't part of the local `allSongs`/global-library fallback below, so it always plays from `displayedSongs` directly.
+                                        if (query.isBlank() || selected.isRemote) {
+                                            playerVm.setPlaylist(context, displayedSongs, index)
                                             PlayerStateManager.setCurrentIndex(index)
                                         } else {
-                                            // When user is searching, prefer to play from the full/global library
-                                            // so Up Next and Related continue to operate on the global list.
+                                            // While searching, prefer the full/global library so Up Next and Related continue to operate on the global list.
                                             val idxAll = allSongs.indexOfFirst { it.id == selected.id }
                                             if (idxAll >= 0) {
                                                 playerVm.setPlaylist(context, allSongs, idxAll)
@@ -438,28 +483,18 @@ fun ListSongsScreen(
                                             }
                                         }
                                         playerVm.play(context)
-                                        navController.currentBackStackEntry?.savedStateHandle?.set("pendingClearSearch", true)
-                                        navController.navigate(NavRoutes.MusicPlayer.createRoute(selected.id))
+                                        PlayerDockController.requestExpand()
                                     }
                                 },
                                 onAddToPlaylist = { songId ->
                                     selectedSongIdForPlaylist = songId
                                     showAddToPlaylistDialog = true
-                                }
+                                },
+                                showAvailabilityBadge = navidromeConnected
                             )
                         }
                     }
                     }
-                }
-
-                // show the mini player only when playback is active so it doesn't take layout space while idle
-                if (showMini) {
-                    MiniPlayer(
-                        modifier = Modifier.fillMaxWidth(),
-                        onOpenPlayer = { selectedSong ->
-                            selectedSong?.let { navController.navigate(NavRoutes.MusicPlayer.createRoute(it.id)) }
-                        }
-                    )
                 }
             }
 
@@ -573,7 +608,8 @@ fun SongList(
     modifier: Modifier = Modifier,
     listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     onSongClicked: (Int) -> Unit = {},
-    onAddToPlaylist: (Int) -> Unit = {}
+    onAddToPlaylist: (Int) -> Unit = {},
+    showAvailabilityBadge: Boolean = false
 ) {
     Column(
         modifier = modifier
@@ -585,7 +621,8 @@ fun SongList(
                 SongCardRow(
                     song = song,
                     onClick = { onSongClicked(index) },
-                    onAddToPlaylist = onAddToPlaylist
+                    onAddToPlaylist = onAddToPlaylist,
+                    showAvailabilityBadge = showAvailabilityBadge
                 )
             }
         }
@@ -646,7 +683,11 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
             }
 
             else -> {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    // No bottom reservation needed -- PersistentPlayerHost never renders over this Radio tab.
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     itemsIndexed(stations) { idx, station ->
                         val displayName = Util.extractQuotedOrOriginal(station.name).ifBlank { station.name ?: "Unknown" }
 
@@ -661,12 +702,7 @@ fun DisplayListRadioStations(modifier: Modifier = Modifier, navController: NavHo
                                     return@RadioCardRow
                                 }
 
-                                // ensure any current music playback is stopped before starting radio
-                                try {
-                                    com.example.musicplayer.service.PlayerIntentBuilder.startStop(context)
-                                    Log.d("DisplayListRadioStations", "Requested PlayerForegroundService STOP before starting radio")
-                                } catch (_: Throwable) {}
-
+                                // RadioPlayerService pauses local playback itself once started (ensureLocalMusicPaused).
                                 try {
                                     val svcIntent = Intent().apply {
                                         action = RadioPlayerService.ACTION_PLAY_STATION
@@ -754,12 +790,63 @@ fun SongListPreview() {
                         PlayerStateManager.setPlaylist(sampleSongs, 0)
                         PlayerStateManager.setIsPlaying(false)
                     }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                    ) {
-                        MiniPlayer(modifier = Modifier.align(Alignment.Center))
-                    }
+                }
+            }
+        }
+    }
+}
+
+// Same shell as SongListPreview, but showing the merged "All" tab once Navidrome is connected -- local/remote interleaved, remote rows carrying the availability badge; static sample data so the preview renders standalone.
+@Preview(showSystemUi = true, name = "DisplayList — Navidrome connected", backgroundColor = 0xFF000000, showBackground = true)
+@Composable
+private fun SongListConnectedPreview() {
+    MaterialTheme {
+        val localSongs: List<Song> = listOf(
+            Song(1, null, "Afterglow", "Nova Reyes", 238000.0, "", "Neon Parallels", 2003),
+            Song(2, null, "Dust & Gold", "Marla Quinn", 195000.0, "", "Dust & Gold", 2011)
+        )
+        val remoteSongs: List<Song> = listOf(
+            Song(-101, null, "Bright Static", "Kaya Mott", 224000.0, "https://music.example.com/rest/stream.view", "Bright Static", 2019).apply { isRemote = true },
+            Song(-102, null, "Cobalt Hour", "The Lantern Set", 245000.0, "https://music.example.com/rest/stream.view", "Nightshift", 1994).apply { isRemote = true }
+        )
+        val merged = (localSongs + remoteSongs).sortedBy { it.title.lowercase() }
+        Scaffold(
+            topBar = {
+                Column {
+                    MainAppBar(
+                        showSearch = false,
+                        onToggleSearch = {},
+                        query = "",
+                        onQueryChange = {},
+                        onSearchedClicked = {},
+                        onOpenSettings = {},
+                        onOpenPlaylists = {}
+                    )
+                }
+            },
+            bottomBar = {
+                BottomNav(selectedIndex = 0, onSelected = { /* no-op in preview */ })
+            }
+        ) { innerPadding ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                AuroraRibbonBackground()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    LibraryViewTabs(
+                        labels = listOf("All", "On device", "Catalogue"),
+                        selectedIndex = 0,
+                        onSelected = {},
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    SongList(
+                        songs = merged,
+                        onSongClicked = {},
+                        modifier = Modifier.fillMaxSize(),
+                        showAvailabilityBadge = true
+                    )
                 }
             }
         }

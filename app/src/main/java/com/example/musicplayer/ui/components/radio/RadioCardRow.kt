@@ -43,8 +43,7 @@ fun RadioCardRow(
 ) {
     val context = LocalContext.current
     val imageUrl = Util.getStationImageUrl(station).ifBlank { null }
-    // One comma-set tagline instead of a row of pill chips — unreadable at chip size and
-    // clipped on long names.
+    // One comma-set tagline instead of a row of pill chips -- unreadable at chip size and clipped on long names.
     val tagline = Util.parseTags(station.tags).joinToString(", ")
 
     Row(

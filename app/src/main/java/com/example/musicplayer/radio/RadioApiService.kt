@@ -19,12 +19,7 @@ interface RadioApiService {
         @Query("state") state: String? = null
     ): List<RadioStation>
 
-    /**
-     * Search stations near a geographic point.
-     * Assumption: Radio Browser exposes a `json/stations/nearby` endpoint that accepts
-     * `lat` and `lng` query parameters and optional `limit` and `distance` (km).
-     * If the server uses different parameter names, this can be adjusted later.
-     */
+    // Assumes Radio Browser's json/stations/nearby endpoint takes lat/lng plus optional limit/distance(km); adjust if the server uses different parameter names.
     @GET("json/stations/nearby")
     suspend fun searchStationsNearby(
         @Query("lat") lat: Double,

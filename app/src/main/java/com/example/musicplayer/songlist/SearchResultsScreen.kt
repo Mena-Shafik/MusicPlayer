@@ -61,12 +61,7 @@ private fun matchingArtists(allSongs: List<Song>, query: String): List<ArtistMat
     return counts.map { (name, count) -> ArtistMatch(name, count) }.sortedBy { it.name.lowercase() }
 }
 
-/**
- * Dedicated full-screen search takeover (replaces the old inline search-bar-in-app-bar):
- * own search field, kind filter chips, results grouped into SONGS / ARTISTS sections with
- * a live count, and a dashed-border "no results" state. Local-only — there is no
- * server/catalogue source in this app, so there's no on-device-vs-catalogue distinction.
- */
+// Dedicated full-screen search takeover (replaces the old inline search-bar-in-app-bar): own search field, kind filter chips, results grouped into SONGS/ARTISTS with a live count, and a dashed-border "no results" state; local-only, no server/catalogue distinction.
 @Composable
 fun SearchResultsScreen(
     query: String,

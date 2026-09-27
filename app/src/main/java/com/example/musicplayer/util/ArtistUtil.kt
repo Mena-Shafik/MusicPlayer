@@ -8,10 +8,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/**
- * Service to fetch artist images from MusicBrainz and Fanart.tv APIs (free, no auth required).
- * Uses music-specific databases for better accuracy.
- */
+// Fetches artist images from MusicBrainz and Fanart.tv (free, no auth required) for better accuracy than generic image search.
 object ArtistUtil {
     private const val TAG = "ArtistImageService"
     private const val TIMEOUT_MS = 15000
@@ -54,6 +51,9 @@ object ArtistUtil {
         return result
     }
 
+    // Tags often use typographic dashes (e.g. "(G)I‐DLE" with U+2010) that the APIs don't match against a plain hyphen.
+    private fun toQueryName(name: String): String = name.trim().replace(Regex("[\u2010-\u2015\u2212]"), "-")
+
     private fun matchScore(candidate: String, target: String): Int {
         if (candidate == target) return 3
         if (candidate.removePrefix("the ") == target.removePrefix("the ")) return 3
@@ -70,10 +70,7 @@ object ArtistUtil {
         return if (overlapRatio >= 0.8f) 1 else 0
     }
 
-    /**
-     * Fetch artist image URL using MusicBrainz API + Fanart.tv fallback.
-     * MusicBrainz is a free, open music encyclopedia with accurate artist data.
-     */
+    // Fetches artist image URL via MusicBrainz (free, open music encyclopedia) with a Fanart.tv fallback.
     private suspend fun fetchArtistImage(artistName: String): String? {
         return withContext(Dispatchers.IO) {
             try {
@@ -94,10 +91,12 @@ object ArtistUtil {
                     }
                 }
 
-                val encoded = URLEncoder.encode("\"${artistName.trim()}\"", "UTF-8")
+                // TheAudioDB's name search alone finds most artists, including ones MusicBrainz only lists under another name (e.g. (G)I-DLE).
+                fetchFromTheAudioDB("", artistName)?.let { return@withContext it }
+
+                val encoded = URLEncoder.encode("\"${toQueryName(artistName)}\"", "UTF-8")
                 Log.d(TAG, "Fetching artist image for: $artistName from MusicBrainz")
-                // ...existing code...
-                // Step 1: Search MusicBrainz for artist MBID
+                // Step 1: search MusicBrainz for the artist MBID.
                 val searchUrl = "https://musicbrainz.org/ws/2/artist/?query=artist:$encoded&fmt=json&limit=5"
                 val searchConn = URL(searchUrl).openConnection() as HttpURLConnection
                 searchConn.requestMethod = "GET"
@@ -154,14 +153,12 @@ object ArtistUtil {
                 Log.d(TAG, "Found MBID for $artistName: $mbid")
 
                 // Step 2: Try to get image from TheAudioDB (free, no key required for basic use)
-                val imageUrl = fetchFromTheAudioDB(mbid, artistName)
+                val imageUrl = fetchFromTheAudioDB(mbid, artistName, searchByName = false)
                 if (imageUrl != null) {
                     Log.d(TAG, "Found image from TheAudioDB for $artistName")
                     return@withContext imageUrl
                 }
 
-                // Step 3: Fallback - try to get a simple image URL pattern
-                // Some services use predictable patterns with MBID
                 Log.d(TAG, "No image found for $artistName via APIs")
                 null
 
@@ -172,80 +169,81 @@ object ArtistUtil {
         }
     }
 
-    /**
-     * Fetch artist image from TheAudioDB API (free service).
-     * Searches by name first, then falls back to MBID if provided.
-     */
-    private suspend fun fetchFromTheAudioDB(mbid: String, artistName: String): String? {
+    // Fetches artist image from TheAudioDB (free service), searching by name first then falling back to MBID if provided.
+    private suspend fun fetchFromTheAudioDB(mbid: String, artistName: String, searchByName: Boolean = true): String? {
         return try {
-            // Try searching by name first
-            val nameEncoded = URLEncoder.encode(artistName.trim(), "UTF-8")
-            val nameApiUrl = "https://www.theaudiodb.com/api/v1/json/2/search.php?s=$nameEncoded"
+            var conn: HttpURLConnection
+            var response: String
+            if (searchByName) {
+                // Try searching by name first
+                val nameEncoded = URLEncoder.encode(toQueryName(artistName), "UTF-8")
+                val nameApiUrl = "https://www.theaudiodb.com/api/v1/json/123/search.php?s=$nameEncoded"
 
-            Log.d(TAG, "Searching TheAudioDB by name: $artistName")
-            var conn = URL(nameApiUrl).openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.connectTimeout = TIMEOUT_MS
-            conn.readTimeout = TIMEOUT_MS
-            conn.setRequestProperty("User-Agent", "MusicPlayer/1.0")
+                Log.d(TAG, "Searching TheAudioDB by name: $artistName")
+                conn = URL(nameApiUrl).openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = TIMEOUT_MS
+                conn.readTimeout = TIMEOUT_MS
+                conn.setRequestProperty("User-Agent", "MusicPlayer/1.0")
 
-            var response = if (conn.responseCode == 200) {
-                conn.inputStream.bufferedReader().use { it.readText() }
-            } else {
-                Log.d(TAG, "TheAudioDB name search failed with code ${conn.responseCode}")
+                response = if (conn.responseCode == 200) {
+                    conn.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    Log.d(TAG, "TheAudioDB name search failed with code ${conn.responseCode}")
+                    conn.disconnect()
+                    ""
+                }
                 conn.disconnect()
-                ""
-            }
-            conn.disconnect()
 
-            // Try to extract image from name search
-            if (response.isNotBlank()) {
-                val obj = JSONObject(response)
-                val artists = obj.optJSONArray("artists")
-                if (artists != null && artists.length() > 0) {
-                    Log.d(TAG, "  TheAudioDB returned ${artists.length()} results for '$artistName'")
-                    val targetName = normalizeArtistName(artistName)
-                    var bestMatch: JSONObject? = null
-                    var bestScore = 0
+                // Try to extract image from name search
+                if (response.isNotBlank()) {
+                    val obj = JSONObject(response)
+                    val artists = obj.optJSONArray("artists")
+                    if (artists != null && artists.length() > 0) {
+                        Log.d(TAG, "  TheAudioDB returned ${artists.length()} results for '$artistName'")
+                        val targetName = normalizeArtistName(artistName)
+                        var bestMatch: JSONObject? = null
+                        var bestScore = 0
 
-                    for (i in 0 until artists.length()) {
-                        val artistObj = artists.getJSONObject(i)
-                        val apiArtistName = artistObj.optString("strArtist", "")
-                        val apiName = normalizeArtistName(apiArtistName)
-                        val score = matchScore(apiName, targetName)
-                        Log.d(TAG, "    [$i] '$apiArtistName' (normalized: '$apiName') → score=$score")
+                        for (i in 0 until artists.length()) {
+                            val artistObj = artists.getJSONObject(i)
+                            val apiArtistName = artistObj.optString("strArtist", "")
+                            val apiName = normalizeArtistName(apiArtistName)
+                            val score = matchScore(apiName, targetName)
+                            Log.d(TAG, "    [$i] '$apiArtistName' (normalized: '$apiName') → score=$score")
 
-                        if (score > bestScore) {
-                            bestScore = score
-                            bestMatch = artistObj
+                            if (score > bestScore) {
+                                bestScore = score
+                                bestMatch = artistObj
+                            }
                         }
-                    }
 
-                    if (bestMatch != null) {
-                        val bestArtistName = bestMatch.optString("strArtist", "")
-                        val imageUrl = bestMatch.optString("strArtistThumb", "")
-                            .ifBlank { bestMatch.optString("strArtistLogo", "") }
-                            .ifBlank { bestMatch.optString("strArtistBanner", "") }
+                        if (bestMatch != null) {
+                            val bestArtistName = bestMatch.optString("strArtist", "")
+                            val imageUrl = bestMatch.optString("strArtistThumb", "")
+                                .ifBlank { bestMatch.optString("strArtistLogo", "") }
+                                .ifBlank { bestMatch.optString("strArtistBanner", "") }
 
-                        if (imageUrl.isNotBlank()) {
-                            Log.d(TAG, "  ✓ BEST MATCH: '$bestArtistName' (score=$bestScore)")
-                            Log.d(TAG, "  ✓ IMAGE: ${imageUrl.take(80)}...")
-                            return imageUrl
+                            if (imageUrl.isNotBlank()) {
+                                Log.d(TAG, "  ✓ BEST MATCH: '$bestArtistName' (score=$bestScore)")
+                                Log.d(TAG, "  ✓ IMAGE: ${imageUrl.take(80)}...")
+                                return imageUrl
+                            } else {
+                                Log.d(TAG, "  ✗ BEST MATCH: '$bestArtistName' (score=$bestScore) but NO IMAGE")
+                            }
                         } else {
-                            Log.d(TAG, "  ✗ BEST MATCH: '$bestArtistName' (score=$bestScore) but NO IMAGE")
+                            Log.d(TAG, "  ✗ No matching artists found (bestScore=$bestScore)")
                         }
                     } else {
-                        Log.d(TAG, "  ✗ No matching artists found (bestScore=$bestScore)")
+                        Log.d(TAG, "  ✗ TheAudioDB returned null or empty artists array")
                     }
-                } else {
-                    Log.d(TAG, "  ✗ TheAudioDB returned null or empty artists array")
                 }
             }
 
             // Fallback: search by MBID if name search didn't work
             if (mbid.isNotBlank()) {
                 Log.d(TAG, "Falling back to MBID search for $artistName: $mbid")
-                val mbidApiUrl = "https://www.theaudiodb.com/api/v1/json/2/artist-mb.php?i=$mbid"
+                val mbidApiUrl = "https://www.theaudiodb.com/api/v1/json/123/artist-mb.php?i=$mbid"
                 conn = URL(mbidApiUrl).openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
                 conn.connectTimeout = TIMEOUT_MS
@@ -284,12 +282,7 @@ object ArtistUtil {
     }
 
 
-    /**
-     * Get artist image URL with caching.
-     * Checks cache first, then fetches from MusicBrainz + TheAudioDB.
-     * Falls back to aliases if original name doesn't return images.
-     * Note: Only successful fetches are cached when app is active; failures are retried on next call.
-     */
+    // Checks cache first, then fetches from MusicBrainz + TheAudioDB, falling back to known aliases if the original name returns nothing; only successful fetches are cached (and only while the app is active) so failures retry on next call.
     suspend fun getArtistImageUrl(artistName: String): String? {
         val normalizedName = normalizeArtistName(artistName)
         val cacheKey = normalizedName  // Use normalized name as cache key for consistency
@@ -342,29 +335,20 @@ object ArtistUtil {
         return null
     }
 
-    /**
-     * Clear the image cache and mark app as inactive.
-     * Called when app goes to background.
-     */
+    // Called when app goes to background.
     fun onAppBackground() {
         isAppActive = false
         imageCache.clear()
         Log.d(TAG, "⊗ APP BACKGROUNDED: Cache cleared and caching disabled")
     }
 
-    /**
-     * Mark app as active - caching will resume.
-     * Called when app comes to foreground.
-     */
+    // Called when app comes to foreground; caching resumes.
     fun onAppForeground() {
         isAppActive = true
         imageCache.clear()
         Log.d(TAG, "⊕ APP FOREGROUNDED: Cache enabled, previous cache cleared")
     }
 
-    /**
-     * Clear the image cache (useful for testing or memory management).
-     */
     fun clearCache() {
         imageCache.clear()
         Log.d(TAG, "Image cache cleared")

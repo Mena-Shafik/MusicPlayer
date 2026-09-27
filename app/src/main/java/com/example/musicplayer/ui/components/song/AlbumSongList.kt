@@ -52,10 +52,6 @@ import com.example.musicplayer.util.Util
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * Displays songs organized by album. Horizontal scrollable album cards on top,
- * and a list of songs from the selected album below.
- */
 @Composable
 fun AlbumSongList(
     songs: List<Song>,
@@ -91,14 +87,12 @@ fun AlbumSongList(
         }
     }
 
-    // Partition into albums and singles
-    // Exclude compilation albums from the main album view
+    // Partitions into albums and singles, excluding compilation albums from the main album view.
     val albumsMulti = grouped.filter { (albumName, list) ->
         list.size >= 2 && !compilationAlbums.contains(albumName)
     }
     val singlesList = grouped.filter { (album, list) ->
-        // Treat one-track albums, unknown album placeholders, compilation albums,
-        // and generic album names like "Music", "Single", "Singles" as singles
+        // Treats one-track albums, unknown/compilation albums, and generic names ("Music", "Single", "Singles") as singles.
         val isGenericSingle = album.equals("Music", ignoreCase = true) || album.equals("Single", ignoreCase = true) || album.equals("Singles", ignoreCase = true)
         list.size == 1 || album.equals("Unknown Album", ignoreCase = true) || compilationAlbums.contains(album) || isGenericSingle
     }

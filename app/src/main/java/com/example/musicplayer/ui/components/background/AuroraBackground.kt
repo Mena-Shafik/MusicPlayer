@@ -33,11 +33,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.tooling.preview.Preview
 import kotlin.math.*
 
-/**
- * Simple aurora-like animated background.
- * - Draws several drifting ribbons with soft colors.
- * - Applies RenderEffect blur on supported API levels for a soft appearance.
- */
+// Simple aurora-like animated background -- drifting ribbons with soft colors, RenderEffect blur on supported API levels.
 @Composable
 fun AuroraBackground(
     modifier: Modifier = Modifier,
@@ -45,9 +41,7 @@ fun AuroraBackground(
     speed: Float = 0.8f,
     intensity: Float = 0.95f,
 ) {
-    // Use a continuously increasing time value (0..1) updated each frame so the
-    // animation never "jumps" when the underlying animation restarts.
-    // We compute a period in seconds similar to the previous duration (20000ms / speed).
+    // A continuously increasing time value updated each frame so the animation never "jumps" when it restarts; period in seconds is similar to the previous duration (20000ms / speed).
     val tState = remember { mutableStateOf(0f) }
 
     // Lifecycle & power mode awareness to reduce battery usage when the screen is off
@@ -74,8 +68,7 @@ fun AuroraBackground(
         }
     }
     LaunchedEffect(speed, isActive.value, isPowerSave.value) {
-        // compute a continuous cycle count (elapsed / period). We DO NOT modulo it so the
-        // underlying sin/cos calls remain continuous across cycle boundaries.
+        // Continuous cycle count (elapsed / period), deliberately not modulo'd so the underlying sin/cos calls stay continuous across cycle boundaries.
         val periodSec = (12f / max(0.1f, speed)) // base 12s / speed -> faster default cycle
         val startNanos = System.nanoTime()
         while (true) {
@@ -94,9 +87,7 @@ fun AuroraBackground(
     }
     val t by remember { tState }
 
-    // Sample colors from the album cover (async) and fall back to baseColors.
-    // Keep the last successful palette so we don't flash back to default/base colors
-    // during quick song switches where album bitmaps may be temporarily null.
+    // Samples colors from the album cover async; keeps the last successful palette so quick song switches (where the bitmap may be temporarily null) don't flash back to default colors.
     val lastPalette = remember { mutableStateOf<List<Color>?>(null) }
     val bmpState = rememberUpdatedState(albumCoverBitmap)
     // Fade-in control: start transparent until we have a sampled palette
@@ -173,8 +164,7 @@ fun AuroraBackground(
         }
     }
 
-    // Smooth transition between palettes when album art (or base colors) change.
-    // Use a fixed palette size so node mapping remains stable and we don't reposition colors abruptly.
+    // Fixed palette size so node mapping stays stable and colors don't reposition abruptly when the palette changes.
     val paletteSize = 6
 
     fun normalizePalette(input: List<Color>, size: Int): List<Color> {
@@ -244,16 +234,15 @@ private fun DrawScope.drawMeshGradient(
 ) {
     val maxDim = max(width, height)
 
-    // number of gradient nodes (more -> richer mesh)
-    // increase nodes for a richer, more pronounced aurora
+    // Opaque base first -- everything below is only ever semi-transparent, so without this whatever's behind this Box (e.g. the screen under an overlay like the persistent player) bleeds through wherever nodes don't overlap, most visibly at the bottom vignette.
+    drawRect(color = Color.Black)
+
     val nodes = max(4, colors.size * 3)
 
     for (i in 0 until nodes) {
-        // choose a base color cycling through provided colors
         val col = colors[i % colors.size]
 
-        // animated offset using sin/cos for organic motion
-        // use i/n instead of adding a raw integer offset so phase spacing is a fraction of a cycle
+        // Animated offset via sin/cos for organic motion; uses i/n rather than a raw integer offset so phase spacing is a fraction of a cycle.
         val frac = i.toFloat() / nodes
         val angle = t * 2f * PI.toFloat() * (0.25f + frac)
         val radiusFactor = 0.35f + (i % 3) * 0.1f
@@ -278,8 +267,7 @@ private fun DrawScope.drawMeshGradient(
         drawCircle(brush = brush, radius = radius, center = center)
     }
 
-    // Add a top source tint so the aurora appears to originate from the top,
-    // and keep a bottom vignette to darken the UI area.
+    // Top source tint so the aurora appears to originate from the top, plus a bottom vignette to darken the UI area.
     if (colors.isNotEmpty()) {
         val base = colors[0]
         // Top radial source near the top-center

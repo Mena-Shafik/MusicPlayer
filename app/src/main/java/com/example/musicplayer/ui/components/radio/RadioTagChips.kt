@@ -23,10 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.musicplayer.util.Util
 
-/**
- * Render radio station tags as a horizontal scrollable list of chips.
- * Accepts either a raw tags string (comma/space separated) or a RadioStation.
- */
+// Renders radio station tags as a horizontal scrollable chip list; accepts either a raw tags string (comma/space separated) or a RadioStation.
 @Composable
 fun RadioTagChips(tagsRaw: String?, modifier: Modifier = Modifier, chipBackground: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), chipContentColor: Color = MaterialTheme.colorScheme.onPrimary
 ) {
@@ -96,10 +93,7 @@ fun RadioTagChips(
     }
 }
 
-/**
- * Compact version of RadioTagChips with smaller size for dense layouts.
- * Uses plain Surface instead of AssistChip for a more minimal look.
- */
+// Compact version of RadioTagChips for dense layouts; plain Surface instead of AssistChip for a more minimal look.
 @Composable
 fun CompactRadioTagChips(
     tagsRaw: String?,

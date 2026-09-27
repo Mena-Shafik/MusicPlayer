@@ -16,6 +16,11 @@ class Song {
     var lyrics: String? = null
     var lyricsFetched: Boolean = false
 
+    // Set only for songs from a Navidrome/Subsonic catalogue (NavidromeRepository.listCatalogueSongs) -- `path` is already a playable authenticated stream URL for these, not a local file path.
+    var isRemote: Boolean = false
+    var remoteId: String? = null
+    var remoteCoverArtUrl: String? = null
+
     @Parcelize
     data class Song(
         val id: Int,
@@ -50,8 +55,7 @@ class Song {
         this.album = album
     }
 
-    // Backward-compatible convenience constructor used by unit tests and callers
-    // that only provide id, title, artist, duration and path (album optional).
+    // Backward-compatible convenience constructor for unit tests/callers providing only id/title/artist/duration/path (album optional).
     constructor(id: Int, title: String, artist: String, duration: Double, path: String, album: String? = null) {
         this.id = id
         this.title = title

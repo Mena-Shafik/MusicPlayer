@@ -19,6 +19,9 @@ interface HistoryDao {
     @Query("DELETE FROM history")
     suspend fun clearAll()
 
+    @Query("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY timestamp DESC LIMIT :keep)")
+    suspend fun trimTo(keep: Int)
+
     @Query("SELECT * FROM history ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLastEntry(): HistoryEntry?
 }

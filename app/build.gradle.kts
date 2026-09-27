@@ -28,6 +28,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release key credentials come from ~/.gradle/gradle.properties (never committed); without them release falls back to the debug key.
+    val releaseStoreFile = project.findProperty("MUSICPLAYER_RELEASE_STORE_FILE") as String?
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = project.findProperty("MUSICPLAYER_RELEASE_STORE_PASSWORD") as String
+                keyAlias = project.findProperty("MUSICPLAYER_RELEASE_KEY_ALIAS") as String
+                keyPassword = project.findProperty("MUSICPLAYER_RELEASE_KEY_PASSWORD") as String
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -35,7 +48,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseStoreFile != null) "release" else "debug")
         }
     }
     compileOptions {

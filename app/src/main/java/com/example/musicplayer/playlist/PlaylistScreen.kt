@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.musicplayer.model.Playlist
 import com.example.musicplayer.navigation.NavRoutes
+import com.example.musicplayer.navigation.navigateToTab
 import com.example.musicplayer.ui.components.background.AuroraRibbonBackground
 import com.example.musicplayer.ui.components.common.BottomNav
 import com.example.musicplayer.ui.components.common.dashedBorder
@@ -79,9 +80,7 @@ fun PlaylistScreen(
     val playlists by viewModel.playlists.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
 
-    // Background drawn full-screen behind the whole Scaffold (including the top/bottom bars),
-    // not just the content area between them — otherwise a "transparent" bar just shows the
-    // Scaffold's own flat containerColor instead of this blur.
+    // Background drawn full-screen behind the whole Scaffold (including the top/bottom bars), not just the content area between them -- otherwise a "transparent" bar just shows the Scaffold's own flat containerColor instead of this blur.
     Box(modifier = Modifier.fillMaxSize().then(modifier)) {
     AuroraRibbonBackground()
     Scaffold(
@@ -124,8 +123,8 @@ fun PlaylistScreen(
                 selectedIndex = 2,
                 onSelected = { idx ->
                     when (idx) {
-                        0 -> navController.navigate(NavRoutes.Home.route) { launchSingleTop = true }
-                        1 -> navController.navigate(NavRoutes.Radio.route) { launchSingleTop = true }
+                        0 -> navController.navigateToTab(NavRoutes.Home.route)
+                        1 -> navController.navigateToTab(NavRoutes.Radio.route)
                         2 -> {} // already here
                     }
                 }
@@ -223,7 +222,9 @@ fun PlaylistScreen(
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 8.dp),
+                                .padding(horizontal = 20.dp, vertical = 8.dp)
+                                // Shrinks this list's measured height so it stops above PersistentPlayerHost's mini bar instead of running full screen with its last row underneath the bar.
+                                .padding(bottom = com.example.musicplayer.ui.components.common.miniPlayerBottomPadding()),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(playlists) { playlist ->
@@ -262,8 +263,7 @@ private fun PlaylistScreenPreview() {
     }
 }
 
-// Mirrors PlaylistScreen's real header/list/bottom-nav chrome (minus the ViewModel, which
-// needs a real Context/Room DB) so this preview stays accurate as that screen evolves.
+// Mirrors PlaylistScreen's real header/list/bottom-nav chrome (minus the ViewModel, which needs a real Context/Room DB) so this preview stays accurate as that screen evolves.
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview(showSystemUi = true, showBackground = true, backgroundColor = 0xFF000000, name = "PlaylistScreen - With Data")
 @Composable
