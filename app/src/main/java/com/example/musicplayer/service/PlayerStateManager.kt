@@ -115,6 +115,21 @@ object PlayerStateManager {
         return true
     }
 
+    // Clears the whole session (queue, position, modes) -- used when the app is closed so nothing resumes on relaunch.
+    fun reset() {
+        safeLog("reset")
+        _playlist.value = emptyList()
+        _currentIndex.value = 0
+        _isPlaying.value = false
+        _positionMs.value = 0L
+        _durationMs.value = 0L
+        _isPrepared.value = false
+        _shuffleEnabled.value = false
+        _replayEnabled.value = false
+        shuffleQueue.clear()
+        playedHistory.clear()
+    }
+
     // ...existing code...
 
     fun setCurrentIndex(idx: Int) {

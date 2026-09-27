@@ -246,82 +246,30 @@ class SongListViewModel(
     val isAlbumView: StateFlow<Boolean> = _isAlbumView
 
     fun setAlbumView(enabled: Boolean) {
-        if (enabled) _isArtistView.value = false
-        _isAlbumView.value = enabled
-        context?.let {
-            viewModelScope.launch {
-                PreferencesManager.setAlbumView(it, enabled)
-            }
-        }
+        setLibraryViewMode(if (enabled) LibraryViewMode.ALBUMS else LibraryViewMode.SONGS)
     }
 
-    fun toggleAlbumView() {
-        val newValue = !_isAlbumView.value
-        if (newValue) _isArtistView.value = false
-        _isAlbumView.value = newValue
-        context?.let {
-            viewModelScope.launch {
-                PreferencesManager.setAlbumView(it, newValue)
-            }
-        }
-    }
+    fun toggleAlbumView() = setAlbumView(!_isAlbumView.value)
 
     // NEW: artist view state
     private val _isArtistView = MutableStateFlow(false)
     val isArtistView: StateFlow<Boolean> = _isArtistView
 
     fun setArtistView(enabled: Boolean) {
-        if (enabled) _isAlbumView.value = false
-        _isArtistView.value = enabled
-        context?.let {
-            viewModelScope.launch {
-                PreferencesManager.setArtistView(it, enabled)
-            }
-        }
+        setLibraryViewMode(if (enabled) LibraryViewMode.ARTISTS else LibraryViewMode.SONGS)
     }
 
-    fun toggleArtistView() {
-        val newValue = !_isArtistView.value
-        if (newValue) _isAlbumView.value = false
-        _isArtistView.value = newValue
-        context?.let {
-            viewModelScope.launch {
-                PreferencesManager.setArtistView(it, newValue)
-            }
-        }
-    }
+    fun toggleArtistView() = setArtistView(!_isArtistView.value)
 
     // --- Era view state ---
     private val _isEraView = MutableStateFlow(false)
     val isEraView: StateFlow<Boolean> = _isEraView
 
     fun setEraView(enabled: Boolean) {
-        // When enabling era view, turn off album/artist mutually exclusive states
-        if (enabled) {
-            _isAlbumView.value = false
-            _isArtistView.value = false
-        }
-        _isEraView.value = enabled
-        context?.let {
-            viewModelScope.launch {
-                PreferencesManager.setEraView(it, enabled)
-            }
-        }
+        setLibraryViewMode(if (enabled) LibraryViewMode.ERAS else LibraryViewMode.SONGS)
     }
 
-    fun toggleEraView() {
-        val newValue = !_isEraView.value
-        if (newValue) {
-            _isAlbumView.value = false
-            _isArtistView.value = false
-        }
-        _isEraView.value = newValue
-        context?.let {
-            viewModelScope.launch {
-                PreferencesManager.setEraView(it, newValue)
-            }
-        }
-    }
+    fun toggleEraView() = setEraView(!_isEraView.value)
 
     enum class LibraryViewMode { SONGS, ALBUMS, ARTISTS, ERAS }
 

@@ -585,28 +585,21 @@ fun MusicPlayerChrome(
                                         spacing = MarqueeSpacing(50.dp)
                                     )
                             )
-                            val artistLineCount = song.artist.split("\n").size
                             Text(
-                                text = song.artist,
+                                text = song.artist.replace("\n", ", "),
                                 color = topOnBg.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center,
                                 fontSize = lerpUnit(14.sp, 13.sp, halfLerpT),
                                 fontWeight = FontWeight.Medium,
-                                maxLines = if (artistLineCount > 3) Int.MAX_VALUE else 3,
+                                maxLines = 1,
                                 modifier = Modifier
                                     .padding(horizontal = 10.dp)
                                     .padding(top = 2.dp)
                                     .width(340.dp)
-                                    .then(
-                                        if (artistLineCount > 3) {
-                                            Modifier.basicMarquee(
-                                                iterations = Int.MAX_VALUE,
-                                                initialDelayMillis = 2000,
-                                                spacing = MarqueeSpacing(50.dp)
-                                            )
-                                        } else {
-                                            Modifier
-                                        }
+                                    .basicMarquee(
+                                        iterations = Int.MAX_VALUE,
+                                        initialDelayMillis = 2000,
+                                        spacing = MarqueeSpacing(50.dp)
                                     )
                             )
                         }

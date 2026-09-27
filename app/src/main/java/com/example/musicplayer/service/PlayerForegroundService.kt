@@ -16,6 +16,7 @@ import android.support.v4.media.session.PlaybackStateCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -50,9 +51,19 @@ class PlayerForegroundService : Service() {
     private var isPreparing: Boolean = false
     // whether we've called startForeground already (to satisfy startForegroundService requirement)
     private var isForegroundStarted: Boolean = false
+    // Bumped on every prepareAsync so a stale timeout watchdog can't clear a newer prepare's flag.
+    private var prepareGeneration: Int = 0
+    // Path already retried once after a MediaPlayer error; a second error on it gives up instead of looping.
+    private var retriedPath: String? = null
+
+    companion object {
+        // Lets the radio service pause us only when we're alive, instead of startService() spawning an empty instance.
+        @JvmStatic @Volatile var isRunning: Boolean = false
+    }
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         audioManager = getSystemService(AudioManager::class.java)
         // Ensure notification channel exists and promote to foreground immediately with a minimal notification.
         try {
@@ -168,14 +179,19 @@ class PlayerForegroundService : Service() {
                 Log.e(TAG, "MediaPlayer error: what=$what extra=$extra currentPreparedIndex=$currentPreparedIndex")
                 // Reset preparing flag so future prepare attempts can succeed
                 isPreparing = false
-                try {
-                    PlayerStateManager.clearPrepared()
-                    Toast.makeText(this@PlayerForegroundService, "Playback error. Retrying...", Toast.LENGTH_SHORT).show()
-                } catch (_: Throwable) {}
+                try { PlayerStateManager.clearPrepared() } catch (_: Throwable) {}
 
-                // Retry the failed song once
                 val failedIndex = currentPreparedIndex
-                if (failedIndex >= 0) {
+                val failedPath = currentPreparedPath
+                if (failedPath != null && failedPath == retriedPath) {
+                    Log.w(TAG, "MediaPlayer error: already retried path=$failedPath, giving up")
+                    retriedPath = null
+                    PlayerStateManager.setIsPlaying(false)
+                    updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                    try { Toast.makeText(this@PlayerForegroundService, "Unable to play this song", Toast.LENGTH_SHORT).show() } catch (_: Throwable) {}
+                } else if (failedIndex >= 0) {
+                    retriedPath = failedPath
+                    try { Toast.makeText(this@PlayerForegroundService, "Playback error. Retrying...", Toast.LENGTH_SHORT).show() } catch (_: Throwable) {}
                     scope.launch(Dispatchers.Main) {
                         delay(500)
                         Log.d(TAG, "MediaPlayer error: retrying idx=$failedIndex")
@@ -207,6 +223,7 @@ class PlayerForegroundService : Service() {
                     if (currentPreparedPath != null && currentPreparedPath == desiredPath) {
                         // Still the desired item -> start playback
                         isPreparing = false
+                        retriedPath = null
                         // Update repository current index now that the prepared item is actually starting
                         try { PlayerStateManager.setCurrentIndex(currentPreparedIndex) } catch (_: Throwable) {}
                                 try {
@@ -268,7 +285,7 @@ class PlayerForegroundService : Service() {
                 Log.w(TAG, "onStartCommand: startMinimalForegroundNow failed: ${e.message}")
             }
         }
-        val i = intent ?: return START_STICKY
+        val i = intent ?: return START_NOT_STICKY
         val action = i.action
         Log.d(TAG, "onStartCommand action=$action | currentIndex=${PlayerStateManager.currentIndex.value} preparedIndex=$currentPreparedIndex isPlaying=${PlayerStateManager.isPlaying.value}")
 
@@ -347,7 +364,7 @@ class PlayerForegroundService : Service() {
             }
         }
 
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun prepareCurrent(startPlaying: Boolean = true) {
@@ -388,6 +405,9 @@ class PlayerForegroundService : Service() {
         try {
             Log.d(TAG, "prepareCurrent requested idx=$idx path=${song.path}")
             mediaPlayer?.reset()
+            // reset() silently cancels any in-flight prepareAsync, so its flag and the previous track's duration must go with it.
+            isPreparing = false
+            PlayerStateManager.clearPrepared()
 
 
             // Use the correct setDataSource overload depending on path format.
@@ -442,13 +462,14 @@ class PlayerForegroundService : Service() {
             // Prepare async and start when prepared; prevent overlapping prepares.
             if (!isPreparing) {
                 isPreparing = true
+                val generation = ++prepareGeneration
                 Log.d(TAG, "prepareCurrent: calling prepareAsync for idx=$idx")
                 mediaPlayer?.prepareAsync()
 
                 // Add a timeout watchdog to reset isPreparing if preparation hangs
                 scope.launch {
-                    delay(5000) // 10 second timeout
-                    if (isPreparing && PlayerStateManager.durationMs.value == 0L) {
+                    delay(if (song.isRemote) 15000L else 5000L)
+                    if (generation == prepareGeneration && isPreparing && PlayerStateManager.durationMs.value == 0L) {
                         Log.w(TAG, "prepareCurrent: preparation timeout for idx=$idx, resetting isPreparing flag")
                         isPreparing = false
                         PlayerStateManager.clearPrepared()
@@ -510,12 +531,13 @@ class PlayerForegroundService : Service() {
                     currentPreparedIndex = idx
                     currentPreparedPath = song.path
                     isPreparing = true
+                    val generation = ++prepareGeneration
                     mediaPlayer?.prepareAsync()
 
                     // Add timeout watchdog for retry as well
                     scope.launch {
                         delay(3000)
-                        if (isPreparing && PlayerStateManager.durationMs.value == 0L) {
+                        if (generation == prepareGeneration && isPreparing && PlayerStateManager.durationMs.value == 0L) {
                             Log.w(TAG, "prepareCurrent(retry): preparation timeout for idx=$idx")
                             isPreparing = false
                             PlayerStateManager.clearPrepared()
@@ -645,6 +667,7 @@ class PlayerForegroundService : Service() {
 
     // Explicitly pauses radio so song/radio never sound at once, regardless of audio-focus timing.
     private fun ensureRadioPaused() {
+        if (!RadioPlayerService.isRunning) return
         try {
             val intent = Intent(this, RadioPlayerService::class.java).apply { action = RadioPlayerService.ACTION_PAUSE }
             startService(intent)
@@ -743,11 +766,14 @@ class PlayerForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isRunning = false
         pollJob?.cancel()
+        scope.cancel()
         try { mediaPlayer?.release() } catch (_: Throwable) {}
         try { abandonAudioFocus() } catch (_: Throwable) {}
         // clear prepared-state in repo since the player is released
         PlayerStateManager.clearPrepared()
+        PlayerStateManager.setIsPlaying(false)
         try { currentArtwork?.recycle() } catch (_: Throwable) {}
         mediaSession?.release()
         PlayerNotificationManager.cancel(this)
@@ -763,9 +789,8 @@ class PlayerForegroundService : Service() {
             // ensure media resources are released and service stopped
             try { mediaPlayer?.stop() } catch (_: Throwable) {}
             try { mediaPlayer?.release() } catch (_: Throwable) {}
-            // clear prepared-state in repo since the player is released
-            PlayerStateManager.clearPrepared()
-            PlayerStateManager.setIsPlaying(false)
+            // Closing the app ends the session entirely, so a relaunch starts with no song queued.
+            PlayerStateManager.reset()
             stopSelf()
         } catch (_: Throwable) {
             // best-effort cleanup

@@ -27,7 +27,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.collectAsState
-import androidx.core.app.ActivityCompat
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -56,6 +56,8 @@ import com.example.musicplayer.music.MusicPlayerViewModel
 import com.example.musicplayer.music.PersistentPlayerHost
 import com.example.musicplayer.service.PlayerDockController
 import com.example.musicplayer.radio.RadioPlayerScreen
+import com.example.musicplayer.radio.RadioPlayerService
+import com.example.musicplayer.service.PlayerStateManager
 import com.example.musicplayer.songlist.ListSongsScreen
 import com.example.musicplayer.settings.SettingsScreen
 import com.example.musicplayer.history.HistoryScreen
@@ -75,7 +77,6 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
-    private val REQUESTCODE: Int = 99
     private val viewModel: MainViewModel by viewModels()
 
     @androidx.annotation.OptIn(UnstableApi::class)
@@ -95,19 +96,7 @@ class MainActivity : ComponentActivity() {
             keepSplashOn || (SystemClock.elapsedRealtime() - splashStartElapsedMs) < minSplashDurationMs
         }
 
-        // Preloads songs on a background thread; result shared via LibraryPreloadCache so ListSongsScreen doesn't re-scan MediaStore the moment the splash dismisses.
-        lifecycleScope.launch(Dispatchers.IO) {
-            val loaded = try {
-                Util.getAllAudioFromDevice(this@MainActivity)
-            } catch (e: Exception) {
-                Log.w("MainActivity", "Failed to preload songs: ${e.message}")
-                emptyList()
-            }
-            LibraryPreloadCache.set(loaded)
-            withContext(Dispatchers.Main) {
-                viewModel.setLoadingComplete()
-            }
-        }
+        loadLibrary()
 
         enableEdgeToEdge()
         setupPermissions()
@@ -287,6 +276,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Preloads songs on a background thread; result shared via LibraryPreloadCache so ListSongsScreen doesn't re-scan MediaStore the moment the splash dismisses.
+    private fun loadLibrary() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val loaded = try {
+                Util.getAllAudioFromDevice(this@MainActivity)
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Failed to preload songs: ${e.message}")
+                emptyList()
+            }
+            LibraryPreloadCache.set(loaded)
+            withContext(Dispatchers.Main) {
+                viewModel.setLoadingComplete()
+            }
+        }
+    }
+
+    // The startup scan runs before the user answers the permission prompt, so it comes back empty on first launch; rescan once access is granted.
+    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        if (results[Manifest.permission.READ_MEDIA_AUDIO] == true) loadLibrary()
+    }
+
     private fun setupPermissions() {
         val required = mutableListOf<String>()
         required += Manifest.permission.READ_MEDIA_AUDIO
@@ -299,7 +309,7 @@ class MainActivity : ComponentActivity() {
 
         if (toRequest.isNotEmpty()) {
             Log.i("MainActivity", "Requesting permissions: ${toRequest.joinToString()}")
-            ActivityCompat.requestPermissions(this, toRequest.toTypedArray(), REQUESTCODE)
+            permissionLauncher.launch(toRequest.toTypedArray())
         } else {
             Log.i("MainActivity", "All required permissions already granted")
         }
@@ -319,11 +329,15 @@ class MainActivity : ComponentActivity() {
         Log.d("MainActivity", "onResume: Artist image caching enabled")
     }
 
+    @androidx.annotation.OptIn(UnstableApi::class)
     override fun onDestroy() {
         // If the activity is finishing (user closed the app), stop the playback service so audio stops.
         try {
             if (isFinishing) {
                 stopService(Intent(this, PlayerForegroundService::class.java))
+                stopService(Intent(this, RadioPlayerService::class.java))
+                // Closing the app ends the session entirely, so a relaunch starts with no song queued.
+                PlayerStateManager.reset()
                 // Clear cache on app exit
                 ArtistUtil.clearCache()
                 Log.d("MainActivity", "onDestroy: Cache cleared on app exit")

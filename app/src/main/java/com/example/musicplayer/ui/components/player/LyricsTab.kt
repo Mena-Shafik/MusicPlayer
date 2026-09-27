@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -91,8 +90,7 @@ fun LyricsTab(currentSong: Song?, modifier: Modifier = Modifier, contentColor: C
     // Outer container matches the height available for lyrics; we will center only the spinner inside it.
     Box(
         modifier = modifier
-            .fillMaxWidth()
-            .heightIn(max = 520.dp)
+            .fillMaxSize()
             .padding(12.dp)
     ) {
         if (loading) {
@@ -108,8 +106,7 @@ fun LyricsTab(currentSong: Song?, modifier: Modifier = Modifier, contentColor: C
         } else {
             // Put lyrics in a vertically-scrollable container so long lyrics are fully visible
             Column(modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 520.dp)
+                .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(8.dp)
             ) {

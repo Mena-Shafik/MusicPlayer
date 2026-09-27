@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -186,6 +187,16 @@ fun ListSongsScreen(
         try { onSearchedClickedExternal(text) } catch (_: Throwable) {}
         viewModel.setQuery(text)
     }
+    val closeSearch: () -> Unit = {
+        onQueryChange("")
+        viewModel.setLibraryViewMode(SongListViewModel.LibraryViewMode.SONGS)
+        toggleSearch()
+    }
+    // Composed only while searching so it's registered after MainActivity's exit-app handler and wins; yields to the full player's own collapse-on-back.
+    val dockProgress by PlayerDockController.dockProgress.collectAsState()
+    if (searchVisible) {
+        BackHandler(enabled = dockProgress < 0.5f) { closeSearch() }
+    }
 
     // playback state used to decide whether to show the mini player
     val isPlaying by PlayerStateManager.isPlaying.collectAsState()
@@ -283,11 +294,7 @@ fun ListSongsScreen(
                     SearchResultsScreen(
                         query = query,
                         onQueryChange = { onQueryChange(it) },
-                        onCancel = {
-                            onQueryChange("")
-                            viewModel.setLibraryViewMode(SongListViewModel.LibraryViewMode.SONGS)
-                            toggleSearch()
-                        },
+                        onCancel = closeSearch,
                         allSongs = allSongs,
                         matchedSongs = songs,
                         onSongClick = { selected ->

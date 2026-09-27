@@ -85,6 +85,25 @@ class PlayerRepositoryTest {
     }
 
     @Test
+    fun reset_clearsWholeSession() {
+        PlayerStateManager.setPlaylist(sampleSongs(), 2)
+        PlayerStateManager.setIsPlaying(true)
+        PlayerStateManager.setPositionMs(5000)
+        PlayerStateManager.markPrepared(180000)
+        PlayerStateManager.toggleShuffle(true)
+
+        PlayerStateManager.reset()
+
+        assertTrue(PlayerStateManager.playlist.value.isEmpty())
+        assertEquals(0, PlayerStateManager.currentIndex.value)
+        assertFalse(PlayerStateManager.isPlaying.value)
+        assertEquals(0L, PlayerStateManager.positionMs.value)
+        assertEquals(0L, PlayerStateManager.durationMs.value)
+        assertFalse(PlayerStateManager.isPrepared.value)
+        assertFalse(PlayerStateManager.shuffleEnabled.value)
+    }
+
+    @Test
     fun prevIndex_usesHistoryWhenShuffled() {
         val songs = sampleSongs()
         PlayerStateManager.setPlaylist(songs, 0)

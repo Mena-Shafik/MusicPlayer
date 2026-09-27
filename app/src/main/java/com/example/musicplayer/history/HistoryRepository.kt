@@ -79,14 +79,7 @@ class HistoryRepository(private val context: Context) {
             // Add to database
             historyDao.addEntry(entry)
 
-            // Reload history to ensure we stay within the limit
-            val entries = historyDao.getLastNSongs(MAX_HISTORY_SIZE)
-            
-            // If we have more than MAX_HISTORY_SIZE entries, delete the oldest ones
-            if (entries.size > MAX_HISTORY_SIZE) {
-                val toDelete = entries.drop(MAX_HISTORY_SIZE)
-                toDelete.forEach { historyDao.deleteEntry(it) }
-            }
+            historyDao.trimTo(MAX_HISTORY_SIZE)
 
             // Update the in-memory state
             val recentEntries = historyDao.getLastNSongs(MAX_HISTORY_SIZE)

@@ -35,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -42,6 +43,7 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import com.example.musicplayer.model.RadioStation
+import com.example.musicplayer.service.PlayerForegroundService
 import com.example.musicplayer.service.PlayerIntentBuilder
 
 @UnstableApi
@@ -109,11 +111,14 @@ class RadioPlayerService : Service() {
         @JvmStatic @Volatile var lastStationName: String? = null
         @JvmStatic @Volatile var lastStationFavicon: String? = null
         @JvmStatic @Volatile var lastStationTags: String? = null
+        // Lets the local player pause us only when we're alive, instead of startService() spawning an empty instance.
+        @JvmStatic @Volatile var isRunning: Boolean = false
     }
 
     @SuppressLint("RestrictedApi")
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
 
         // Initialize Media3 ExoPlayer
         player = ExoPlayer.Builder(this).build()
@@ -326,6 +331,7 @@ class RadioPlayerService : Service() {
 
     // Explicitly pauses local playback so song/radio never sound at once, regardless of audio-focus timing.
     private fun ensureLocalMusicPaused() {
+        if (!PlayerForegroundService.isRunning) return
         try { PlayerIntentBuilder.startPause(this) } catch (_: Throwable) {}
     }
 
@@ -782,11 +788,21 @@ class RadioPlayerService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         try { mediaSession.isActive = false; mediaSession.release() } catch (_: Throwable) {}
         try { player.release() } catch (_: Throwable) {}
         try { stopAndroidMediaPlayer() } catch (_: Throwable) {}
         try { stopMetadataPolling() } catch (_: Throwable) {}
+        serviceScope.cancel()
+        lastStatus = "stopped"
         super.onDestroy()
+    }
+
+    // Swiping the app away from Recents stops the radio too, matching the local player.
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
+        stopSelf()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

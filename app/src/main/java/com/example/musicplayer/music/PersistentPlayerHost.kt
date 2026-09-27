@@ -44,6 +44,8 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -123,9 +125,19 @@ fun PersistentPlayerHost(
     val miniTopPx = if (host != null && miniRoot != null) miniRoot.top - host.top else fallbackMiniTopPx
     val miniBottomPx = if (host != null && miniRoot != null) miniRoot.bottom - host.top else fallbackMiniTopPx + with(density) { MINI_FALLBACK_HEIGHT.toPx() }
 
+    // Mounted by the very tap that expands, so there was no mini bar yet; keep it hidden rather than flashing it before the slide-up.
+    var suppressMini by remember { mutableStateOf(PlayerDockController.pendingExpand.value) }
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     LaunchedEffect(Unit) {
         PlayerDockController.pendingExpand.collect { pending ->
-            if (pending && PlayerDockController.consumeExpand()) dockProgress.animateTo(1f, DockTween)
+            if (pending && PlayerDockController.consumeExpand()) {
+                // A pick from search would otherwise leave the keyboard up over the full player.
+                keyboardController?.hide()
+                focusManager.clearFocus()
+                try { dockProgress.animateTo(1f, DockTween) } finally { suppressMini = false }
+            }
         }
     }
 
@@ -242,7 +254,7 @@ fun PersistentPlayerHost(
                 // Measured on this untransformed slot, not the bar, since the bar is drawn shifted while the panel slides.
                 .onGloballyPositioned { if (it.size.height > 0) miniBoundsRoot = it.boundsInRoot() }
         ) {
-            if (current != null && (p < 0.999f || miniDragging)) {
+            if (current != null && !suppressMini && (p < 0.999f || miniDragging)) {
                 val progress = if (durationMs > 0L) {
                     positionMs.coerceAtMost(durationMs).toFloat() / durationMs.toFloat()
                 } else 0f
