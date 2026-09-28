@@ -26,6 +26,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
 import android.widget.Toast
 import com.example.musicplayer.radio.RadioPlayerService
+import androidx.media3.common.util.UnstableApi
 
 class PlayerForegroundService : Service() {
     private val TAG = "PlayerFgService"
@@ -666,6 +667,7 @@ class PlayerForegroundService : Service() {
     }
 
     // Explicitly pauses radio so song/radio never sound at once, regardless of audio-focus timing.
+    @androidx.annotation.OptIn(UnstableApi::class)
     private fun ensureRadioPaused() {
         if (!RadioPlayerService.isRunning) return
         try {

@@ -298,6 +298,7 @@ private fun PersistentPlayerHostPreview(progress: Float) {
         remember {
             PlayerStateManager.setPlaylist(previewSongs, 0)
             PlayerStateManager.setIsPlaying(true)
+            true
         }
         Box(Modifier.fillMaxSize().background(Color(0xFF14261C))) {
             PersistentPlayerHost(initialDockProgress = progress)

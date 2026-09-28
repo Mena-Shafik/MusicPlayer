@@ -792,6 +792,7 @@ private fun MusicPlayerChromePreview(detent: SheetDetent) {
         remember {
             PlayerStateManager.setPlaylist(chromePreviewSongs, 0)
             PlayerStateManager.setIsPlaying(true)
+            true
         }
         MusicPlayerChrome(
             backgroundColor = Color(0xFF8A6D1F),
